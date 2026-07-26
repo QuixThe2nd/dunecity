@@ -388,7 +388,7 @@ bool Map::okayToPlaceStructure(int x, int y, int buildingSizeX, int buildingSize
 }
 
 bool Map::okayToPlaceStructure(int x, int y, int buildingSizeX, int buildingSizeY, bool tilesRequired, const House* pHouse, bool bIgnoreUnits, int itemID) const {
-    if(!isZoneStructure(itemID)) {
+    if(!DuneCity::isCityOnlyStructure(itemID)) {
         return okayToPlaceStructure(x, y, buildingSizeX, buildingSizeY, tilesRequired, pHouse, bIgnoreUnits);
     }
 
@@ -401,12 +401,17 @@ bool Map::okayToPlaceStructure(int x, int y, int buildingSizeX, int buildingSize
             if(!pTile)
                 return false;
 
-            // Zone structures cannot overlap existing city zones.
+            // DuneCity structures cannot overlap existing city zones.
             if(pTile->hasCityZone()) {
                 return false;
             }
 
-            if(pTile->isMountain() || (!bIgnoreUnits && pTile->isBlocked())) {
+            // Require the same gravel/slab substrate as Dune structures.
+            // Exact terrain values keep sand, spice, dunes, and mountains out
+            // of every city-only placement path.
+            const auto terrain = pTile->getType();
+            if((terrain != Terrain_Rock && terrain != Terrain_Slab)
+               || (!bIgnoreUnits && pTile->isBlocked())) {
                 return false;
             }
 

@@ -605,12 +605,27 @@ void CitySimulation::reconcileLoadedMapState(uint32_t gameCycleCount) {
     lastBudgetTick_ = gameCycleCount / kCyclesPerBudgetTick;
     pendingGrowthPhase_ = false;
 
+    int recoveredValves = 0;
+    for (int h = 0; h < kMaxCityHouses; ++h) {
+        auto& hs = houseState_[h];
+        const int16_t resValve = recoverLoadedEmptyPopulationValve(hs.resPop, hs.resValve);
+        const int16_t comValve = recoverLoadedEmptyPopulationValve(hs.comPop, hs.comValve);
+        const int16_t indValve = recoverLoadedEmptyPopulationValve(hs.indPop, hs.indValve);
+        recoveredValves += (resValve != hs.resValve) + (comValve != hs.comValve)
+                         + (indValve != hs.indValve);
+        hs.resValve = resValve;
+        hs.comValve = comValve;
+        hs.indValve = indValve;
+    }
+
     runEffectsScans();
     runZoneGrowth();
 
     SDL_Log("[CitySim] load-reconcile cityRoleStructures=%d zones=%d "
-            "pop R/C/I %d/%d/%d -> %d/%d/%d valves=R%+d C%+d I%+d",
+            "recoveredValves=%d pop R/C/I %d/%d/%d -> %d/%d/%d "
+            "valves=R%+d C%+d I%+d",
             cityRoleStructures, zoneStructures,
+            recoveredValves,
             beforeRes, beforeCom, beforeInd,
             getResPop(), getComPop(), getIndPop(),
             getResValve(), getComValve(), getIndValve());

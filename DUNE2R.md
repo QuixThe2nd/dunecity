@@ -34,3 +34,9 @@ Commander units will be added later with ability to generate custom sprites.
 The long-term vision is a toggleable graphics layer: classic art, compact
 replacement art, or enhanced animated art, with graceful fallback when a given
 unit or direction has not yet been remastered.
+
+Enhanced unit delivery uses mod-local manifests under
+`mods/Dune2R/graphics_hd/units/**`. A manifest identifies the stable unit and
+house IDs and maps idle, movement, and combat directions to transparent PNG
+atlases. The engine does not inspect the Oathkeeper Compact products for this
+path, and it never replaces base-game asset files.

@@ -61,6 +61,17 @@ void Tank::blitToScreen() {
     int x = screenborder->world2screenX(realX);
     int y = screenborder->world2screenY(realY);
 
+    // Enhanced unit animations are complete vehicle frames, so a successful
+    // draw replaces both the shared classic chassis and turret layers.
+    // Dune2R treats the complete tank as a rigid sprite: movement follows the
+    // chassis while stationary aiming and combat follow the weapon direction.
+    if(drawEnhancedUnitSprite(x, y, drawnTurretAngle, drawnTurretAngle)) {
+        if(isBadlyDamaged()) {
+            drawSmoke(x, y);
+        }
+        return;
+    }
+
     SDL_Texture* pUnitGraphic = graphic[currentZoomlevel];
     SDL_Rect source1 = calcSpriteSourceRect(pUnitGraphic, drawnAngle, numImagesX);
     SDL_Rect dest1 = calcSpriteDrawingRect( pUnitGraphic, x, y, numImagesX, 1, HAlign::Center, VAlign::Center);

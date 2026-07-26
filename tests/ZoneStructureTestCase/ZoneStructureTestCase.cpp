@@ -1,7 +1,7 @@
 /*
  *  ZoneStructureTestCase.cpp - Tests for zone structures
  *
- *  Validates: zone structure IDs, isZoneStructure helper, sand placement support,
+ *  Validates: zone structure IDs, isZoneStructure helper, placement rules,
  *  and regression coverage for the placement-crash fix (zone tile marking must
  *  happen in setLocation, not in the constructor).
  */
@@ -168,6 +168,17 @@ TEST_CASE("ZoneStructure: header declares setLocation override",
     INFO("ZoneStructure.h must declare setLocation override");
     REQUIRE(hdr.find("setLocation") != std::string::npos);
     REQUIRE(hdr.find("override") != std::string::npos);
+}
+
+TEST_CASE("ZoneStructure: placement rejects sand and accepts rock or slab",
+          "[zone][placement][sand][regression]") {
+    std::string src = readSourceFile("src/structures/ZoneStructure.cpp");
+    REQUIRE_FALSE(src.empty());
+
+    std::string body = extractFunctionBody(src, "ZoneStructure::canBePlacedAt(");
+    REQUIRE_FALSE(body.empty());
+    REQUIRE(body.find("terrain != Terrain_Rock && terrain != Terrain_Slab") != std::string::npos);
+    REQUIRE(body.find("Terrain_Sand") == std::string::npos);
 }
 
 // =============================================================================

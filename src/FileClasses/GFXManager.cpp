@@ -39,11 +39,35 @@
 #include <misc/draw_util.h>
 #include <misc/Scaler.h>
 #include <misc/exceptions.h>
-#include <mod/ModManager.h>
 
 #include <algorithm>
+#include <array>
 #include <cstdlib>
 #include <filesystem>
+
+namespace {
+
+constexpr int kEnhancedDirectionCount = 8;
+
+const std::array<const char*, kEnhancedDirectionCount> kEnhancedDirectionNames = {
+    "east", "north_east", "north", "north_west",
+    "west", "south_west", "south", "south_east"
+};
+
+const std::array<const char*, 3> kEnhancedStateNames = {
+    "Idle", "Movement", "Combat"
+};
+
+int enhancedAnimationKey(GFXManager::EnhancedUnitState state, int direction) {
+    return static_cast<int>(state) * kEnhancedDirectionCount + direction;
+}
+
+bool isPathInside(const std::filesystem::path& child, const std::filesystem::path& parent) {
+    const auto relative = std::filesystem::relative(child, parent);
+    return !relative.empty() && *relative.begin() != "..";
+}
+
+} // namespace
 
 /**
     Number of columns and rows each obj pic has
@@ -4607,6 +4631,12 @@ void GFXManager::invalidateAllSpriteTextures() {
             }
         }
     }
+
+    for(auto& hd : hdObjPicOverrides) {
+        hd = HDObjPicOverride{};
+    }
+    enhancedUnitDefinitions.clear();
+    enhancedUnitManifestsLoaded = false;
 }
 
 void GFXManager::loadMentatGraphics() {
@@ -5606,6 +5636,223 @@ bool GFXManager::drawHDObjPic(unsigned int id, int house, unsigned int z,
         destH
     };
 
+    SDL_RenderCopy(renderer, texture, &source, &dest);
+    return true;
+}
+
+void GFXManager::loadEnhancedUnitManifests() {
+    if(enhancedUnitManifestsLoaded) {
+        return;
+    }
+    enhancedUnitManifestsLoaded = true;
+    enhancedUnitDefinitions.clear();
+
+    if(!ModManager::instance().isInitialized()) {
+        return;
+    }
+
+    const std::string activeMod = ModManager::instance().getActiveModName();
+    if(activeMod == "vanilla") {
+        return;
+    }
+
+    const std::filesystem::path unitsRoot =
+        std::filesystem::path(ModManager::instance().getModPath(activeMod))
+        / "graphics_hd" / "units";
+    if(!std::filesystem::is_directory(unitsRoot)) {
+        return;
+    }
+
+    for(const auto& entry : std::filesystem::directory_iterator(unitsRoot)) {
+        if(!entry.is_directory()) {
+            continue;
+        }
+
+        const std::filesystem::path manifestPath = entry.path() / "unit.ini";
+        if(!std::filesystem::is_regular_file(manifestPath)) {
+            continue;
+        }
+
+        try {
+            INIFile manifest(manifestPath.string());
+            EnhancedUnitDefinition definition;
+            definition.itemID = manifest.getIntValue("Unit", "ItemID", -1);
+            definition.houseID = manifest.getIntValue("Unit", "HouseID", -1);
+            definition.baseWidth = manifest.getIntValue("Render", "BaseWidth", 0);
+            definition.baseHeight = manifest.getIntValue("Render", "BaseHeight", 0);
+            definition.scale = manifest.getDoubleValue("Render", "Scale", 1.0);
+
+            if(definition.itemID < 0 || definition.houseID < -1
+               || definition.houseID >= static_cast<int>(NUM_HOUSES)
+               || definition.baseWidth <= 0 || definition.baseHeight <= 0
+               || definition.scale <= 0.0) {
+                SDL_Log("GFXManager: Skipping invalid enhanced unit manifest %s",
+                        manifestPath.string().c_str());
+                continue;
+            }
+
+            for(int stateIndex = 0; stateIndex < static_cast<int>(kEnhancedStateNames.size()); ++stateIndex) {
+                const auto state = static_cast<EnhancedUnitState>(stateIndex);
+                for(int direction = 0; direction < kEnhancedDirectionCount; ++direction) {
+                    const std::string section = std::string(kEnhancedStateNames[stateIndex])
+                                                + "." + kEnhancedDirectionNames[direction];
+                    const std::string atlasName = manifest.getStringValue(section, "Atlas", "");
+                    if(atlasName.empty()) {
+                        continue;
+                    }
+
+                    const std::filesystem::path atlasPath =
+                        std::filesystem::weakly_canonical(entry.path() / atlasName);
+                    if(!isPathInside(atlasPath, unitsRoot)
+                       || !std::filesystem::is_regular_file(atlasPath)) {
+                        SDL_Log("GFXManager: Enhanced atlas '%s' is missing or outside its mod",
+                                atlasPath.string().c_str());
+                        continue;
+                    }
+
+                    EnhancedUnitAnimation unitAnimation;
+                    unitAnimation.atlasPath = atlasPath.string();
+                    unitAnimation.columns = std::max(1, manifest.getIntValue(section, "Columns", 1));
+                    unitAnimation.rows = std::max(1, manifest.getIntValue(section, "Rows", 1));
+                    unitAnimation.frameCount = std::max(1, manifest.getIntValue(section, "Frames", 1));
+                    unitAnimation.frameMs = std::max(1, manifest.getIntValue(section, "FrameMs", 100));
+                    unitAnimation.anchorX = manifest.getIntValue(section, "AnchorX", -1);
+                    unitAnimation.anchorY = manifest.getIntValue(section, "AnchorY", -1);
+                    unitAnimation.loop = manifest.getBoolValue(section, "Loop", state != EnhancedUnitState::Combat);
+
+                    if(unitAnimation.frameCount > unitAnimation.columns * unitAnimation.rows) {
+                        SDL_Log("GFXManager: Enhanced atlas '%s' declares %d frames in a %dx%d grid",
+                                atlasPath.string().c_str(), unitAnimation.frameCount,
+                                unitAnimation.columns, unitAnimation.rows);
+                        continue;
+                    }
+
+                    definition.animations.emplace(enhancedAnimationKey(state, direction), std::move(unitAnimation));
+                }
+            }
+
+            if(!definition.animations.empty()) {
+                SDL_Log("GFXManager: Registered enhanced unit ItemID=%d HouseID=%d from %s",
+                        definition.itemID, definition.houseID, manifestPath.string().c_str());
+                enhancedUnitDefinitions.push_back(std::move(definition));
+            }
+        } catch(const std::exception& e) {
+            SDL_Log("GFXManager: Failed to read enhanced unit manifest %s: %s",
+                    manifestPath.string().c_str(), e.what());
+        }
+    }
+}
+
+Uint32 GFXManager::getEnhancedUnitAnimationDuration(int itemID, int house,
+                                                     EnhancedUnitState state,
+                                                     int direction) {
+    loadEnhancedUnitManifests();
+    if(direction < 0 || direction >= kEnhancedDirectionCount) {
+        return 0;
+    }
+
+    const int key = enhancedAnimationKey(state, direction);
+    for(const int requestedHouse : {house, -1}) {
+        for(const auto& definition : enhancedUnitDefinitions) {
+            if(definition.itemID != itemID || definition.houseID != requestedHouse) {
+                continue;
+            }
+            const auto animationIt = definition.animations.find(key);
+            if(animationIt != definition.animations.end()) {
+                return static_cast<Uint32>(animationIt->second.frameCount)
+                       * static_cast<Uint32>(animationIt->second.frameMs);
+            }
+        }
+    }
+    return 0;
+}
+
+bool GFXManager::drawEnhancedUnit(int itemID, int house, unsigned int z,
+                                  EnhancedUnitState state, int direction,
+                                  Uint32 elapsedMs, int x, int y) {
+    loadEnhancedUnitManifests();
+    if(z >= NUM_ZOOMLEVEL || direction < 0 || direction >= kEnhancedDirectionCount) {
+        return false;
+    }
+
+    EnhancedUnitDefinition* selectedDefinition = nullptr;
+    EnhancedUnitAnimation* selectedAnimation = nullptr;
+    const int key = enhancedAnimationKey(state, direction);
+    for(const int requestedHouse : {house, -1}) {
+        for(auto& definition : enhancedUnitDefinitions) {
+            if(definition.itemID != itemID || definition.houseID != requestedHouse) {
+                continue;
+            }
+            const auto animationIt = definition.animations.find(key);
+            if(animationIt != definition.animations.end()) {
+                selectedDefinition = &definition;
+                selectedAnimation = &animationIt->second;
+                break;
+            }
+        }
+        if(selectedAnimation != nullptr) {
+            break;
+        }
+    }
+
+    if(selectedAnimation == nullptr || selectedDefinition == nullptr) {
+        return false;
+    }
+
+    if(selectedAnimation->texture == nullptr) {
+        if(selectedAnimation->loadAttempted) {
+            return false;
+        }
+        selectedAnimation->loadAttempted = true;
+
+        auto rwops = sdl2::RWops_ptr{ SDL_RWFromFile(selectedAnimation->atlasPath.c_str(), "rb") };
+        auto surface = rwops ? LoadPNG_RW(rwops.get()) : nullptr;
+        if(!surface || surface->w % selectedAnimation->columns != 0
+           || surface->h % selectedAnimation->rows != 0) {
+            SDL_Log("GFXManager: Failed to load enhanced unit atlas %s",
+                    selectedAnimation->atlasPath.c_str());
+            return false;
+        }
+        selectedAnimation->texture = convertSurfaceToTexture(surface.get());
+        if(selectedAnimation->texture == nullptr) {
+            return false;
+        }
+    }
+
+    SDL_Texture* texture = selectedAnimation->texture.get();
+    const int frameW = getWidth(texture) / selectedAnimation->columns;
+    const int frameH = getHeight(texture) / selectedAnimation->rows;
+    if(frameW <= 0 || frameH <= 0) {
+        return false;
+    }
+
+    Uint32 frame = elapsedMs / static_cast<Uint32>(selectedAnimation->frameMs);
+    if(selectedAnimation->loop) {
+        frame %= static_cast<Uint32>(selectedAnimation->frameCount);
+    } else {
+        frame = std::min(frame, static_cast<Uint32>(selectedAnimation->frameCount - 1));
+    }
+
+    SDL_Rect source = {
+        static_cast<int>(frame % selectedAnimation->columns) * frameW,
+        static_cast<int>(frame / selectedAnimation->columns) * frameH,
+        frameW,
+        frameH
+    };
+
+    const int destW = std::max(1, static_cast<int>(lround(
+        selectedDefinition->baseWidth * static_cast<int>(z + 1) * selectedDefinition->scale)));
+    const int destH = std::max(1, static_cast<int>(lround(
+        selectedDefinition->baseHeight * static_cast<int>(z + 1) * selectedDefinition->scale)));
+    const int anchorX = selectedAnimation->anchorX >= 0 ? selectedAnimation->anchorX : frameW / 2;
+    const int anchorY = selectedAnimation->anchorY >= 0 ? selectedAnimation->anchorY : frameH / 2;
+
+    SDL_Rect dest = {
+        x - static_cast<int>(lround(anchorX * (static_cast<double>(destW) / frameW))),
+        y - static_cast<int>(lround(anchorY * (static_cast<double>(destH) / frameH))),
+        destW,
+        destH
+    };
     SDL_RenderCopy(renderer, texture, &source, &dest);
     return true;
 }

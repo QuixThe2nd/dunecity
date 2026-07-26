@@ -100,3 +100,7 @@ imported_sprites/micropolis/composites_special/*.broken
 tmp/
 *.code-workspace
 /Tornie Files
+
+# Python tooling caches
+__pycache__/
+*.py[cod]

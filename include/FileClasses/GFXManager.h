@@ -27,7 +27,9 @@
 
 #include <string>
 #include <array>
+#include <map>
 #include <memory>
+#include <vector>
 
 #define NUM_TERRAIN_TILES_X 11
 #define NUM_TERRAIN_TILES_Y 8
@@ -580,6 +582,12 @@ typedef enum {
 
 class GFXManager {
 public:
+    enum class EnhancedUnitState {
+        Idle,
+        Movement,
+        Combat
+    };
+
     GFXManager();
     ~GFXManager();
 
@@ -594,6 +602,12 @@ public:
     bool             drawHDObjPic(unsigned int id, int house, unsigned int z,
                                   int col, int numCols, int row, int numRows,
                                   int x, int y);
+    bool             drawEnhancedUnit(int itemID, int house, unsigned int z,
+                                      EnhancedUnitState state, int direction,
+                                      Uint32 elapsedMs, int x, int y);
+    Uint32           getEnhancedUnitAnimationDuration(int itemID, int house,
+                                                      EnhancedUnitState state,
+                                                      int direction);
     bool             hasObjPic(unsigned int id, int house=HOUSE_HARKONNEN, unsigned int z=0) const;
 
     // DuneCity 1.0.487: invalidate sprite texture cache
@@ -631,6 +645,7 @@ private:
     sdl2::surface_ptr   generateTripledObjPic(unsigned int id, int h) const;
     void                loadCompactObjPicOverrides();
     bool                loadHDObjPicOverride(unsigned int id);
+    void                loadEnhancedUnitManifests();
     void                loadMentatGraphics();
     void                loadCustomHouseHerald();
 
@@ -647,6 +662,40 @@ private:
         bool loaded = false;
     };
 
+    struct EnhancedUnitAnimation {
+        EnhancedUnitAnimation() = default;
+        EnhancedUnitAnimation(const EnhancedUnitAnimation&) = delete;
+        EnhancedUnitAnimation& operator=(const EnhancedUnitAnimation&) = delete;
+        EnhancedUnitAnimation(EnhancedUnitAnimation&&) noexcept = default;
+        EnhancedUnitAnimation& operator=(EnhancedUnitAnimation&&) noexcept = default;
+
+        std::string atlasPath;
+        sdl2::texture_ptr texture;
+        int columns = 1;
+        int rows = 1;
+        int frameCount = 1;
+        int frameMs = 100;
+        int anchorX = -1;
+        int anchorY = -1;
+        bool loop = true;
+        bool loadAttempted = false;
+    };
+
+    struct EnhancedUnitDefinition {
+        EnhancedUnitDefinition() = default;
+        EnhancedUnitDefinition(const EnhancedUnitDefinition&) = delete;
+        EnhancedUnitDefinition& operator=(const EnhancedUnitDefinition&) = delete;
+        EnhancedUnitDefinition(EnhancedUnitDefinition&&) noexcept = default;
+        EnhancedUnitDefinition& operator=(EnhancedUnitDefinition&&) noexcept = default;
+
+        int itemID = -1;
+        int houseID = -1;
+        int baseWidth = 0;
+        int baseHeight = 0;
+        double scale = 1.0;
+        std::map<int, EnhancedUnitAnimation> animations;
+    };
+
     // 8-bit surfaces kept in main memory for processing as needed, e.g. color remapping
     std::array<std::array<std::array<sdl2::surface_ptr, NUM_ZOOMLEVEL>, NUM_HOUSE_COLOR_SLOTS>, NUM_OBJPICS> objPic;
     std::array<std::array<sdl2::surface_ptr, NUM_HOUSE_COLOR_SLOTS>, NUM_UIGRAPHICS> uiGraphic;
@@ -661,6 +710,8 @@ private:
     // Textures
     std::array<std::array<std::array<sdl2::texture_ptr, NUM_ZOOMLEVEL>, NUM_HOUSE_COLOR_SLOTS>, NUM_OBJPICS> objPicTex;
     std::array<HDObjPicOverride, NUM_OBJPICS> hdObjPicOverrides;
+    std::vector<EnhancedUnitDefinition> enhancedUnitDefinitions;
+    bool enhancedUnitManifestsLoaded = false;
     std::array<sdl2::texture_ptr, NUM_SMALLDETAILPICS> smallDetailPicTex;
     std::array<sdl2::texture_ptr, NUM_TINYPICTURE> tinyPictureTex;
     std::array<std::array<sdl2::texture_ptr, NUM_HOUSE_COLOR_SLOTS>, NUM_UIGRAPHICS> uiGraphicTex;

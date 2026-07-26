@@ -213,6 +213,12 @@ public:
 
     // DuneCity 1.0.492: Tornie mod reseed check
     bool tornieNeedsReseed() const;
+
+    /**
+     * Return true when the installed bundled Dune2R payload is incomplete or
+     * older than the copy shipped with the application.
+     */
+    bool dune2rNeedsReseed() const;
     
     // === Paths ===
     

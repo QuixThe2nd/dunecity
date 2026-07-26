@@ -124,6 +124,7 @@ private:
     PictureButton       optionsButton;          ///< Button for accessing the ingame menu
     PictureButton       mentatButton;           ///< Button for accessing the mentat menu
     TextButton          budgetButton;           ///< City sim mode only: opens the budget mini-window
+    TextButton          dune2rZoomButton;       ///< Dune2R only: cycles local presentation zoom
     PictureLabel        topBar;                 ///< The background of the top bar
 
     PictureLabel        sideBar;                ///< The background of the side bar

@@ -281,12 +281,7 @@ void BuilderBase::updateProductionProgress() {
 
             FixPoint oldProgress = productionProgress;
 
-            // Roads are placed like a city tool; concrete keeps classic Dune
-            // production timing even when city simulation is enabled.
-            const bool tileLikeInCityMode = currentGame->isCitySimEnabled()
-                                        && DuneCity::usesInstantCityProduction(currentProducedItem);
-
-            if(currentGame->getGameInitSettings().getGameOptions().instantBuild == true || tileLikeInCityMode) {
+            if(currentGame->getGameInitSettings().getGameOptions().instantBuild == true) {
                 FixPoint totalBuildCosts = tmp->price;
                 FixPoint buildCosts = totalBuildCosts - productionProgress;
 
@@ -295,7 +290,16 @@ void BuilderBase::updateProductionProgress() {
 
                 FixPoint buildSpeed = std::min( getHealth() / getMaxHealth(), buildSpeedLimit);
                 FixPoint totalBuildCosts = tmp->price;
-                FixPoint totalBuildGameTicks = currentGame->objectData.data[currentProducedItem][originalHouseID].buildtime*15;
+                int buildTime = currentGame->objectData.data[currentProducedItem][originalHouseID].buildtime;
+                if (currentGame->isCitySimEnabled()) {
+                    const int concreteBuildTime =
+                        currentGame->objectData.data[Structure_Slab1][originalHouseID].buildtime;
+                    const int policeBuildTime =
+                        currentGame->objectData.data[Structure_PoliceStation][originalHouseID].buildtime;
+                    buildTime = DuneCity::getCityBuildTime(
+                        currentProducedItem, buildTime, concreteBuildTime, policeBuildTime);
+                }
+                FixPoint totalBuildGameTicks = buildTime * 15;
                 FixPoint buildCosts = totalBuildCosts / totalBuildGameTicks;
 
                 productionProgress += owner->takeCredits(buildCosts*buildSpeed);
@@ -365,14 +369,7 @@ void BuilderBase::updateBuildList()
         // DuneCity city-sim features. Hide them from the build list otherwise.
         // (Concrete slabs stay available in vanilla mode — they pre-date the
         // city-sim fork and are core Dune Legacy.)
-        const bool isCityOnly = (itemID2Add == Structure_ZoneResidential
-                              || itemID2Add == Structure_ZoneCommercial
-                              || itemID2Add == Structure_ZoneIndustrial
-                              || itemID2Add == Structure_Road
-                              || itemID2Add == Structure_NuclearPlant
-                              || itemID2Add == Structure_PoliceStation
-                              || itemID2Add == Structure_Stadium
-                              || itemID2Add == Structure_Airport);
+        const bool isCityOnly = DuneCity::isCityOnlyStructure(itemID2Add);
         if (isCityOnly && !currentGame->isCitySimEnabled()) {
             removeItem(buildList, iter, itemID2Add);
             continue;

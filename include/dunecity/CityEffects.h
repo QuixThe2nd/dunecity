@@ -717,6 +717,13 @@ constexpr int kResValveRange = 2000;
 constexpr int kComValveRange = 1500;
 constexpr int kIndValveRange = 1500;
 
+/// Repair a demand valve loaded from a save whose matching population is
+/// empty. Older broken builds could pin these valves below zero permanently,
+/// preventing the first level-0 zone from ever bootstrapping.
+inline int16_t recoverLoadedEmptyPopulationValve(int population, int16_t valve) {
+    return population == 0 && valve < 0 ? 0 : valve;
+}
+
 inline ValveOutputs computeDemandValves(const ValveInputs& in) {
 
     // Micropolis constants (from simulate.cpp)
@@ -766,7 +773,10 @@ inline ValveOutputs computeDemandValves(const ValveInputs& in) {
 
     // Labour base uses previous-tick values (SC: resHist[1] / (comHist[1]+indHist[1]))
     double laborBase;
-    if (prevJobs > 0.0) {
+    // DuneCity starts maps and loaded campaigns with genuinely empty history.
+    // A jobs-only history must not produce laborBase=0: that collapses both
+    // projected job populations and floors the C/I valves before R can start.
+    if (prevJobs > 0.0 && in.prevResPop > 0) {
         laborBase = static_cast<double>(in.prevResPop) / prevJobs;
     } else {
         laborBase = 1.0;
@@ -792,12 +802,15 @@ inline ValveOutputs computeDemandValves(const ValveInputs& in) {
     if (in.comPop > 0) {
         comRatio = projectedComPop / in.comPop;
     } else {
-        comRatio = projectedComPop;  // SC uses raw projected when 0
+        // Neutral until the first commercial population exists. Feeding the
+        // raw sub-1 projection into the ratio delta creates a CATCH-22 where
+        // the valve floors before a level-0 zone can grow.
+        comRatio = 1.0;
     }
     if (in.indPop > 0) {
         indRatio = projectedIndPop / in.indPop;
     } else {
-        indRatio = projectedIndPop;  // SC uses raw projected when 0
+        indRatio = 1.0;
     }
     if (resRatio > resRatioMax) resRatio = resRatioMax;
     if (comRatio > comRatioMax) comRatio = comRatioMax;

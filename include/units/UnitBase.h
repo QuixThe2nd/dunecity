@@ -24,6 +24,7 @@
 
 #include <list>
 #include <cstdint>
+#include <limits>
 
 // forward declarations
 class Tile;
@@ -296,6 +297,8 @@ protected:
     Coord resolvePathDestination() const;
 
     void drawSmoke(int x, int y) const;
+    bool drawEnhancedUnitSprite(int x, int y, int idleDirection = -1,
+                                int combatDirection = -1);
 
     // constant for all units of the same type
     bool     tracked;                ///< Does this unit have tracks?
@@ -349,6 +352,7 @@ protected:
 
     // drawing information
     int drawnFrame;                  ///< Which row in the picture should be drawn
+    Uint32 enhancedCombatAnimationStartMs = std::numeric_limits<Uint32>::max();
 };
 
 #endif //UNITBASE_H
