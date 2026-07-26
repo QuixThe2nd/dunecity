@@ -409,8 +409,7 @@ bool Map::okayToPlaceStructure(int x, int y, int buildingSizeX, int buildingSize
             // Require the same gravel/slab substrate as Dune structures.
             // Exact terrain values keep sand, spice, dunes, and mountains out
             // of every city-only placement path.
-            const auto terrain = pTile->getType();
-            if((terrain != Terrain_Rock && terrain != Terrain_Slab)
+            if(!DuneCity::isCityBuildableTerrain(pTile->getType())
                || (!bIgnoreUnits && pTile->isBlocked())) {
                 return false;
             }

@@ -1676,7 +1676,9 @@ void Game::drawScreen()
                             if(withinRange && currentGameMap->tileExists(i,j)) {
                                 Tile* pTile = currentGameMap->getTile(i,j);
                                 if(isZoneStructure(placeItem)) {
-                                    tileValid = !pTile->isMountain() && !pTile->hasAGroundObject();
+                                    tileValid = DuneCity::isCityBuildableTerrain(pTile->getType())
+                                        && !pTile->hasCityZone()
+                                        && !pTile->hasAGroundObject();
                                 } else {
                                     tileValid = pTile->isRock() && !pTile->isMountain() && !pTile->hasAGroundObject()
                                         && !(((placeItem == Structure_Slab1) || (placeItem == Structure_Slab4)) && pTile->isConcrete());

@@ -49,6 +49,18 @@ TEST_CASE("CityBuildLogic: city-only placement set covers every city item",
     REQUIRE_FALSE(DuneCity::isCityOnlyStructure(Structure_WindTrap));
 }
 
+TEST_CASE("CityBuildLogic: city placement preview accepts only gravel or concrete",
+          "[city][zones][placement][preview]") {
+    REQUIRE(DuneCity::isCityBuildableTerrain(Terrain_Rock));
+    REQUIRE(DuneCity::isCityBuildableTerrain(Terrain_Slab));
+
+    REQUIRE_FALSE(DuneCity::isCityBuildableTerrain(Terrain_Sand));
+    REQUIRE_FALSE(DuneCity::isCityBuildableTerrain(Terrain_Dunes));
+    REQUIRE_FALSE(DuneCity::isCityBuildableTerrain(Terrain_Spice));
+    REQUIRE_FALSE(DuneCity::isCityBuildableTerrain(Terrain_ThickSpice));
+    REQUIRE_FALSE(DuneCity::isCityBuildableTerrain(Terrain_Mountain));
+}
+
 TEST_CASE("CityBuildLogic: road placement accepts concrete terrain", "[city][roads][concrete]") {
     // Tile::isRock() includes Terrain_Slab, so concrete reaches this helper as
     // supported terrain and the road flag replaces the slab visually.

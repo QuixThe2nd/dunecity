@@ -46,6 +46,10 @@ inline bool isCityOnlyStructure(int itemID) {
         || itemID == Structure_Airport;
 }
 
+inline bool isCityBuildableTerrain(uint32_t terrain) {
+    return terrain == Terrain_Rock || terrain == Terrain_Slab;
+}
+
 inline int getCityBuildTime(int itemID, int configuredBuildTime,
                             int concreteBuildTime, int policeBuildTime) {
     if (itemID == Structure_Road) {
