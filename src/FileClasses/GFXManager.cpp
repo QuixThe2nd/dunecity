@@ -35,15 +35,76 @@
 #include <Colors.h>
 
 #include <misc/FileSystem.h>
+#include <main.h>
 
 #include <misc/draw_util.h>
 #include <misc/Scaler.h>
 #include <misc/exceptions.h>
-#include <mod/ModManager.h>
 
 #include <algorithm>
+#include <array>
 #include <cstdlib>
 #include <filesystem>
+
+namespace {
+
+constexpr int kEnhancedDirectionCount = 8;
+
+const std::array<const char*, kEnhancedDirectionCount> kEnhancedDirectionNames = {
+    "east", "north_east", "north", "north_west",
+    "west", "south_west", "south", "south_east"
+};
+
+const std::array<const char*, 3> kEnhancedStateNames = {
+    "Idle", "Movement", "Combat"
+};
+
+int enhancedAnimationKey(GFXManager::EnhancedUnitState state, int direction) {
+    return static_cast<int>(state) * kEnhancedDirectionCount + direction;
+}
+
+int enhancedRenderModeKey(int itemID, int house, GFXManager::EnhancedUnitState state,
+                          int direction) {
+    return ((((itemID * (static_cast<int>(NUM_HOUSES) + 1)) + (house + 1))
+             * static_cast<int>(kEnhancedStateNames.size()))
+            + static_cast<int>(state))
+           * kEnhancedDirectionCount + direction;
+}
+
+std::string enhancedRenderModeConfigKey(int itemID, int house,
+                                        GFXManager::EnhancedUnitState state,
+                                        int direction) {
+    return "Unit" + std::to_string(itemID)
+           + "House" + std::to_string(house)
+           + kEnhancedStateNames[static_cast<int>(state)]
+           + kEnhancedDirectionNames[direction];
+}
+
+const char* enhancedRenderModeName(GFXManager::EnhancedRenderMode mode) {
+    switch(mode) {
+        case GFXManager::EnhancedRenderMode::Layered:       return "layered";
+        case GFXManager::EnhancedRenderMode::Random:        return "random";
+        case GFXManager::EnhancedRenderMode::FullAnimation: return "full";
+    }
+    return "full";
+}
+
+GFXManager::EnhancedRenderMode parseEnhancedRenderMode(const std::string& value) {
+    if(value == "layered") {
+        return GFXManager::EnhancedRenderMode::Layered;
+    }
+    if(value == "random") {
+        return GFXManager::EnhancedRenderMode::Random;
+    }
+    return GFXManager::EnhancedRenderMode::FullAnimation;
+}
+
+bool isPathInside(const std::filesystem::path& child, const std::filesystem::path& parent) {
+    const auto relative = std::filesystem::relative(child, parent);
+    return !relative.empty() && *relative.begin() != "..";
+}
+
+} // namespace
 
 /**
     Number of columns and rows each obj pic has
@@ -4607,6 +4668,14 @@ void GFXManager::invalidateAllSpriteTextures() {
             }
         }
     }
+
+    for(auto& hd : hdObjPicOverrides) {
+        hd = HDObjPicOverride{};
+    }
+    enhancedUnitDefinitions.clear();
+    enhancedUnitManifestsLoaded = false;
+    enhancedUnitRenderModes.clear();
+    enhancedRenderModesLoaded = false;
 }
 
 void GFXManager::loadMentatGraphics() {
@@ -5606,6 +5675,367 @@ bool GFXManager::drawHDObjPic(unsigned int id, int house, unsigned int z,
         destH
     };
 
+    SDL_RenderCopy(renderer, texture, &source, &dest);
+    return true;
+}
+
+void GFXManager::loadEnhancedUnitManifests() {
+    if(enhancedUnitManifestsLoaded) {
+        return;
+    }
+    enhancedUnitManifestsLoaded = true;
+    enhancedUnitDefinitions.clear();
+
+    if(!ModManager::instance().isInitialized()) {
+        return;
+    }
+
+    const std::string activeMod = ModManager::instance().getActiveModName();
+    if(activeMod != "Dune2R") {
+        return;
+    }
+
+    const std::filesystem::path unitsRoot =
+        std::filesystem::path(ModManager::instance().getModPath(activeMod))
+        / "graphics_hd" / "units";
+    if(!std::filesystem::is_directory(unitsRoot)) {
+        return;
+    }
+
+    for(const auto& entry : std::filesystem::directory_iterator(unitsRoot)) {
+        if(!entry.is_directory()) {
+            continue;
+        }
+
+        const std::filesystem::path manifestPath = entry.path() / "unit.ini";
+        if(!std::filesystem::is_regular_file(manifestPath)) {
+            continue;
+        }
+
+        try {
+            INIFile manifest(manifestPath.string());
+            EnhancedUnitDefinition definition;
+            definition.itemID = manifest.getIntValue("Unit", "ItemID", -1);
+            definition.houseID = manifest.getIntValue("Unit", "HouseID", -1);
+            definition.sourceUnit = manifest.getStringValue(
+                "Unit", "SourceUnit", entry.path().filename().string());
+            definition.baseWidth = manifest.getIntValue("Render", "BaseWidth", 0);
+            definition.baseHeight = manifest.getIntValue("Render", "BaseHeight", 0);
+            definition.scale = manifest.getDoubleValue("Render", "Scale", 1.0);
+
+            if(definition.itemID < 0 || definition.houseID < -1
+               || definition.houseID >= static_cast<int>(NUM_HOUSES)
+               || definition.baseWidth <= 0 || definition.baseHeight <= 0
+               || definition.scale <= 0.0) {
+                SDL_Log("GFXManager: Skipping invalid enhanced unit manifest %s",
+                        manifestPath.string().c_str());
+                continue;
+            }
+
+            for(int stateIndex = 0; stateIndex < static_cast<int>(kEnhancedStateNames.size()); ++stateIndex) {
+                const auto state = static_cast<EnhancedUnitState>(stateIndex);
+                for(int direction = 0; direction < kEnhancedDirectionCount; ++direction) {
+                    const std::string section = std::string(kEnhancedStateNames[stateIndex])
+                                                + "." + kEnhancedDirectionNames[direction];
+                    const std::string atlasName = manifest.getStringValue(section, "Atlas", "");
+                    if(atlasName.empty()) {
+                        continue;
+                    }
+
+                    const std::filesystem::path atlasPath =
+                        std::filesystem::weakly_canonical(entry.path() / atlasName);
+                    if(!isPathInside(atlasPath, unitsRoot)
+                       || !std::filesystem::is_regular_file(atlasPath)) {
+                        SDL_Log("GFXManager: Enhanced atlas '%s' is missing or outside its mod",
+                                atlasPath.string().c_str());
+                        continue;
+                    }
+
+                    EnhancedUnitAnimation unitAnimation;
+                    unitAnimation.atlasPath = atlasPath.string();
+                    unitAnimation.columns = std::max(1, manifest.getIntValue(section, "Columns", 1));
+                    unitAnimation.rows = std::max(1, manifest.getIntValue(section, "Rows", 1));
+                    unitAnimation.frameCount = std::max(1, manifest.getIntValue(section, "Frames", 1));
+                    unitAnimation.frameMs = std::max(1, manifest.getIntValue(section, "FrameMs", 100));
+                    unitAnimation.anchorX = manifest.getIntValue(section, "AnchorX", -1);
+                    unitAnimation.anchorY = manifest.getIntValue(section, "AnchorY", -1);
+                    unitAnimation.loop = manifest.getBoolValue(section, "Loop", state != EnhancedUnitState::Combat);
+
+                    if(unitAnimation.frameCount > unitAnimation.columns * unitAnimation.rows) {
+                        SDL_Log("GFXManager: Enhanced atlas '%s' declares %d frames in a %dx%d grid",
+                                atlasPath.string().c_str(), unitAnimation.frameCount,
+                                unitAnimation.columns, unitAnimation.rows);
+                        continue;
+                    }
+
+                    definition.animations.emplace(enhancedAnimationKey(state, direction), std::move(unitAnimation));
+                }
+            }
+
+            if(!definition.animations.empty()) {
+                SDL_Log("GFXManager: Registered enhanced unit ItemID=%d HouseID=%d from %s",
+                        definition.itemID, definition.houseID, manifestPath.string().c_str());
+                enhancedUnitDefinitions.push_back(std::move(definition));
+            }
+        } catch(const std::exception& e) {
+            SDL_Log("GFXManager: Failed to read enhanced unit manifest %s: %s",
+                    manifestPath.string().c_str(), e.what());
+        }
+    }
+}
+
+void GFXManager::loadEnhancedRenderModes() {
+    if(enhancedRenderModesLoaded) {
+        return;
+    }
+    enhancedRenderModesLoaded = true;
+    enhancedUnitRenderModes.clear();
+
+    if(!ModManager::instance().isInitialized()
+       || ModManager::instance().getActiveModName() != "Dune2R") {
+        return;
+    }
+
+    loadEnhancedUnitManifests();
+    try {
+        INIFile config(getConfigFilepath());
+        for(const auto& definition : enhancedUnitDefinitions) {
+            for(int stateIndex = 0; stateIndex < static_cast<int>(kEnhancedStateNames.size()); ++stateIndex) {
+                const auto state = static_cast<EnhancedUnitState>(stateIndex);
+                for(int direction = 0; direction < kEnhancedDirectionCount; ++direction) {
+                    const std::string value = config.getStringValue(
+                        "Dune2R EditoR",
+                        enhancedRenderModeConfigKey(definition.itemID, definition.houseID,
+                                                    state, direction),
+                        "full");
+                    const auto mode = parseEnhancedRenderMode(value);
+                    if(mode != EnhancedRenderMode::FullAnimation) {
+                        enhancedUnitRenderModes.emplace(
+                            enhancedRenderModeKey(definition.itemID, definition.houseID,
+                                                  state, direction),
+                            mode);
+                    }
+                }
+            }
+        }
+    } catch(const std::exception& e) {
+        SDL_Log("GFXManager: Could not load Dune2R EditoR preferences: %s", e.what());
+    }
+}
+
+bool GFXManager::hasEnhancedUnitAnimation(int itemID, int house,
+                                          EnhancedUnitState state,
+                                          int direction) {
+    loadEnhancedUnitManifests();
+    if(direction < 0 || direction >= kEnhancedDirectionCount) {
+        return false;
+    }
+
+    const int key = enhancedAnimationKey(state, direction);
+    for(const int requestedHouse : {house, -1}) {
+        for(const auto& definition : enhancedUnitDefinitions) {
+            if(definition.itemID == itemID && definition.houseID == requestedHouse
+               && definition.animations.find(key) != definition.animations.end()) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+std::vector<GFXManager::EnhancedUnitEditorInfo> GFXManager::getEnhancedUnitEditorInfo() {
+    loadEnhancedUnitManifests();
+    std::vector<EnhancedUnitEditorInfo> result;
+    if(!ModManager::instance().isInitialized()
+       || ModManager::instance().getActiveModName() != "Dune2R") {
+        return result;
+    }
+
+    result.reserve(enhancedUnitDefinitions.size());
+    for(const auto& definition : enhancedUnitDefinitions) {
+        EnhancedUnitEditorInfo info;
+        info.sourceUnit = definition.sourceUnit;
+        info.itemID = definition.itemID;
+        info.houseID = definition.houseID;
+        for(int stateIndex = 0; stateIndex < static_cast<int>(kEnhancedStateNames.size()); ++stateIndex) {
+            for(int direction = 0; direction < kEnhancedDirectionCount; ++direction) {
+                info.available[stateIndex][direction] = definition.animations.find(
+                    enhancedAnimationKey(static_cast<EnhancedUnitState>(stateIndex), direction))
+                    != definition.animations.end();
+            }
+        }
+        result.push_back(std::move(info));
+    }
+    return result;
+}
+
+GFXManager::EnhancedRenderMode GFXManager::getEnhancedUnitRenderMode(
+    int itemID, int house, EnhancedUnitState state, int direction) {
+    if(direction < 0 || direction >= kEnhancedDirectionCount
+       || !ModManager::instance().isInitialized()
+       || ModManager::instance().getActiveModName() != "Dune2R") {
+        return EnhancedRenderMode::Layered;
+    }
+
+    loadEnhancedRenderModes();
+    for(const int requestedHouse : {house, -1}) {
+        const auto it = enhancedUnitRenderModes.find(
+            enhancedRenderModeKey(itemID, requestedHouse, state, direction));
+        if(it != enhancedUnitRenderModes.end()) {
+            return it->second;
+        }
+    }
+    return EnhancedRenderMode::FullAnimation;
+}
+
+void GFXManager::setEnhancedUnitRenderMode(int itemID, int house,
+                                           EnhancedUnitState state,
+                                           int direction,
+                                           EnhancedRenderMode mode) {
+    if(direction < 0 || direction >= kEnhancedDirectionCount
+       || !ModManager::instance().isInitialized()
+       || ModManager::instance().getActiveModName() != "Dune2R") {
+        return;
+    }
+
+    loadEnhancedRenderModes();
+    const int key = enhancedRenderModeKey(itemID, house, state, direction);
+    if(mode == EnhancedRenderMode::FullAnimation) {
+        enhancedUnitRenderModes.erase(key);
+    } else {
+        enhancedUnitRenderModes[key] = mode;
+    }
+
+    try {
+        const std::string path = getConfigFilepath();
+        INIFile config(path);
+        const std::string configKey = enhancedRenderModeConfigKey(
+            itemID, house, state, direction);
+        if(mode == EnhancedRenderMode::FullAnimation) {
+            config.removeKey("Dune2R EditoR", configKey);
+        } else {
+            config.setStringValue("Dune2R EditoR", configKey,
+                                  enhancedRenderModeName(mode), false);
+        }
+        if(!config.saveChangesTo(path)) {
+            SDL_Log("GFXManager: Could not save Dune2R EditoR preferences to %s",
+                    path.c_str());
+        }
+    } catch(const std::exception& e) {
+        SDL_Log("GFXManager: Could not save Dune2R EditoR preference: %s", e.what());
+    }
+}
+
+Uint32 GFXManager::getEnhancedUnitAnimationDuration(int itemID, int house,
+                                                     EnhancedUnitState state,
+                                                     int direction) {
+    loadEnhancedUnitManifests();
+    if(direction < 0 || direction >= kEnhancedDirectionCount) {
+        return 0;
+    }
+
+    const int key = enhancedAnimationKey(state, direction);
+    for(const int requestedHouse : {house, -1}) {
+        for(const auto& definition : enhancedUnitDefinitions) {
+            if(definition.itemID != itemID || definition.houseID != requestedHouse) {
+                continue;
+            }
+            const auto animationIt = definition.animations.find(key);
+            if(animationIt != definition.animations.end()) {
+                return static_cast<Uint32>(animationIt->second.frameCount)
+                       * static_cast<Uint32>(animationIt->second.frameMs);
+            }
+        }
+    }
+    return 0;
+}
+
+bool GFXManager::drawEnhancedUnit(int itemID, int house, unsigned int z,
+                                  EnhancedUnitState state, int direction,
+                                  Uint32 elapsedMs, int x, int y) {
+    loadEnhancedUnitManifests();
+    if(z >= NUM_ZOOMLEVEL || direction < 0 || direction >= kEnhancedDirectionCount) {
+        return false;
+    }
+
+    EnhancedUnitDefinition* selectedDefinition = nullptr;
+    EnhancedUnitAnimation* selectedAnimation = nullptr;
+    const int key = enhancedAnimationKey(state, direction);
+    for(const int requestedHouse : {house, -1}) {
+        for(auto& definition : enhancedUnitDefinitions) {
+            if(definition.itemID != itemID || definition.houseID != requestedHouse) {
+                continue;
+            }
+            const auto animationIt = definition.animations.find(key);
+            if(animationIt != definition.animations.end()) {
+                selectedDefinition = &definition;
+                selectedAnimation = &animationIt->second;
+                break;
+            }
+        }
+        if(selectedAnimation != nullptr) {
+            break;
+        }
+    }
+
+    if(selectedAnimation == nullptr || selectedDefinition == nullptr) {
+        return false;
+    }
+
+    if(selectedAnimation->texture == nullptr) {
+        if(selectedAnimation->loadAttempted) {
+            return false;
+        }
+        selectedAnimation->loadAttempted = true;
+
+        auto rwops = sdl2::RWops_ptr{ SDL_RWFromFile(selectedAnimation->atlasPath.c_str(), "rb") };
+        auto surface = rwops ? LoadPNG_RW(rwops.get()) : nullptr;
+        if(!surface || surface->w % selectedAnimation->columns != 0
+           || surface->h % selectedAnimation->rows != 0) {
+            SDL_Log("GFXManager: Failed to load enhanced unit atlas %s",
+                    selectedAnimation->atlasPath.c_str());
+            return false;
+        }
+        selectedAnimation->texture = convertSurfaceToTexture(surface.get());
+        if(selectedAnimation->texture == nullptr) {
+            return false;
+        }
+    }
+
+    SDL_Texture* texture = selectedAnimation->texture.get();
+    const int frameW = getWidth(texture) / selectedAnimation->columns;
+    const int frameH = getHeight(texture) / selectedAnimation->rows;
+    if(frameW <= 0 || frameH <= 0) {
+        return false;
+    }
+
+    Uint32 frame = elapsedMs / static_cast<Uint32>(selectedAnimation->frameMs);
+    if(selectedAnimation->loop) {
+        frame %= static_cast<Uint32>(selectedAnimation->frameCount);
+    } else {
+        frame = std::min(frame, static_cast<Uint32>(selectedAnimation->frameCount - 1));
+    }
+
+    SDL_Rect source = {
+        static_cast<int>(frame % selectedAnimation->columns) * frameW,
+        static_cast<int>(frame / selectedAnimation->columns) * frameH,
+        frameW,
+        frameH
+    };
+
+    const int destW = std::max(1, static_cast<int>(lround(
+        selectedDefinition->baseWidth * static_cast<int>(z + 1) * selectedDefinition->scale)));
+    const int destH = std::max(1, static_cast<int>(lround(
+        selectedDefinition->baseHeight * static_cast<int>(z + 1) * selectedDefinition->scale)));
+    const int anchorX = selectedAnimation->anchorX >= 0 ? selectedAnimation->anchorX : frameW / 2;
+    const int anchorY = selectedAnimation->anchorY >= 0 ? selectedAnimation->anchorY : frameH / 2;
+
+    SDL_Rect dest = {
+        x - static_cast<int>(lround(anchorX * (static_cast<double>(destW) / frameW))),
+        y - static_cast<int>(lround(anchorY * (static_cast<double>(destH) / frameH))),
+        destW,
+        destH
+    };
     SDL_RenderCopy(renderer, texture, &source, &dest);
     return true;
 }

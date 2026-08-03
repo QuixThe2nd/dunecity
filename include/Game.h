@@ -298,6 +298,11 @@ public:
     void onCityBudget();
 
     /**
+        Cycles the local Dune2R presentation zoom without changing game state.
+    */
+    void cycleDune2RZoom();
+
+    /**
         This method selects all units/structures in the list aList.
         \param aList the list containing all the units/structures to be selected
     */
@@ -484,6 +489,8 @@ public:
     */
     void drawCityPlacementHint();
 private:
+
+    void applyDune2RZoom(int zoomLevel);
 
     /**
         Checks whether the cursor is on the radar view

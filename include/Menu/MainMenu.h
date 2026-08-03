@@ -48,6 +48,7 @@ private:
     void onMultiPlayer() const;
     void onMapEditor() const;
     void onMods() const;
+    void onDune2REditor() const;
     void onOptions();
     void onAbout() const;
     void onHowToPlay() const;
@@ -62,6 +63,7 @@ private:
     /// Refresh the bottom-left mod/version watermark from the current
     /// active mod. Cheap; no-op when the displayed mod hasn't changed.
     void refreshModVersionLabel();
+    void refreshDune2REditorButton();
 
     StaticContainer windowWidget;
     VBox            MenuButtons;
@@ -70,6 +72,7 @@ private:
     TextButton      multiPlayerButton;
     TextButton      mapEditorButton;
     TextButton      modsButton;
+    TextButton      dune2rEditorButton;
     TextButton      optionsButton;
     TextButton      howToPlayButton;
     TextButton      aboutButton;

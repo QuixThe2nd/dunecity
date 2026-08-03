@@ -252,6 +252,8 @@ bool UnitBase::attack() {
                     currentGameMap->viewMap(pObject->getOwner()->getHouseID(), location, 2);
                 }
                 lastFiredBulletType = currentBulletType;
+                enhancedCombatAnimationStartMs = currentGame->getGameTime();
+                enhancedRenderInteractionKey = -1;
                 playAttackSound();
                 primaryWeaponTimer = getWeaponReloadTime();
 
@@ -282,6 +284,8 @@ bool UnitBase::attack() {
                     currentGameMap->viewMap(pObject->getOwner()->getHouseID(), location, 2);
                 }
                 lastFiredBulletType = currentBulletType;
+                enhancedCombatAnimationStartMs = currentGame->getGameTime();
+                enhancedRenderInteractionKey = -1;
                 playAttackSound();
                 secondaryWeaponTimer = -1;
 
@@ -303,6 +307,70 @@ bool UnitBase::attack() {
     return false;
 }
 
+bool UnitBase::drawEnhancedUnitSprite(int x, int y, int idleDirection,
+                                      int combatDirection) {
+    const Uint32 nowMs = currentGame->getGameTime();
+    auto state = (moving || turning)
+        ? GFXManager::EnhancedUnitState::Movement
+        : GFXManager::EnhancedUnitState::Idle;
+    int renderDirection = drawnAngle;
+    if(state == GFXManager::EnhancedUnitState::Idle
+       && idleDirection >= 0 && idleDirection < NUM_ANGLES) {
+        renderDirection = idleDirection;
+    }
+    Uint32 elapsedMs = nowMs + getObjectID() * 97u;
+
+    if(enhancedCombatAnimationStartMs != std::numeric_limits<Uint32>::max()) {
+        const int firingDirection = combatDirection >= 0 && combatDirection < NUM_ANGLES
+            ? combatDirection
+            : renderDirection;
+        const Uint32 combatDuration = pGFXManager->getEnhancedUnitAnimationDuration(
+            getItemID(), getOwner()->getHouseID(), GFXManager::EnhancedUnitState::Combat,
+            firingDirection);
+        const Uint32 combatElapsed = nowMs - enhancedCombatAnimationStartMs;
+        if(combatDuration > 0 && combatElapsed < combatDuration) {
+            state = GFXManager::EnhancedUnitState::Combat;
+            renderDirection = firingDirection;
+            elapsedMs = combatElapsed;
+        } else {
+            enhancedCombatAnimationStartMs = std::numeric_limits<Uint32>::max();
+        }
+    }
+
+    if(!pGFXManager->hasEnhancedUnitAnimation(getItemID(), getOwner()->getHouseID(),
+                                              state, renderDirection)) {
+        return false;
+    }
+
+    const auto renderMode = pGFXManager->getEnhancedUnitRenderMode(
+        getItemID(), getOwner()->getHouseID(), state, renderDirection);
+    if(renderMode == GFXManager::EnhancedRenderMode::Layered) {
+        return false;
+    }
+
+    if(renderMode == GFXManager::EnhancedRenderMode::Random) {
+        const int interactionKey = static_cast<int>(state) * NUM_ANGLES + renderDirection;
+        if(interactionKey != enhancedRenderInteractionKey) {
+            enhancedRenderInteractionKey = interactionKey;
+            ++enhancedRenderInteractionSequence;
+            Uint32 hash = getObjectID() * 2654435761u;
+            hash ^= enhancedRenderInteractionSequence * 2246822519u;
+            hash ^= static_cast<Uint32>(interactionKey + 1) * 3266489917u;
+            hash ^= hash >> 16;
+            enhancedRenderInteractionUsesFull = (hash & 1u) != 0;
+        }
+        if(!enhancedRenderInteractionUsesFull) {
+            return false;
+        }
+    } else {
+        enhancedRenderInteractionKey = -1;
+    }
+
+    return pGFXManager->drawEnhancedUnit(getItemID(), getOwner()->getHouseID(),
+                                         currentZoomlevel, state, renderDirection,
+                                         elapsedMs, x, y);
+}
+
 void UnitBase::blitToScreen() {
     int x = screenborder->world2screenX(realX);
     int y = screenborder->world2screenY(realY);
@@ -321,7 +389,8 @@ void UnitBase::blitToScreen() {
     SDL_Rect source = calcSpriteSourceRect(pUnitGraphic, drawnAngle, numImagesX, drawnFrame, numImagesY);
     SDL_Rect dest = calcSpriteDrawingRect( pUnitGraphic, x, y, numImagesX, numImagesY, HAlign::Center, VAlign::Center);
 
-    if(!pGFXManager->drawHDObjPic(graphicID, getOwner()->getHouseID(), currentZoomlevel,
+    if(!drawEnhancedUnitSprite(x, y)
+       && !pGFXManager->drawHDObjPic(graphicID, getOwner()->getHouseID(), currentZoomlevel,
                                   drawnAngle, numImagesX, drawnFrame, numImagesY, x, y)) {
         SDL_RenderCopy(renderer, pUnitGraphic, &source, &dest);
     }

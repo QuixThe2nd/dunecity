@@ -29,6 +29,7 @@
 #include <Menu/MultiPlayerMenu.h>
 #include <Menu/OptionsMenu.h>
 #include <Menu/ModMenu.h>
+#include <Menu/Dune2REditorMenu.h>
 #include <Menu/AboutMenu.h>
 #include <Menu/HowToPlayMenu.h>
 
@@ -129,6 +130,14 @@ MainMenu::MainMenu()
     modsButton.setText(_("MODS"));
     modsButton.setOnClick(std::bind(&MainMenu::onMods, this));
     MenuButtons.addWidget(&modsButton);
+
+    dune2rEditorButton.setText("Dune2R EditoR");
+    dune2rEditorButton.setOnClick(std::bind(&MainMenu::onDune2REditor, this));
+    windowWidget.addWidget(&dune2rEditorButton,
+                           Point((getRendererWidth() + 160) / 2 + 16,
+                                 getRendererHeight()/2 + 113),
+                           Point(150, 26));
+    refreshDune2REditorButton();
 
     MenuButtons.addWidget(VSpacer::create(3));
 
@@ -268,6 +277,7 @@ void MainMenu::update()
     // CustomGamePlayers); refresh the watermark on every tick so it
     // tracks the live ModManager state when control returns here.
     refreshModVersionLabel();
+    refreshDune2REditorButton();
 
     // Process version check results
     if(pVersionChecker) {
@@ -347,6 +357,23 @@ void MainMenu::onMods() const
 {
     ModMenu modMenu;
     modMenu.showMenu();
+}
+
+void MainMenu::onDune2REditor() const
+{
+    if(ModManager::instance().isInitialized()
+       && ModManager::instance().getActiveModName() == "Dune2R") {
+        Dune2REditorMenu editor;
+        editor.showMenu();
+    }
+}
+
+void MainMenu::refreshDune2REditorButton()
+{
+    const bool available = ModManager::instance().isInitialized()
+                           && ModManager::instance().getActiveModName() == "Dune2R";
+    dune2rEditorButton.setVisible(available);
+    dune2rEditorButton.setEnabled(available);
 }
 
 void MainMenu::onOptions() {

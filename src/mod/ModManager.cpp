@@ -105,8 +105,9 @@ void ModManager::initialize() {
         seedTornieFromDefaults();
     }
 
-    // Seed Dune2R graphics mod if not present
-    if (!modExists(DUNE2R_MOD_NAME)) {
+    // Dune2R is a bundled graphics payload. Refresh stale installed copies so
+    // new manifests and atlases are not hidden by an older user-data folder.
+    if (!modExists(DUNE2R_MOD_NAME) || dune2rNeedsReseed()) {
         seedDune2RFromDefaults();
     }
 
@@ -957,22 +958,63 @@ void ModManager::seedTornieFromDefaults() {
 void ModManager::seedDune2RFromDefaults() {
     SDL_Log("ModManager: Seeding Dune2R mod from bundled install...");
 
-    std::string dune2r_dst = getModPath(DUNE2R_MOD_NAME);
-    std::string dune2r_src = getDuneLegacyDataDir() + "/mods/Dune2R";
+    const std::filesystem::path dune2rDst = getModPath(DUNE2R_MOD_NAME);
+    const std::filesystem::path dune2rSrc =
+        std::filesystem::path(getDuneLegacyDataDir()) / "mods" / DUNE2R_MOD_NAME;
+    const std::filesystem::path stagedDst = dune2rDst.string() + ".update";
 
-    if (!existsFile(dune2r_src + "/" + MOD_INI_FILE)) {
-        SDL_Log("ModManager: Warning - bundled Dune2R mod not found at %s", dune2r_src.c_str());
+    if (!existsFile((dune2rSrc / MOD_INI_FILE).string())) {
+        SDL_Log("ModManager: Warning - bundled Dune2R mod not found at %s",
+                dune2rSrc.string().c_str());
         return;
     }
 
     try {
-        std::filesystem::copy(dune2r_src, dune2r_dst,
+        std::filesystem::remove_all(stagedDst);
+        std::filesystem::copy(dune2rSrc, stagedDst,
             std::filesystem::copy_options::recursive |
-            std::filesystem::copy_options::skip_existing);
-        SDL_Log("ModManager: Dune2R mod seeded successfully from %s", dune2r_src.c_str());
+            std::filesystem::copy_options::overwrite_existing);
+
+        // The staged copy prevents an interrupted copy from masquerading as a
+        // complete installed payload on the next launch.
+        std::filesystem::remove_all(dune2rDst);
+        std::filesystem::rename(stagedDst, dune2rDst);
+        SDL_Log("ModManager: Dune2R mod seeded successfully from %s",
+                dune2rSrc.string().c_str());
     } catch (const std::exception& e) {
+        std::error_code cleanupError;
+        std::filesystem::remove_all(stagedDst, cleanupError);
         SDL_Log("ModManager: Warning - Dune2R mod seed failed: %s", e.what());
     }
+}
+
+bool ModManager::dune2rNeedsReseed() const {
+    const std::filesystem::path installed = getModPath(DUNE2R_MOD_NAME);
+    const std::filesystem::path bundled =
+        std::filesystem::path(getDuneLegacyDataDir()) / "mods" / DUNE2R_MOD_NAME;
+
+    if(!std::filesystem::is_regular_file(installed / MOD_INI_FILE)
+       || !std::filesystem::is_regular_file(installed / GAME_OPTIONS_FILE)
+       || !std::filesystem::is_directory(installed / "graphics_hd" / "units")) {
+        SDL_Log("ModManager: Dune2R payload is incomplete, needs reseed");
+        return true;
+    }
+
+    if(!std::filesystem::is_regular_file(bundled / MOD_INI_FILE)) {
+        return false;
+    }
+
+    const ModInfo installedInfo = readModIni(installed.string());
+    const ModInfo bundledInfo = readModIni(bundled.string());
+    if(installedInfo.version != bundledInfo.version
+       || installedInfo.gameVersion != bundledInfo.gameVersion) {
+        SDL_Log("ModManager: Dune2R version mismatch (%s/%s vs %s/%s), needs reseed",
+                installedInfo.version.c_str(), installedInfo.gameVersion.c_str(),
+                bundledInfo.version.c_str(), bundledInfo.gameVersion.c_str());
+        return true;
+    }
+
+    return false;
 }
 
 bool ModManager::dunecityNeedsReseed() const {

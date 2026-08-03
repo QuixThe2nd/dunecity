@@ -1990,7 +1990,11 @@ void Game::doInput()
 
                 case SDL_MOUSEWHEEL: {
                     if (event.wheel.y != 0) {
-                        pInterface->handleMouseWheel(drawnMouseX,drawnMouseY,(event.wheel.y > 0));
+                        const bool wheelHandled = pInterface->handleMouseWheel(
+                            drawnMouseX, drawnMouseY, event.wheel.y > 0);
+                        if(!wheelHandled) {
+                            applyDune2RZoom(currentZoomlevel + (event.wheel.y > 0 ? 1 : -1));
+                        }
                     }
                 } break;
 
@@ -3221,6 +3225,42 @@ void Game::onOptions()
         bMenu = true;
         pauseGame();
     }
+}
+
+void Game::cycleDune2RZoom() {
+    if(!ModManager::instance().isInitialized()
+       || ModManager::instance().getActiveModName() != "Dune2R") {
+        return;
+    }
+
+    // Action uses the closest existing renderer level; each press pulls back
+    // through Tactical and Strategic before returning to Action.
+    const int nextZoomLevel = currentZoomlevel == 2 ? 1
+                            : currentZoomlevel == 1 ? 0
+                            : 2;
+    applyDune2RZoom(nextZoomLevel);
+}
+
+void Game::applyDune2RZoom(int zoomLevel) {
+    if(!ModManager::instance().isInitialized()
+       || ModManager::instance().getActiveModName() != "Dune2R") {
+        return;
+    }
+
+    const int clampedZoomLevel = std::max(0, std::min(2, zoomLevel));
+    if(clampedZoomLevel == currentZoomlevel) {
+        return;
+    }
+
+    const Coord oldCenterCoord = screenborder->getCurrentCenter();
+    currentZoomlevel = clampedZoomLevel;
+    screenborder->adjustScreenBorderToMapsize(currentGameMap->getSizeX(), currentGameMap->getSizeY());
+    screenborder->setNewScreenCenter(oldCenterCoord);
+
+    const char* viewName = currentZoomlevel == 2 ? "Action"
+                         : currentZoomlevel == 1 ? "Tactical"
+                         : "Strategic";
+    addToNewsTicker(fmt::sprintf("Dune2R view: %s (%dx)", viewName, currentZoomlevel + 1));
 }
 
 

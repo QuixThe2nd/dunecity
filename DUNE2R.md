@@ -34,3 +34,18 @@ Commander units will be added later with ability to generate custom sprites.
 The long-term vision is a toggleable graphics layer: classic art, compact
 replacement art, or enhanced animated art, with graceful fallback when a given
 unit or direction has not yet been remastered.
+
+Enhanced unit delivery uses mod-local manifests under
+`mods/Dune2R/graphics_hd/units/**`. A manifest identifies the stable unit and
+house IDs and maps idle, movement, and combat directions to transparent PNG
+atlases. The engine does not inspect the Oathkeeper Compact products for this
+path, and it never replaces base-game asset files.
+
+When Dune2R is active, the main menu exposes `Dune2R EditoR`. It lists only
+units and directional motion slots that have packaged Dune2R assets. Each slot
+can use the independent layered renderer, its packaged complete-unit animation,
+or a deterministic random choice refreshed on movement, facing, stop, and
+firing transitions. These are local presentation preferences stored in the
+user's `Dune City.ini`; they do not enter saves, simulation state, or the
+multiplayer protocol. The editor and its preferences are ignored by Vanilla,
+DuneCity, Tornie, and every mod whose exact name is not `Dune2R`.

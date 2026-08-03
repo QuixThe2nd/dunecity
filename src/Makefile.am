@@ -142,6 +142,7 @@ dunelegacy_SOURCES =	AStarSearch.cpp\
 						$(NULL)\
 						Menu/MenuBase.cpp\
 						Menu/MainMenu.cpp\
+						Menu/Dune2REditorMenu.cpp\
 						Menu/SinglePlayerMenu.cpp\
 						Menu/SinglePlayerSkirmishMenu.cpp\
 						Menu/CustomGameMenu.cpp\

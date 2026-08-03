@@ -98,6 +98,13 @@ GameInterface::GameInterface() : Window(0,0,0,0) {
 
     topBarHBox.addWidget(Spacer::create());
 
+    dune2rZoomButton.setText(_("Zoom"));
+    dune2rZoomButton.setTooltipText(_("Cycle Dune2R view: Action, Tactical, Strategic"));
+    dune2rZoomButton.setOnClick(std::bind(&Game::cycleDune2RZoom, currentGame));
+    topBarHBox.addWidget(&dune2rZoomButton);
+
+    topBarHBox.addWidget(Spacer::create());
+
     // add radar
     const Point radarOrigin(getRendererWidth() - sideBar.getSize().x + SIDEBAR_COLUMN_WIDTH, 0);
     const Point radarSize = radarView.getMinimumSize();
@@ -190,6 +197,10 @@ GameInterface::~GameInterface() {
 }
 
 void GameInterface::draw(Point position) {
+    const bool dune2rActive = ModManager::instance().isInitialized()
+        && ModManager::instance().getActiveModName() == "Dune2R";
+    dune2rZoomButton.setVisible(dune2rActive);
+
     // Refresh the population pill from the live city sim. We only show the
     // label when city sim is active; outside city mode it would just be
     // visual noise reading "Pop: 0".
