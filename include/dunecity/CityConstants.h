@@ -4,6 +4,7 @@
 #include <Command.h>
 #include <data.h>
 
+#include <algorithm>
 #include <cstdint>
 
 namespace DuneCity {
@@ -25,8 +26,39 @@ enum CityToolType : uint32_t {
     CityTool_PowerLine = 2
 };
 
-inline bool usesInstantCityProduction(int itemID) {
-    return itemID == Structure_Road;
+inline bool shouldEnableLoadedCityEffects(bool hasCitySimulation) {
+    return hasCitySimulation;
+}
+
+inline bool isCityZoneStructure(int itemID) {
+    return itemID == Structure_ZoneResidential
+        || itemID == Structure_ZoneCommercial
+        || itemID == Structure_ZoneIndustrial;
+}
+
+inline bool isCityOnlyStructure(int itemID) {
+    return isCityZoneStructure(itemID)
+        || itemID == Structure_Road
+        || itemID == Structure_PowerLine
+        || itemID == Structure_NuclearPlant
+        || itemID == Structure_PoliceStation
+        || itemID == Structure_Stadium
+        || itemID == Structure_Airport;
+}
+
+inline bool isCityBuildableTerrain(uint32_t terrain) {
+    return terrain == Terrain_Rock || terrain == Terrain_Slab;
+}
+
+inline int getCityBuildTime(int itemID, int configuredBuildTime,
+                            int concreteBuildTime, int policeBuildTime) {
+    if (itemID == Structure_Road) {
+        return std::max(1, concreteBuildTime / 2);
+    }
+    if (isCityZoneStructure(itemID)) {
+        return std::max(1, policeBuildTime / 2);
+    }
+    return std::max(1, configuredBuildTime);
 }
 
 struct CityTilePlacementState {

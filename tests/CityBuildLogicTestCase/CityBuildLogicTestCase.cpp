@@ -13,10 +13,52 @@ TEST_CASE("CityBuildLogic: road placement uses the city tool road command", "[ci
     REQUIRE(command.parameter == static_cast<uint32_t>(DuneCity::CityTool_Road));
 }
 
-TEST_CASE("CityBuildLogic: only roads bypass normal production timing", "[city][roads][concrete]") {
-    REQUIRE(DuneCity::usesInstantCityProduction(Structure_Road));
-    REQUIRE_FALSE(DuneCity::usesInstantCityProduction(Structure_Slab1));
-    REQUIRE_FALSE(DuneCity::usesInstantCityProduction(Structure_Slab4));
+TEST_CASE("CityBuildLogic: loaded city saves keep the simulation active",
+          "[city][save][regression]") {
+    REQUIRE(DuneCity::shouldEnableLoadedCityEffects(true));
+    REQUIRE_FALSE(DuneCity::shouldEnableLoadedCityEffects(false));
+}
+
+TEST_CASE("CityBuildLogic: roads build twice as fast as concrete",
+          "[city][roads][concrete][timing]") {
+    REQUIRE(DuneCity::getCityBuildTime(Structure_Road, 4, 16, 80) == 8);
+}
+
+TEST_CASE("CityBuildLogic: zones build in half the police-station time",
+          "[city][zones][timing]") {
+    REQUIRE(DuneCity::getCityBuildTime(Structure_ZoneResidential, 1, 16, 80) == 40);
+    REQUIRE(DuneCity::getCityBuildTime(Structure_ZoneCommercial, 1, 16, 80) == 40);
+    REQUIRE(DuneCity::getCityBuildTime(Structure_ZoneIndustrial, 1, 16, 80) == 40);
+    REQUIRE(DuneCity::getCityBuildTime(Structure_PoliceStation, 80, 16, 80) == 80);
+}
+
+TEST_CASE("CityBuildLogic: city-only placement set covers every city item",
+          "[city][placement]") {
+    REQUIRE(DuneCity::isCityOnlyStructure(Structure_ZoneResidential));
+    REQUIRE(DuneCity::isCityOnlyStructure(Structure_ZoneCommercial));
+    REQUIRE(DuneCity::isCityOnlyStructure(Structure_ZoneIndustrial));
+    REQUIRE(DuneCity::isCityOnlyStructure(Structure_Road));
+    REQUIRE(DuneCity::isCityOnlyStructure(Structure_PowerLine));
+    REQUIRE(DuneCity::isCityOnlyStructure(Structure_NuclearPlant));
+    REQUIRE(DuneCity::isCityOnlyStructure(Structure_PoliceStation));
+    REQUIRE(DuneCity::isCityOnlyStructure(Structure_Stadium));
+    REQUIRE(DuneCity::isCityOnlyStructure(Structure_Airport));
+
+    REQUIRE_FALSE(DuneCity::isCityOnlyStructure(Structure_Slab1));
+    REQUIRE_FALSE(DuneCity::isCityOnlyStructure(Structure_ConstructionYard));
+    REQUIRE_FALSE(DuneCity::isCityOnlyStructure(Structure_WindTrap));
+}
+
+TEST_CASE("CityBuildLogic: city placement preview accepts only gravel or concrete",
+          "[city][zones][placement][preview]") {
+    REQUIRE(DuneCity::isCityBuildableTerrain(Terrain_Rock));
+    REQUIRE(DuneCity::isCityBuildableTerrain(Terrain_Slab));
+
+    REQUIRE_FALSE(DuneCity::isCityBuildableTerrain(Terrain_Sand));
+    REQUIRE_FALSE(DuneCity::isCityBuildableTerrain(Terrain_Dunes));
+    REQUIRE_FALSE(DuneCity::isCityBuildableTerrain(Terrain_Spice));
+    REQUIRE_FALSE(DuneCity::isCityBuildableTerrain(Terrain_ThickSpice));
+    REQUIRE_FALSE(DuneCity::isCityBuildableTerrain(Terrain_Mountain));
 }
 
 TEST_CASE("CityBuildLogic: road placement accepts concrete terrain", "[city][roads][concrete]") {

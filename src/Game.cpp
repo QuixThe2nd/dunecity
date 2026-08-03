@@ -1676,7 +1676,9 @@ void Game::drawScreen()
                             if(withinRange && currentGameMap->tileExists(i,j)) {
                                 Tile* pTile = currentGameMap->getTile(i,j);
                                 if(isZoneStructure(placeItem)) {
-                                    tileValid = !pTile->isMountain() && !pTile->hasAGroundObject();
+                                    tileValid = DuneCity::isCityBuildableTerrain(pTile->getType())
+                                        && !pTile->hasCityZone()
+                                        && !pTile->hasAGroundObject();
                                 } else {
                                     tileValid = pTile->isRock() && !pTile->isMountain() && !pTile->hasAGroundObject()
                                         && !(((placeItem == Structure_Slab1) || (placeItem == Structure_Slab4)) && pTile->isConcrete());
@@ -3662,8 +3664,12 @@ bool Game::loadSaveGame(InputStream& stream) {
             citySimEnabled_ = true;
             citySimulation_ = std::make_unique<DuneCity::CitySimulation>();
             citySimulation_->init(currentGameMap->getSizeX(), currentGameMap->getSizeY());
+            // cityEffects was never serialized by GameInitSettings, so its
+            // load-time value is always the default false. The explicit
+            // hasCitySim save marker is authoritative: a DuneCity save must
+            // resume its scans, valves, budgets, and zone growth.
             citySimulation_->setCityEffectsEnabled(
-                gameInitSettings.getGameOptions().cityEffects);
+                DuneCity::shouldEnableLoadedCityEffects(hasCitySim));
             citySimulation_->load(stream);
             citySimulation_->reconcileLoadedMapState(gameCycleCount);
         }

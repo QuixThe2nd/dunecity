@@ -509,6 +509,44 @@ TEST_CASE("computeDemandValves: empty city produces positive R demand",
     CHECK(vo.resValve >= 0);
 }
 
+TEST_CASE("computeDemandValves: empty C and I demand cannot drain into a bootstrap deadlock",
+          "[city-effects][valves][regression]") {
+    ValveInputs vi;
+    vi.taxRate = 7;
+
+    for (int tick = 0; tick < 8; ++tick) {
+        const auto vo = computeDemandValves(vi);
+        CHECK(vo.comValve >= 0);
+        CHECK(vo.indValve >= 0);
+        vi.resValve = vo.resValve;
+        vi.comValve = vo.comValve;
+        vi.indValve = vo.indValve;
+    }
+}
+
+TEST_CASE("computeDemandValves: jobs-only loaded history does not collapse labor demand",
+          "[city-effects][valves][regression]") {
+    ValveInputs vi;
+    vi.comPop = 16;
+    vi.indPop = 16;
+    vi.prevComPop = 16;
+    vi.prevIndPop = 16;
+    vi.prevResPop = 0;
+    vi.taxRate = 7;
+
+    const auto vo = computeDemandValves(vi);
+    CHECK(vo.comValve > -600);
+    CHECK(vo.indValve > 0);
+}
+
+TEST_CASE("recoverLoadedEmptyPopulationValve repairs poisoned saves only when population is empty",
+          "[city-effects][valves][save-compat][regression]") {
+    CHECK(recoverLoadedEmptyPopulationValve(0, -kResValveRange) == 0);
+    CHECK(recoverLoadedEmptyPopulationValve(0, -900) == 0);
+    CHECK(recoverLoadedEmptyPopulationValve(0, 250) == 250);
+    CHECK(recoverLoadedEmptyPopulationValve(16, -900) == -900);
+}
+
 TEST_CASE("computeDemandValves: excess residents produce negative R delta",
           "[city-effects][valves]") {
     // Many residents, no jobs: R delta should push valve negative.

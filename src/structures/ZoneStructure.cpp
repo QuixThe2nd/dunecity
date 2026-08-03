@@ -163,7 +163,7 @@ bool ZoneStructure::canBePlacedAt(int x, int y, bool torch) const {
                 return false;
             }
             auto terrain = pTile->getType();
-            if (terrain != Terrain_Sand && terrain != Terrain_Rock && terrain != Terrain_Slab) {
+            if (terrain != Terrain_Rock && terrain != Terrain_Slab) {
                 return false;
             }
         }
