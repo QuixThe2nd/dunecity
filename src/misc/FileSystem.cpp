@@ -609,6 +609,25 @@ std::string getDuneLegacyDataDir() {
 #endif
 
 #ifdef DUNELEGACY_DATADIR
+        // Prefer data installed relative to the executable. This keeps Linux
+        // AppImages, extracted TGZ builds, and nonstandard prefixes isolated
+        // from an unrelated system-wide DuneCity installation.
+#if !defined(_WIN32) && !defined(__APPLE__) && !defined(__ANDROID__)
+        if(dataDir.empty()) {
+            char* basePath = SDL_GetBasePath();
+            if(basePath != nullptr) {
+                const std::string relativeDataDir = std::string(basePath) + "../share/DuneCity/";
+                SDL_free(basePath);
+                struct stat relativeDirCheck;
+                if(stat(relativeDataDir.c_str(), &relativeDirCheck) == 0
+                   && S_ISDIR(relativeDirCheck.st_mode)) {
+                    dataDir = relativeDataDir;
+                    SDL_Log("Using executable-relative Linux data dir: %s", dataDir.c_str());
+                }
+            }
+        }
+#endif
+
         // Only use the compile-time install path if it actually exists
         // (i.e. the binary was installed, not run from a build directory)
         if(dataDir.empty()) {

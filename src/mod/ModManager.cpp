@@ -30,6 +30,7 @@
 
 #include <SDL.h>
 
+#include <algorithm>
 #include <filesystem>
 #include <fstream>
 #include <sstream>
@@ -48,11 +49,144 @@ static const char* VANILLA_MOD_NAME = "vanilla";
 static const char* DUNECITY_MOD_NAME = "dunecity";
 static const char* TORNIE_MOD_NAME = "Tornie";
 static const char* DUNE2R_MOD_NAME = "Dune2R";
+static const char* MANAGED_MOD_STAMP = ".dunecity-managed";
 
 // Install config file names (with .default suffix)
 static const char* OBJECT_DATA_DEFAULT = "ObjectData.ini.default";
 static const char* QUANTBOT_CONFIG_DEFAULT = "QuantBot Config.ini.default";
 static const char* CUSTOM_HOUSE_CONFIG = "CustomHouse.ini";
+
+namespace {
+
+std::filesystem::path findBundledModPath(const std::string& modName) {
+    const std::filesystem::path dataRoot = getDuneLegacyDataDir();
+    const std::filesystem::path candidates[] = {
+        dataRoot / "mods" / modName,
+        dataRoot / ".." / "mods" / modName,
+        dataRoot / ".." / ".." / "mods" / modName,
+        dataRoot / ".." / ".." / ".." / "mods" / modName
+    };
+
+    for(const auto& candidate : candidates) {
+        if(std::filesystem::is_regular_file(candidate / MOD_INI_FILE)) {
+            return std::filesystem::weakly_canonical(candidate);
+        }
+    }
+    return {};
+}
+
+void appendFingerprintBytes(uint64_t& hash, const std::string& value) {
+    constexpr uint64_t prime = 1099511628211ULL;
+    for(const unsigned char c : value) {
+        hash ^= c;
+        hash *= prime;
+    }
+}
+
+std::string bundledModFingerprint(const std::filesystem::path& source) {
+    if(source.empty() || !std::filesystem::is_directory(source)) {
+        return {};
+    }
+
+    std::vector<std::string> entries;
+    for(const auto& entry : std::filesystem::recursive_directory_iterator(source)) {
+        if(entry.is_regular_file()) {
+            entries.push_back(std::filesystem::relative(entry.path(), source).generic_string()
+                              + "\n" + std::to_string(entry.file_size()));
+        }
+    }
+    std::sort(entries.begin(), entries.end());
+
+    uint64_t hash = 14695981039346656037ULL;
+    for(const auto& entry : entries) {
+        appendFingerprintBytes(hash, entry);
+    }
+
+    // Include authoritative metadata contents so same-sized release updates
+    // still refresh the installed managed copy.
+    for(const char* metadata : {MOD_INI_FILE, "manifest.json", "checksums.sha256"}) {
+        std::ifstream file(source / metadata, std::ios::binary);
+        if(file) {
+            std::ostringstream contents;
+            contents << file.rdbuf();
+            appendFingerprintBytes(hash, contents.str());
+        }
+    }
+
+    char value[17];
+    std::snprintf(value, sizeof(value), "%016llx", static_cast<unsigned long long>(hash));
+    return value;
+}
+
+std::string readManagedModStamp(const std::filesystem::path& installed) {
+    std::ifstream file(installed / MANAGED_MOD_STAMP);
+    std::string value;
+    if(file) {
+        std::getline(file, value);
+    }
+    return value;
+}
+
+bool managedModNeedsRefresh(const std::filesystem::path& installed,
+                            const std::filesystem::path& bundled) {
+    if(bundled.empty()) {
+        return false;
+    }
+    const std::string expected = bundledModFingerprint(bundled);
+    return expected.empty() || readManagedModStamp(installed) != expected
+           || !std::filesystem::is_regular_file(installed / MOD_INI_FILE);
+}
+
+bool refreshManagedMod(const std::string& modName,
+                       const std::filesystem::path& destination,
+                       const std::filesystem::path& source) {
+    if(source.empty()) {
+        SDL_Log("ModManager: Warning - bundled %s mod was not found", modName.c_str());
+        return false;
+    }
+
+    const std::filesystem::path staged = destination.string() + ".update";
+    const std::filesystem::path backup = destination.string() + ".previous";
+    try {
+        std::filesystem::remove_all(staged);
+        std::filesystem::remove_all(backup);
+        std::filesystem::copy(source, staged,
+            std::filesystem::copy_options::recursive |
+            std::filesystem::copy_options::overwrite_existing);
+
+        const std::string fingerprint = bundledModFingerprint(source);
+        std::ofstream stamp(staged / MANAGED_MOD_STAMP, std::ios::trunc);
+        stamp << fingerprint << "\n";
+        stamp.close();
+        if(fingerprint.empty() || !stamp) {
+            throw std::runtime_error("could not write managed-mod stamp");
+        }
+
+        if(std::filesystem::exists(destination)) {
+            std::filesystem::rename(destination, backup);
+        }
+        try {
+            std::filesystem::rename(staged, destination);
+        } catch(...) {
+            if(std::filesystem::exists(backup) && !std::filesystem::exists(destination)) {
+                std::filesystem::rename(backup, destination);
+            }
+            throw;
+        }
+        std::filesystem::remove_all(backup);
+        SDL_Log("ModManager: Refreshed managed mod '%s' from %s",
+                modName.c_str(), source.string().c_str());
+        return true;
+    } catch(const std::exception& e) {
+        std::error_code ignored;
+        std::filesystem::remove_all(staged, ignored);
+        SDL_Log("ModManager: Warning - managed mod '%s' refresh failed: %s",
+                modName.c_str(), e.what());
+        return false;
+    }
+}
+
+} // namespace
 
 ModManager& ModManager::instance() {
     static ModManager instance;
@@ -113,17 +247,34 @@ void ModManager::initialize() {
 
     // Load active mod from file
     loadActiveMod();
-    
-    // Verify active mod exists, fall back to vanilla if not
-    if (!modExists(activeMod)) {
-        SDL_Log("ModManager: Active mod '%s' not found, falling back to vanilla", activeMod.c_str());
+
+    // A failed refresh must never leave startup pointing at a stale bundled
+    // payload. Preserve user data, but disable the managed mod until a later
+    // launch can refresh it successfully.
+    const bool activeManagedModInvalid =
+        (activeMod == TORNIE_MOD_NAME && tornieNeedsReseed())
+        || (activeMod == DUNE2R_MOD_NAME && dune2rNeedsReseed());
+
+    // Verify the selected mod before any of its metadata or assets are read.
+    if (!modExists(activeMod) || activeManagedModInvalid) {
+        SDL_Log("ModManager: Active mod '%s' is missing or stale, falling back to vanilla",
+                activeMod.c_str());
         activeMod = VANILLA_MOD_NAME;
         saveActiveMod();
     }
-    
-    const ModInfo activeInfo = readModIni(getModPath(activeMod));
-    activeCustomHouse = activeInfo.customHouse;
-    activeMentats = activeInfo.mentats;
+
+    try {
+        const ModInfo activeInfo = readModIni(getModPath(activeMod));
+        activeCustomHouse = activeInfo.customHouse;
+        activeMentats = activeInfo.mentats;
+    } catch(const std::exception& e) {
+        SDL_Log("ModManager: Active mod '%s' metadata is invalid, falling back to vanilla: %s",
+                activeMod.c_str(), e.what());
+        activeMod = VANILLA_MOD_NAME;
+        activeCustomHouse = {};
+        activeMentats.clear();
+        saveActiveMod();
+    }
     initialized = true;
     SDL_Log("ModManager: Initialized with active mod '%s'", activeMod.c_str());
 }
@@ -191,21 +342,52 @@ bool ModManager::setActiveMod(const std::string& name) {
         return false;
     }
     
-    activeMod = name;
-    const ModInfo activeInfo = readModIni(getModPath(activeMod));
-    activeCustomHouse = activeInfo.customHouse;
-    activeMentats = activeInfo.mentats;
-    checksumsDirty = true;
-    saveActiveMod();
-    if(pTextManager != nullptr) {
-        pTextManager->loadData();
-    }
-    if(pGFXManager != nullptr) {
-        pGFXManager->invalidateAllSpriteTextures();
-        pGFXManager->reloadModDependentUiGraphics();
-    }
-    if(pSFXManager != nullptr) {
-        pSFXManager->reloadVoices();
+    const std::string previousMod = activeMod;
+    const CustomHouseInfo previousCustomHouse = activeCustomHouse;
+    const std::vector<ModMentatInfo> previousMentats = activeMentats;
+
+    try {
+        activeMod = name;
+        const ModInfo activeInfo = readModIni(getModPath(activeMod));
+        activeCustomHouse = activeInfo.customHouse;
+        activeMentats = activeInfo.mentats;
+        checksumsDirty = true;
+        if(pTextManager != nullptr) {
+            pTextManager->loadData();
+        }
+        if(pGFXManager != nullptr) {
+            pGFXManager->invalidateAllSpriteTextures();
+            pGFXManager->reloadModDependentUiGraphics();
+        }
+        if(pSFXManager != nullptr) {
+            pSFXManager->reloadVoices();
+        }
+        saveActiveMod();
+    } catch(const std::exception& e) {
+        SDL_Log("ModManager: Activation of '%s' failed, restoring '%s': %s",
+                name.c_str(), previousMod.c_str(), e.what());
+        activeMod = previousMod;
+        activeCustomHouse = previousCustomHouse;
+        activeMentats = previousMentats;
+        checksumsDirty = true;
+        saveActiveMod();
+
+        try {
+            if(pTextManager != nullptr) {
+                pTextManager->loadData();
+            }
+            if(pGFXManager != nullptr) {
+                pGFXManager->invalidateAllSpriteTextures();
+                pGFXManager->reloadModDependentUiGraphics();
+            }
+            if(pSFXManager != nullptr) {
+                pSFXManager->reloadVoices();
+            }
+        } catch(const std::exception& restoreError) {
+            SDL_Log("ModManager: Warning - restoring '%s' also failed: %s",
+                    previousMod.c_str(), restoreError.what());
+        }
+        return false;
     }
     
     SDL_Log("ModManager: Activated mod '%s'", name.c_str());
@@ -910,88 +1092,24 @@ void ModManager::seedDunecityFromDefaults() {
 // a mod so it appears in the Mods menu and can be activated.
 void ModManager::seedTornieFromDefaults() {
     SDL_Log("ModManager: Seeding Tornie mod from install defaults...");
-
-    std::string torniePath = getModPath(TORNIE_MOD_NAME);
-    // Source: the mods directory itself. Try multiple paths:
-    // 1. <data_dir>/mods/Tornie/ (newer install layout)
-    // 2. <data_dir>/../mods/Tornie/ (older install layout)
-    // The Tornie.PAK is also extracted into both locations
-    // by the CMake install step.
-    std::string installModsPath;
-    const std::string candidatePaths[] = {
-        getDuneLegacyDataDir() + "/mods/" + TORNIE_MOD_NAME,
-        getDuneLegacyDataDir() + "/../mods/" + TORNIE_MOD_NAME,
-        getDuneLegacyDataDir() + "/../../mods/" + TORNIE_MOD_NAME,
-        getDuneLegacyDataDir() + "/../../../mods/" + TORNIE_MOD_NAME
-    };
-    for(const std::string& candidatePath : candidatePaths) {
-        if(std::filesystem::is_directory(candidatePath)) {
-            installModsPath = candidatePath;
-            break;
-        }
-    }
-    if(installModsPath.empty()) {
-        installModsPath = candidatePaths[0];
-    }
-    SDL_Log("ModManager: Tornie install source: %s", installModsPath.c_str());
-
-    if(!std::filesystem::is_directory(installModsPath)) {
-        SDL_Log("ModManager: Warning - bundled Tornie mod not found at %s", installModsPath.c_str());
-        return;
-    }
-
-    try {
-        // Tornie is a bundled, selectable payload. Copy the complete directory:
-        // campaigns, custom-house registration, Mentat declarations, graphics,
-        // sounds, and integrity metadata are all required for the mod to work.
-        // Preserve the bundled mod.ini verbatim instead of rewriting it and
-        // discarding its version and [Mentat] sections.
-        std::filesystem::copy(installModsPath, torniePath,
-            std::filesystem::copy_options::recursive |
-            std::filesystem::copy_options::overwrite_existing);
-        SDL_Log("ModManager: Tornie mod seeded successfully from %s", installModsPath.c_str());
-    } catch(const std::exception& e) {
-        SDL_Log("ModManager: Warning - Tornie mod seed failed: %s", e.what());
-    }
+    refreshManagedMod(TORNIE_MOD_NAME, getModPath(TORNIE_MOD_NAME),
+                      findBundledModPath(TORNIE_MOD_NAME));
 }
 
 void ModManager::seedDune2RFromDefaults() {
     SDL_Log("ModManager: Seeding Dune2R mod from bundled install...");
-
-    const std::filesystem::path dune2rDst = getModPath(DUNE2R_MOD_NAME);
-    const std::filesystem::path dune2rSrc =
-        std::filesystem::path(getDuneLegacyDataDir()) / "mods" / DUNE2R_MOD_NAME;
-    const std::filesystem::path stagedDst = dune2rDst.string() + ".update";
-
-    if (!existsFile((dune2rSrc / MOD_INI_FILE).string())) {
-        SDL_Log("ModManager: Warning - bundled Dune2R mod not found at %s",
-                dune2rSrc.string().c_str());
-        return;
-    }
-
-    try {
-        std::filesystem::remove_all(stagedDst);
-        std::filesystem::copy(dune2rSrc, stagedDst,
-            std::filesystem::copy_options::recursive |
-            std::filesystem::copy_options::overwrite_existing);
-
-        // The staged copy prevents an interrupted copy from masquerading as a
-        // complete installed payload on the next launch.
-        std::filesystem::remove_all(dune2rDst);
-        std::filesystem::rename(stagedDst, dune2rDst);
-        SDL_Log("ModManager: Dune2R mod seeded successfully from %s",
-                dune2rSrc.string().c_str());
-    } catch (const std::exception& e) {
-        std::error_code cleanupError;
-        std::filesystem::remove_all(stagedDst, cleanupError);
-        SDL_Log("ModManager: Warning - Dune2R mod seed failed: %s", e.what());
-    }
+    refreshManagedMod(DUNE2R_MOD_NAME, getModPath(DUNE2R_MOD_NAME),
+                      findBundledModPath(DUNE2R_MOD_NAME));
 }
 
 bool ModManager::dune2rNeedsReseed() const {
     const std::filesystem::path installed = getModPath(DUNE2R_MOD_NAME);
-    const std::filesystem::path bundled =
-        std::filesystem::path(getDuneLegacyDataDir()) / "mods" / DUNE2R_MOD_NAME;
+    const std::filesystem::path bundled = findBundledModPath(DUNE2R_MOD_NAME);
+
+    if(managedModNeedsRefresh(installed, bundled)) {
+        SDL_Log("ModManager: Dune2R managed payload changed, needs reseed");
+        return true;
+    }
 
     if(!std::filesystem::is_regular_file(installed / MOD_INI_FILE)
        || !std::filesystem::is_regular_file(installed / GAME_OPTIONS_FILE)
@@ -1080,6 +1198,12 @@ bool ModManager::tornieNeedsReseed() const {
     std::string manifestPath = torniePath + "/manifest.json";
     std::string checksumsPath = torniePath + "/checksums.sha256";
 
+    const std::filesystem::path bundled = findBundledModPath(TORNIE_MOD_NAME);
+    if(managedModNeedsRefresh(torniePath, bundled)) {
+        SDL_Log("ModManager: Tornie managed payload changed, needs reseed");
+        return true;
+    }
+
     if (!existsFile(modIniPath)) {
         SDL_Log("ModManager: Tornie missing %s, needs reseed", MOD_INI_FILE);
         return true;
@@ -1099,22 +1223,11 @@ bool ModManager::tornieNeedsReseed() const {
         return true;
     }
 
-    const std::string candidatePaths[] = {
-        getDuneLegacyDataDir() + "/mods/" + TORNIE_MOD_NAME,
-        getDuneLegacyDataDir() + "/../mods/" + TORNIE_MOD_NAME,
-        getDuneLegacyDataDir() + "/../../mods/" + TORNIE_MOD_NAME,
-        getDuneLegacyDataDir() + "/../../../mods/" + TORNIE_MOD_NAME
-    };
-    for(const std::string& candidatePath : candidatePaths) {
-        const std::string bundledChecksums = candidatePath + "/checksums.sha256";
-        if(existsFile(bundledChecksums)
-           && hashFileCanonical(checksumsPath) != hashFileCanonical(bundledChecksums)) {
-            SDL_Log("ModManager: Tornie bundled payload changed, needs reseed");
-            return true;
-        }
-        if(existsFile(bundledChecksums)) {
-            break;
-        }
+    const std::string bundledChecksums = (bundled / "checksums.sha256").string();
+    if(existsFile(bundledChecksums)
+       && hashFileCanonical(checksumsPath) != hashFileCanonical(bundledChecksums)) {
+        SDL_Log("ModManager: Tornie bundled checksum manifest changed, needs reseed");
+        return true;
     }
 
     // Check if installed Tornie ObjectData.ini differs from defaults

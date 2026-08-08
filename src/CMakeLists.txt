@@ -631,6 +631,14 @@ if(WIN32)
         DIRECTORY ${CMAKE_SOURCE_DIR}/config
         DESTINATION .
     )
+
+    # libcurl builds that use OpenSSL do not automatically consult the
+    # Windows certificate store. Ship the Mozilla CA bundle at the runtime
+    # path used by ENetHttp so MetaServer HTTPS works on Windows 10 as well.
+    install(
+        FILES "${DATA_DIR}/cacert.pem"
+        DESTINATION data
+    )
 elseif(NOT APPLE)
     # Linux: use FHS structure
     install(

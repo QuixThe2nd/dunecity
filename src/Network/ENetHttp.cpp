@@ -20,9 +20,11 @@
 #include <Network/ENetHelper.h>
 
 #include <misc/exceptions.h>
+#include <misc/FileSystem.h>
 
 #include <algorithm>
 #include <array>
+#include <filesystem>
 #include <stdio.h>
 #include <curl/curl.h>
 #include <enet/enet.h>
@@ -33,6 +35,26 @@
 #endif
 
 namespace {
+
+const char* getBundledCertificateBundle() {
+    static const std::string certificateBundle = [] {
+        const std::filesystem::path dataRoot = getDuneLegacyDataDir();
+        const std::filesystem::path candidates[] = {
+            dataRoot / "data" / "cacert.pem",
+            dataRoot / "cacert.pem",
+            dataRoot / ".." / "share" / "DuneCity" / "cacert.pem"
+        };
+
+        for(const auto& candidate : candidates) {
+            std::error_code error;
+            if(std::filesystem::is_regular_file(candidate, error)) {
+                return candidate.lexically_normal().string();
+            }
+        }
+        return std::string{};
+    }();
+    return certificateBundle.empty() ? nullptr : certificateBundle.c_str();
+}
 
 #ifdef __ANDROID__
 const char* getAndroidCertificateBundle() {
@@ -185,6 +207,16 @@ std::string loadFromHttp(const std::string& url, const std::map<std::string, std
     curl_easy_setopt(curl, CURLOPT_USERAGENT, "DuneLegacy/1.0");
     curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 1L); // Verify SSL certificates
     curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 2L); // Verify hostname
+
+#if defined(_WIN32) && defined(CURLSSLOPT_NATIVE_CA)
+    // Use the Windows trust store when supported by the selected curl TLS
+    // backend. The bundled Mozilla store below remains a portable fallback.
+    curl_easy_setopt(curl, CURLOPT_SSL_OPTIONS, CURLSSLOPT_NATIVE_CA);
+#endif
+
+    if(const char* certificateBundle = getBundledCertificateBundle()) {
+        curl_easy_setopt(curl, CURLOPT_CAINFO, certificateBundle);
+    }
 
 #ifdef __ANDROID__
     // Android's trust store uses legacy hash names that OpenSSL 3 may not

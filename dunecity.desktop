@@ -12,3 +12,6 @@ Icon[de_DE]=dunecity
 Comment=A Dune II Clone with City Simulation
 Categories=Game;StrategyGame;
 Exec=dunecity
+TryExec=dunecity
+StartupNotify=true
+StartupWMClass=DuneCity

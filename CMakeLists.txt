@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.15)
 
 # Project name and version
-project(DuneCity VERSION 1.0.526 LANGUAGES C CXX)
+project(DuneCity VERSION 1.0.527 LANGUAGES C CXX)
 
 # Set C++ standard
 set(CMAKE_CXX_STANDARD 17)
@@ -330,7 +330,13 @@ elseif(APPLE)
     )
 else()
     set(CPACK_GENERATOR "DEB;RPM;TGZ")
+    # Native packages belong under /usr. Leaving CPack at its default
+    # /usr/local prefix hides launchers from some desktop environments and
+    # makes package removal appear incomplete.
+    set(CPACK_PACKAGING_INSTALL_PREFIX "/usr")
     set(CPACK_DEBIAN_PACKAGE_SECTION "games")
+    set(CPACK_DEBIAN_PACKAGE_NAME "dunecity")
+    set(CPACK_DEBIAN_FILE_NAME DEB-DEFAULT)
     # SDL2, SDL2_mixer, SDL2_ttf, curl, miniupnpc, and discord-rpc are all
     # bundled from vcpkg into lib/dunecity/ — do not declare them as system
     # package dependencies. Only the baseline C/C++ runtime is required.
