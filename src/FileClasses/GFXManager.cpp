@@ -45,6 +45,7 @@
 #include <array>
 #include <cstdlib>
 #include <filesystem>
+#include <fstream>
 
 namespace {
 
@@ -55,8 +56,9 @@ const std::array<const char*, kEnhancedDirectionCount> kEnhancedDirectionNames =
     "west", "south_west", "south", "south_east"
 };
 
-const std::array<const char*, 3> kEnhancedStateNames = {
-    "Idle", "Movement", "Combat"
+const std::array<const char*, static_cast<size_t>(GFXManager::EnhancedUnitState::Count)> kEnhancedStateNames = {
+    "Idle", "Movement", "Combat", "DamageSmoking", "DamageDamaged",
+    "DamageExploded", "DamageAftermath", "DamageDissipation"
 };
 
 int enhancedAnimationKey(GFXManager::EnhancedUnitState state, int direction) {
@@ -5680,6 +5682,7 @@ bool GFXManager::drawHDObjPic(unsigned int id, int house, unsigned int z,
 }
 
 void GFXManager::loadEnhancedUnitManifests() {
+    invalidateEnhancedUnitMountsIfChanged();
     if(enhancedUnitManifestsLoaded) {
         return;
     }
@@ -5759,7 +5762,11 @@ void GFXManager::loadEnhancedUnitManifests() {
                     unitAnimation.frameMs = std::max(1, manifest.getIntValue(section, "FrameMs", 100));
                     unitAnimation.anchorX = manifest.getIntValue(section, "AnchorX", -1);
                     unitAnimation.anchorY = manifest.getIntValue(section, "AnchorY", -1);
-                    unitAnimation.loop = manifest.getBoolValue(section, "Loop", state != EnhancedUnitState::Combat);
+                    unitAnimation.loop = manifest.getBoolValue(
+                        section, "Loop",
+                        state != EnhancedUnitState::Combat
+                        && state != EnhancedUnitState::DamageExploded
+                        && state != EnhancedUnitState::DamageDissipation);
 
                     if(unitAnimation.frameCount > unitAnimation.columns * unitAnimation.rows) {
                         SDL_Log("GFXManager: Enhanced atlas '%s' declares %d frames in a %dx%d grid",
@@ -5924,6 +5931,44 @@ void GFXManager::setEnhancedUnitRenderMode(int itemID, int house,
     } catch(const std::exception& e) {
         SDL_Log("GFXManager: Could not save Dune2R EditoR preference: %s", e.what());
     }
+}
+
+void GFXManager::invalidateEnhancedUnitMountsIfChanged(bool force) {
+    if(!ModManager::instance().isInitialized()
+       || ModManager::instance().getActiveModName() != "Dune2R") {
+        return;
+    }
+
+    const Uint32 now = SDL_GetTicks();
+    if(!force && enhancedUnitMountLastCheck != 0
+       && now - enhancedUnitMountLastCheck < 1000u) {
+        return;
+    }
+    enhancedUnitMountLastCheck = now;
+
+    const std::filesystem::path marker =
+        std::filesystem::path(ModManager::instance().getModPath("Dune2R"))
+        / "graphics_hd" / "units" / ".mount-revision";
+    std::string revision;
+    if(std::ifstream input(marker); input) {
+        std::getline(input, revision);
+    }
+
+    if(!force && revision == enhancedUnitMountRevision) {
+        return;
+    }
+    enhancedUnitMountRevision = revision;
+    enhancedUnitDefinitions.clear();
+    enhancedUnitManifestsLoaded = false;
+    enhancedUnitRenderModes.clear();
+    enhancedRenderModesLoaded = false;
+    SDL_Log("GFXManager: Dune2R mounted-unit cache invalidated (%s)",
+            revision.empty() ? "manual refresh" : revision.c_str());
+}
+
+void GFXManager::reloadEnhancedUnitMounts() {
+    invalidateEnhancedUnitMountsIfChanged(true);
+    loadEnhancedUnitManifests();
 }
 
 Uint32 GFXManager::getEnhancedUnitAnimationDuration(int itemID, int house,

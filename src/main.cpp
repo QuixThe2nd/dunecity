@@ -556,6 +556,7 @@ void createDefaultConfigFile(const std::string& configfilepath, const std::strin
                                 "#              The \"music\"-directory should contain 5 subdirectories named attack, intro, peace, win and lose\n"
                                 "#              Put any mp3, ogg or mid file there and it will be played in the particular situation\n"
                                 "Music Type = adl\n"
+                                "ADL Harmonic Stereo = false # Legacy detuned stereo effect; false gives clean, pitch-stable playback\n"
                                 "Play Music = true\n"
                                 "Music Volume = 64           # Volume between 0 and 128\n"
                                 "Play SFX = true\n"
@@ -933,6 +934,7 @@ int main(int argc, char *argv[]) {
             settings.video.showWatermark = myINIFile.getBoolValue("Video","Show Watermark",true);
             settings.video.cursorScale = myINIFile.getIntValue("Video","Cursor Scale",0);
             settings.audio.musicType = myINIFile.getStringValue("Audio","Music Type","adl");
+            settings.audio.adlHarmonicStereo = myINIFile.getBoolValue("Audio","ADL Harmonic Stereo", false);
             settings.audio.playMusic = myINIFile.getBoolValue("Audio","Play Music", true);
             settings.audio.musicVolume = myINIFile.getIntValue("Audio","Music Volume", 64);
             settings.audio.playSFX = myINIFile.getBoolValue("Audio","Play SFX", true);
@@ -1104,10 +1106,21 @@ int main(int argc, char *argv[]) {
 
             if(bFirstInit == true) {
                 SDL_Log("Initializing audio...");
-                if( Mix_OpenAudio(AUDIO_FREQUENCY, AUDIO_S16SYS, 2, 1024) < 0 ) {
+                constexpr int AUDIO_BUFFER_FRAMES = 1024;
+                if( Mix_OpenAudio(AUDIO_FREQUENCY, AUDIO_S16SYS, 2, AUDIO_BUFFER_FRAMES) < 0 ) {
                     SDL_Quit();
                     THROW(sdl_error, "Couldn't set %d Hz 16-bit audio. Reason: %s!", AUDIO_FREQUENCY, SDL_GetError());
                 } else {
+                    int actualFrequency = 0;
+                    int actualChannels = 0;
+                    Uint16 actualFormat = 0;
+                    Mix_QuerySpec(&actualFrequency, &actualFormat, &actualChannels);
+                    const char* audioDriver = SDL_GetCurrentAudioDriver();
+                    SDL_Log("Audio driver: %s; mixer: %d Hz, format 0x%04X, %d channel(s), buffer: %d frames; ADL mode: %s",
+                            audioDriver != nullptr ? audioDriver : "unknown",
+                            actualFrequency, static_cast<unsigned int>(actualFormat), actualChannels,
+                            AUDIO_BUFFER_FRAMES,
+                            settings.audio.adlHarmonicStereo ? "harmonic stereo" : "single-emulator dual mono");
                     SDL_Log("%d audio channels were allocated.", Mix_AllocateChannels(28));
                 }
             }

@@ -24,9 +24,14 @@ DIRECTIONS = (
 )
 
 SUPPORTED_STATES = {
-    "idle": (("full_unit_idle", "idle"), "Idle"),
-    "movement": (("full_unit_movement", "movement"), "Movement"),
-    "combat": (("full_unit_combat", "combat"), "Combat"),
+    "idle": (("full_unit_idle", "idle"), "Idle", True),
+    "movement": (("full_unit_movement", "movement"), "Movement", True),
+    "combat": (("full_unit_combat", "combat"), "Combat", False),
+    "damage_smoking": (("full_unit_damage_smoking", "damage_smoking"), "DamageSmoking", True),
+    "damage_damaged": (("full_unit_damage_damaged", "damage_damaged"), "DamageDamaged", True),
+    "damage_exploded": (("full_unit_damage_exploded", "damage_exploded"), "DamageExploded", False),
+    "damage_aftermath": (("full_unit_damage_aftermath", "damage_aftermath"), "DamageAftermath", True),
+    "damage_dissipation": (("full_unit_damage_dissipation", "damage_dissipation"), "DamageDissipation", False),
 }
 
 
@@ -100,7 +105,7 @@ def package_unit(args: argparse.Namespace) -> int:
     }
 
     packaged = 0
-    for source_state, (category_candidates, manifest_state) in SUPPORTED_STATES.items():
+    for source_state, (category_candidates, manifest_state, loops) in SUPPORTED_STATES.items():
         selected_category = source_state
         states: dict[str, object] = {}
         for category_name in category_candidates:
@@ -115,7 +120,7 @@ def package_unit(args: argparse.Namespace) -> int:
             # `directions`; newer records expose it as a normal category.
             states = metadata.get("directions", {})
         for direction in DIRECTIONS:
-            state = states.get(direction, {})
+            state = states.get(direction, {}) or states.get("default", {})
             assets = state.get("assets", {})
             animation = assets.get("animation", {})
             frames_value = animation.get("frames_dir", "")
@@ -138,7 +143,7 @@ def package_unit(args: argparse.Namespace) -> int:
                 "FrameMs": str(max(1, int(animation.get("frame_duration_ms", 90)))),
                 "AnchorX": str(args.frame_size // 2),
                 "AnchorY": str(args.frame_size // 2),
-                "Loop": "false" if source_state == "combat" else "true",
+                "Loop": "true" if loops else "false",
             }
             packaged += 1
             print(f"packaged {selected_category}/{direction}: {len(frames)} frame(s)")

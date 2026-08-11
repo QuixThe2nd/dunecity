@@ -585,7 +585,13 @@ public:
     enum class EnhancedUnitState {
         Idle,
         Movement,
-        Combat
+        Combat,
+        DamageSmoking,
+        DamageDamaged,
+        DamageExploded,
+        DamageAftermath,
+        DamageDissipation,
+        Count
     };
 
     enum class EnhancedRenderMode {
@@ -598,7 +604,7 @@ public:
         std::string sourceUnit;
         int itemID = -1;
         int houseID = -1;
-        std::array<std::array<bool, 8>, 3> available{};
+        std::array<std::array<bool, 8>, static_cast<size_t>(EnhancedUnitState::Count)> available{};
     };
 
     GFXManager();
@@ -632,6 +638,7 @@ public:
                                                EnhancedUnitState state,
                                                int direction,
                                                EnhancedRenderMode mode);
+    void             reloadEnhancedUnitMounts();
     bool             hasObjPic(unsigned int id, int house=HOUSE_HARKONNEN, unsigned int z=0) const;
 
     // DuneCity 1.0.487: invalidate sprite texture cache
@@ -670,6 +677,7 @@ private:
     void                loadCompactObjPicOverrides();
     bool                loadHDObjPicOverride(unsigned int id);
     void                loadEnhancedUnitManifests();
+    void                invalidateEnhancedUnitMountsIfChanged(bool force = false);
     void                loadEnhancedRenderModes();
     void                loadMentatGraphics();
     void                loadCustomHouseHerald();
@@ -738,6 +746,8 @@ private:
     std::array<HDObjPicOverride, NUM_OBJPICS> hdObjPicOverrides;
     std::vector<EnhancedUnitDefinition> enhancedUnitDefinitions;
     bool enhancedUnitManifestsLoaded = false;
+    std::string enhancedUnitMountRevision;
+    Uint32 enhancedUnitMountLastCheck = 0;
     std::map<int, EnhancedRenderMode> enhancedUnitRenderModes;
     bool enhancedRenderModesLoaded = false;
     std::array<sdl2::texture_ptr, NUM_SMALLDETAILPICS> smallDetailPicTex;

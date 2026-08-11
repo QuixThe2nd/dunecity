@@ -199,7 +199,7 @@ void ADLPlayer::changeMusic(MUSICTYPE musicType)
 
         sdl2::RWops_ptr rwop = pFileManager->openFile(filename);
 
-        pSoundAdlibPC = new SoundAdlibPC(rwop.get());
+        pSoundAdlibPC = new SoundAdlibPC(rwop.get(), settings.audio.adlHarmonicStereo);
         pSoundAdlibPC->setVolume(musicVolume);
 
         pSoundAdlibPC->playTrack(musicNum);

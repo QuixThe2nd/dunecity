@@ -28,8 +28,9 @@
 #include <FileClasses/adl/surroundopl.h>
 //#include "debug.h"
 
-CSurroundopl::CSurroundopl(Copl *a, Copl *b, bool use16bit)
+CSurroundopl::CSurroundopl(Copl *a, Copl *b, bool use16bit, bool harmonicStereo)
     : use16bit(use16bit),
+        harmonicStereo(harmonicStereo),
         bufsize(4096),
         a(a), b(b)
 {
@@ -63,16 +64,18 @@ void CSurroundopl::update(short *buf, int samples)
     }
 
     a->update(this->lbuf, samples);
-    b->update(this->rbuf, samples);
+    if (harmonicStereo) {
+        b->update(this->rbuf, samples);
+    }
 
     // Copy the two mono OPL buffers into the stereo buffer
     for (int i = 0; i < samples; i++) {
         if (this->use16bit) {
             buf[i * 2] = this->lbuf[i];
-            buf[i * 2 + 1] = this->rbuf[i];
+            buf[i * 2 + 1] = harmonicStereo ? this->rbuf[i] : this->lbuf[i];
         } else {
             ((char *)buf)[i * 2] = ((char *)this->lbuf)[i];
-            ((char *)buf)[i * 2 + 1] = ((char *)this->rbuf)[i];
+            ((char *)buf)[i * 2 + 1] = harmonicStereo ? ((char *)this->rbuf)[i] : ((char *)this->lbuf)[i];
         }
     }
 }
@@ -80,6 +83,13 @@ void CSurroundopl::update(short *buf, int samples)
 void CSurroundopl::write(int reg, int val)
 {
     a->write(reg, val);
+
+    // The historical surround mode pitch-shifts the right OPL chip. That
+    // produces audible beating on sustained notes, so clean dual mono is the
+    // default and the harmonic effect is retained only as an opt-in.
+    if (!harmonicStereo) {
+        return;
+    }
 
     // Transpose the other channel to produce the harmonic effect
     int iChannel = -1;
@@ -199,7 +209,9 @@ void CSurroundopl::write(int reg, int val)
 void CSurroundopl::init()
 {
     a->init();
-    b->init();
+    if (harmonicStereo) {
+        b->init();
+    }
     for (int c = 0; c < 2; c++) {
         for (int i = 0; i < 256; i++) {
             this->iFMReg[c][i] = 0;
@@ -215,5 +227,7 @@ void CSurroundopl::init()
 void CSurroundopl::setchip(int n)
 {
     a->setchip(n);
-    b->setchip(n);
+    if (harmonicStereo) {
+        b->setchip(n);
+    }
 }

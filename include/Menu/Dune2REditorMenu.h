@@ -40,11 +40,13 @@ private:
     void onModeChanged(bool interactive);
     void onApply();
     void onResetSlot();
+    void onReloadMounts();
     void onBack();
     void rebuildStateEntries();
     void rebuildDirectionEntries();
     void refreshSelection();
     void refreshStatus(const std::string& message = "");
+    void rebuildUnitEntries();
 
     const GFXManager::EnhancedUnitEditorInfo* selectedUnit() const;
     GFXManager::EnhancedUnitState selectedState() const;
@@ -65,6 +67,7 @@ private:
     DropDownBox modeDropDown;
     TextButton applyButton;
     TextButton resetButton;
+    TextButton reloadButton;
     TextButton backButton;
     std::unique_ptr<Dune2RPreviewWidget> previewWidget;
     std::vector<GFXManager::EnhancedUnitEditorInfo> units;

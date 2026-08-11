@@ -46,6 +46,7 @@ class CSurroundopl: public Copl
 {
     private:
         bool use16bit;
+        bool harmonicStereo;
         short bufsize;
         short *lbuf, *rbuf;
         Copl *a, *b;
@@ -56,7 +57,7 @@ class CSurroundopl: public Copl
 
     public:
 
-        CSurroundopl(Copl *a, Copl *b, bool use16bit);
+        CSurroundopl(Copl *a, Copl *b, bool use16bit, bool harmonicStereo);
         ~CSurroundopl();
 
         void update(short *buf, int samples) override;

@@ -191,6 +191,7 @@ public:
         bool        playMusic;
         int         musicVolume;
         std::string musicType;
+        bool        adlHarmonicStereo;
         bool        playCreditsSFX;
     } audio;
 

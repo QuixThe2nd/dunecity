@@ -21,8 +21,9 @@
 
 namespace {
 
-constexpr std::array<const char*, 3> kStateLabels = {
-    "Idle", "Movement", "Combat"
+constexpr std::array<const char*, static_cast<size_t>(GFXManager::EnhancedUnitState::Count)> kStateLabels = {
+    "Idle", "Movement", "Combat", "Smoking", "Damaged",
+    "Exploded", "Aftermath", "Dissipation"
 };
 
 constexpr std::array<const char*, 8> kDirectionLabels = {
@@ -181,13 +182,21 @@ Dune2REditorMenu::Dune2REditorMenu() {
     applyButton.setOnClick(std::bind(&Dune2REditorMenu::onApply, this));
     resetButton.setText(_("DEFAULT"));
     resetButton.setOnClick(std::bind(&Dune2REditorMenu::onResetSlot, this));
+    reloadButton.setText(_("RELOAD MOUNTS"));
+    reloadButton.setOnClick(std::bind(&Dune2REditorMenu::onReloadMounts, this));
     backButton.setText(_("BACK"));
     backButton.setOnClick(std::bind(&Dune2REditorMenu::onBack, this));
     const int buttonY = originY + panelHeight - 42;
-    windowWidget.addWidget(&applyButton, Point(originX + 115, buttonY), Point(115, 28));
-    windowWidget.addWidget(&resetButton, Point(originX + 252, buttonY), Point(115, 28));
-    windowWidget.addWidget(&backButton, Point(originX + 389, buttonY), Point(115, 28));
+    windowWidget.addWidget(&reloadButton, Point(originX + 50, buttonY), Point(125, 28));
+    windowWidget.addWidget(&applyButton, Point(originX + 185, buttonY), Point(105, 28));
+    windowWidget.addWidget(&resetButton, Point(originX + 300, buttonY), Point(105, 28));
+    windowWidget.addWidget(&backButton, Point(originX + 415, buttonY), Point(105, 28));
 
+    rebuildUnitEntries();
+}
+
+void Dune2REditorMenu::rebuildUnitEntries() {
+    unitDropDown.clearAllEntries();
     units = pGFXManager->getEnhancedUnitEditorInfo();
     for(size_t i = 0; i < units.size(); ++i) {
         std::string label = units[i].sourceUnit;
@@ -268,7 +277,7 @@ void Dune2REditorMenu::rebuildStateEntries() {
         return;
     }
 
-    for(int state = 0; state < 3; ++state) {
+    for(int state = 0; state < static_cast<int>(GFXManager::EnhancedUnitState::Count); ++state) {
         if(std::any_of(unit->available[state].begin(), unit->available[state].end(),
                        [](bool available) { return available; })) {
             stateDropDown.addEntry(_(kStateLabels[state]), state);
@@ -284,7 +293,8 @@ void Dune2REditorMenu::rebuildDirectionEntries() {
     directionDropDown.clearAllEntries();
     const auto* unit = selectedUnit();
     const int state = stateDropDown.getSelectedEntryIntData();
-    if(unit == nullptr || state < 0 || state >= 3) {
+    if(unit == nullptr || state < 0
+       || state >= static_cast<int>(GFXManager::EnhancedUnitState::Count)) {
         refreshSelection();
         return;
     }
@@ -375,6 +385,12 @@ void Dune2REditorMenu::onResetSlot() {
                                            GFXManager::EnhancedRenderMode::FullAnimation);
     refreshSelection();
     refreshStatus(_("Restored the slot default: Full Animation."));
+}
+
+void Dune2REditorMenu::onReloadMounts() {
+    pGFXManager->reloadEnhancedUnitMounts();
+    rebuildUnitEntries();
+    refreshStatus(_("Mounted Dune2R unit assets reloaded."));
 }
 
 void Dune2REditorMenu::onBack() {

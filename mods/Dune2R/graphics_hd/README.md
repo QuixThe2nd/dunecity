@@ -9,7 +9,8 @@ selected by stable game item ID and, optionally, house ID. This avoids changing
 shared classic chassis/turret sprites used by other vehicles.
 
 The packager prefers Oathkeeper's optional `full_unit_idle`,
-`full_unit_movement`, and `full_unit_combat` products. If an optional product
+`full_unit_movement`, `full_unit_combat`, and directional full-unit damage
+products. If an optional product
 has no processed frame sequence but does have its baked aligned Sprite Image,
 that sprite is packaged as a one-frame atlas. Older complete-unit categories
 remain a compatibility fallback.
@@ -47,7 +48,9 @@ AnchorY=96
 Loop=true
 ```
 
-Supported visual states are `Idle`, `Movement`, and `Combat`; supported
+Supported visual states are `Idle`, `Movement`, `Combat`, `DamageSmoking`,
+`DamageDamaged`, `DamageExploded`, `DamageAftermath`, and
+`DamageDissipation`; supported
 directions are `east`, `north_east`, `north`, `north_west`, `west`,
 `south_west`, `south`, and `south_east`. Missing states or directions fall
 through to the classic renderer. Combat is triggered only by an actual weapon
@@ -75,6 +78,19 @@ Package numbered Oathkeeper PNG frames with:
 ```text
 python scripts/package-dune2r-unit.py <dune2/units/unit> <mods/Dune2R/graphics_hd/units/unit> --item-id 41 --house-id 2 --scale 1.21
 ```
+
+For normal iteration, Oathkeeper packages and mounts a configured unit into
+both this source mod and the current Windows installation:
+
+```text
+~dune2mount HarkonnenDevastator
+```
+
+The command infers the stable item and house IDs from the unit name, packages
+only completed slots, swaps the unit directory as one update, and writes a
+mount revision after the files are ready. A running Dune2R game checks that
+revision and releases its old atlas textures before loading the new package.
+Use `RELOAD MOUNTS` in Dune2R EditoR when the editor was already open.
 
 Only the active mod's `graphics_hd/units` directory is scanned. Switching away
 from Dune2R clears every enhanced texture and manifest cache.

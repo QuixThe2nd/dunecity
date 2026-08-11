@@ -80,7 +80,8 @@ Mix_Chunk* SFXManager::getSound(Sound_enum id) {
 sdl2::mix_chunk_ptr SFXManager::loadMixFromADL(const std::string& adlFile, int index, int volume) const {
 
     auto rwop = pFileManager->openFile(adlFile);
-    auto pSoundAdlibPC = std::make_unique<SoundAdlibPC>(rwop.get(), AUDIO_FREQUENCY);
+    auto pSoundAdlibPC = std::make_unique<SoundAdlibPC>(
+        rwop.get(), AUDIO_FREQUENCY, settings.audio.adlHarmonicStereo);
     pSoundAdlibPC->setVolume(volume);
     sdl2::mix_chunk_ptr chunk{ pSoundAdlibPC->getSubsong(index) };
 

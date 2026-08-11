@@ -63,8 +63,8 @@ class AdlibDriver;
  */
 class SoundAdlibPC {
 public:
-    explicit SoundAdlibPC(SDL_RWops* rwop);
-    SoundAdlibPC(SDL_RWops* rwop, int freq);
+    explicit SoundAdlibPC(SDL_RWops* rwop, bool harmonicStereo = false);
+    SoundAdlibPC(SDL_RWops* rwop, int freq, bool harmonicStereo = false);
     SoundAdlibPC(const SoundAdlibPC& soundAdlibPC) = delete;
     SoundAdlibPC& operator=(const SoundAdlibPC& soundAdlibPC) = delete;
     ~SoundAdlibPC();
@@ -122,6 +122,7 @@ private:
     int m_channels;
     int m_freq;
     Uint16 m_format;
+    std::vector<int16_t> callbackBuffer;
 
     bool bJustStartedPlaying;
 

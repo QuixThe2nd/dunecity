@@ -109,7 +109,7 @@ static inline void debugC(int level, const char *str, ...)
 
 class AdlibDriver final {
 public:
-    explicit AdlibDriver(int rate);
+    AdlibDriver(int rate, bool harmonicStereo);
     ~AdlibDriver();
 
     AdlibDriver(const AdlibDriver &) = delete;
@@ -124,7 +124,7 @@ public:
     // AudioStream API
     int readBuffer(int16 *buffer, const int numSamples) {
         int32 samplesLeft = numSamples;
-        memset(buffer, 0, sizeof(int16) * numSamples);
+        memset(buffer, 0, sizeof(int16) * numSamples * 2);
         while (samplesLeft) {
             if (!_samplesTillCallback) {
                 callback();
@@ -478,7 +478,7 @@ private:
     void unlock() {  }
 };
 
-AdlibDriver::AdlibDriver(int rate) {
+AdlibDriver::AdlibDriver(int rate, bool harmonicStereo) {
     setupOpcodeList();
     setupParserOpcodeTable();
 
@@ -489,7 +489,7 @@ AdlibDriver::AdlibDriver(int rate) {
     _flags = 0;
     Copl *a = new CWemuopl(rate, false);
     Copl *b = new CWemuopl(rate, false);
-    opl = std::make_unique<CSurroundopl>(a, b, true);
+    opl = std::make_unique<CSurroundopl>(a, b, true, harmonicStereo);
     // CSurroundopl now owns a and b and will free upon destruction
 
     memset(_channels, 0, sizeof(_channels));
@@ -2282,12 +2282,12 @@ const uint8 AdlibDriver::_unkTables[][32] = {
 //#pragma mark -
 
 
-SoundAdlibPC::SoundAdlibPC(SDL_RWops* rwop) : _driver(0), _trackEntries(), _soundDataPtr(nullptr), volume(MIX_MAX_VOLUME/2) {
+SoundAdlibPC::SoundAdlibPC(SDL_RWops* rwop, bool harmonicStereo) : _driver(0), _trackEntries(), _soundDataPtr(nullptr), volume(MIX_MAX_VOLUME/2) {
     memset(_trackEntries, 0, sizeof(_trackEntries));
 
     Mix_QuerySpec(&m_freq, &m_format, &m_channels);
 
-    _driver = new AdlibDriver(m_freq);
+    _driver = new AdlibDriver(m_freq, harmonicStereo);
     assert(_driver);
 
     _sfxPlayingSound = -1;
@@ -2302,14 +2302,14 @@ SoundAdlibPC::SoundAdlibPC(SDL_RWops* rwop) : _driver(0), _trackEntries(), _soun
     internalLoadFile(rwop);
 }
 
-SoundAdlibPC::SoundAdlibPC(SDL_RWops* rwop, int freq) : _driver(nullptr), _trackEntries(), _soundDataPtr(nullptr), volume(MIX_MAX_VOLUME/2) {
+SoundAdlibPC::SoundAdlibPC(SDL_RWops* rwop, int freq, bool harmonicStereo) : _driver(nullptr), _trackEntries(), _soundDataPtr(nullptr), volume(MIX_MAX_VOLUME/2) {
     memset(_trackEntries, 0, sizeof(_trackEntries));
 
     m_freq = freq;
     m_format = AUDIO_S16LSB;
     m_channels = 2;
 
-    _driver = new AdlibDriver(m_freq);
+    _driver = new AdlibDriver(m_freq, harmonicStereo);
     assert(_driver);
 
     _sfxPlayingSound = -1;
@@ -2396,12 +2396,27 @@ void SoundAdlibPC::callback(void *userdata, Uint8 *audiobuf, int len)
 
     self->process();
 
-    int16* buf = reinterpret_cast<int16*>(audiobuf);
-    int samples = self->_driver->readBuffer(buf, len / self->getsampsize());
+    const int frames = len / self->getsampsize();
+    self->callbackBuffer.resize(static_cast<size_t>(frames) * 2);
+    self->_driver->readBuffer(self->callbackBuffer.data(), frames);
 
-    int volume = self->getVolume();
-    for(int i = 0; i < 2*samples; i++) {
-        buf[i] = static_cast<int16>(buf[i] * volume / MIX_MAX_VOLUME);
+    auto* output = reinterpret_cast<int16*>(audiobuf);
+    memset(audiobuf, 0, static_cast<size_t>(len));
+
+    const int volume = self->getVolume();
+    for (int frame = 0; frame < frames; ++frame) {
+        const int16 left = static_cast<int16>(
+            self->callbackBuffer[static_cast<size_t>(frame) * 2] * volume / MIX_MAX_VOLUME);
+        const int16 right = static_cast<int16>(
+            self->callbackBuffer[static_cast<size_t>(frame) * 2 + 1] * volume / MIX_MAX_VOLUME);
+
+        if (self->m_channels == 1) {
+            output[frame] = static_cast<int16>((static_cast<int>(left) + right) / 2);
+        } else {
+            const size_t outputOffset = static_cast<size_t>(frame) * self->m_channels;
+            output[outputOffset] = left;
+            output[outputOffset + 1] = right;
+        }
     }
 
     self->bJustStartedPlaying = false;

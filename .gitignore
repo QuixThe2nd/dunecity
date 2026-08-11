@@ -72,6 +72,7 @@ DuneCity-*-Setup.nsi
 *.exe
 *.dmg
 /releases/android/*.apk
+mods/Dune2R/graphics_hd/units/.mount-revision
 
 # SourceForge credentials (NEVER commit this!)
 scripts/sourceforge-config.sh
