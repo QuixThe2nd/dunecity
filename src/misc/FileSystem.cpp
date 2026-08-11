@@ -622,8 +622,9 @@ std::string getDuneLegacyDataDir() {
 
                 // AppImages and installed packages use usr/bin + usr/share,
                 // while portable TGZ packages may use usr/bin + share.
-                const std::array<std::string, 2> relativeDataDirs = {
+                const std::array<std::string, 3> relativeDataDirs = {
                     executableDir + "../share/DuneCity/",
+                    executableDir + "../usr/share/DuneCity/",
                     executableDir + "../../share/DuneCity/",
                 };
                 for(const auto& relativeDataDir : relativeDataDirs) {

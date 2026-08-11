@@ -279,6 +279,10 @@ jobs:
 
           echo "TGZ executable: ${TGZ_BIN:-missing}"
           echo "TGZ DUNE.PAK: ${TGZ_DATA:-missing}"
+          data_notice=${TGZ_DATA//'%'/'%25'}
+          data_notice=${data_notice//$'\r'/'%0D'}
+          data_notice=${data_notice//$'\n'/'%0A'}
+          echo "::notice title=TGZ data layout::${data_notice:-DUNE.PAK was not packaged}"
 
           if [ -z "$TGZ_BIN" ] || [ ! -x "$TGZ_BIN" ]; then
             echo "::error title=TGZ smoke setup failed::Packaged dunecity executable was not found or is not executable."
