@@ -77,6 +77,13 @@ void Devastator::blitToScreen()
     int x1 = screenborder->world2screenX(realX);
     int y1 = screenborder->world2screenY(realY);
 
+    if(drawEnhancedUnitSprite(x1, y1, drawnAngle, drawnAngle)) {
+        if(isBadlyDamaged()) {
+            drawSmoke(x1, y1);
+        }
+        return;
+    }
+
     SDL_Texture* pUnitGraphic = graphic[currentZoomlevel];
     SDL_Rect source1 = calcSpriteSourceRect(pUnitGraphic, drawnAngle, numImagesX);
     SDL_Rect dest1 = calcSpriteDrawingRect( pUnitGraphic, x1, y1, numImagesX, 1, HAlign::Center, VAlign::Center);

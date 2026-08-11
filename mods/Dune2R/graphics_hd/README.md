@@ -80,17 +80,29 @@ python scripts/package-dune2r-unit.py <dune2/units/unit> <mods/Dune2R/graphics_h
 ```
 
 For normal iteration, Oathkeeper packages and mounts a configured unit into
-both this source mod and the current Windows installation:
+this source mod and, when present, the current Windows AppData installation:
 
 ```text
 ~dune2mount HarkonnenDevastator
 ```
 
-The command infers the stable item and house IDs from the unit name, packages
-only completed slots, swaps the unit directory as one update, and writes a
-mount revision after the files are ready. A running Dune2R game checks that
-revision and releases its old atlas textures before loading the new package.
-Use `RELOAD MOUNTS` in Dune2R EditoR when the editor was already open.
+The command infers the stable item and house IDs from the unit name. Explicit
+full-unit products are preferred. When those are absent, completed independent
+chassis and turret layers are aligned, scaled, animated, and composed into the
+whole-unit atlases consumed by the current runtime. The command swaps the unit
+directory as one update and writes a mount revision only after all files are
+ready.
+
+The repository copy under `mods/Dune2R/graphics_hd/units` is authoritative and
+is included in later source commits and release packages. If the live AppData
+mod exists, `~dune2mount` updates it too for immediate testing. If AppData was
+deleted, mounting still succeeds against the repository and DuneCity seeds the
+managed mod on its next launch.
+
+A running Dune2R game checks `.mount-revision` about once per second and
+releases its old atlas textures before loading the new package. `RELOAD MOUNTS`
+performs the same rescan immediately. It reads packaged `unit.ini` manifests
+and atlases; it does not read Oathkeeper's raw `dune2/units` authoring cache.
 
 Only the active mod's `graphics_hd/units` directory is scanned. Switching away
 from Dune2R clears every enhanced texture and manifest cache.

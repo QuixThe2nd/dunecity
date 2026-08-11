@@ -41,6 +41,14 @@ house IDs and maps idle, movement, and combat directions to transparent PNG
 atlases. The engine does not inspect the Oathkeeper Compact products for this
 path, and it never replaces base-game asset files.
 
+Oathkeeper keeps editable source sprites, animations, alignment, and timing in
+its own `dune2/units/<unit>` authoring cache. `~dune2mount <UnitName>` converts
+that material into the runtime manifests and atlases above. It prefers authored
+full-unit products and otherwise composes completed chassis and turret layers,
+so adding or refreshing unit art is normally data-only and needs no game
+rebuild. The source mount is committed to Git like any other mod asset and is
+therefore packaged into future releases; raw authoring material is not shipped.
+
 When Dune2R is active, the main menu exposes `Dune2R EditoR`. It lists only
 units and directional motion slots that have packaged Dune2R assets. Each slot
 can use the independent layered renderer, its packaged complete-unit animation,
