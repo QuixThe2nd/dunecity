@@ -306,7 +306,7 @@ jobs:
             set +e
             (
               cd "$launch_dir"
-              HOME="$SMOKE_ROOT/home" SDL_AUDIODRIVER=dummy \
+              HOME="$SMOKE_ROOT/home" SDL_AUDIODRIVER=dummy SDL_RENDER_DRIVER=software \
                 timeout 12s xvfb-run -a "$executable" "$@" --showlog
             ) >"$SMOKE_ROOT/${label}.log" 2>&1
             local status=$?
