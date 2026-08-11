@@ -197,7 +197,7 @@ jobs:
           sudo apt-get install -y \
             autoconf autoconf-archive automake libtool libltdl-dev \
             build-essential pkg-config bison flex \
-            libsystemd-dev xvfb
+            libsystemd-dev xvfb xauth
 
       - name: Cache vcpkg binary packages
         uses: actions/cache@v4
@@ -276,12 +276,31 @@ jobs:
           TGZ_BIN=$(find "$SMOKE_ROOT/tgz" -type f -path '*/bin/dunecity' -print -quit)
           APPIMAGE="build/DuneCity-${VERSION}-Linux-x86_64.AppImage"
 
+          if [ -z "$TGZ_BIN" ] || [ ! -x "$TGZ_BIN" ]; then
+            echo "::error title=TGZ smoke setup failed::Packaged dunecity executable was not found or is not executable."
+            find "$SMOKE_ROOT/tgz" -maxdepth 4 -type f -print
+            exit 1
+          fi
+          if [ ! -x "$APPIMAGE" ]; then
+            echo "::error title=AppImage smoke setup failed::Expected AppImage is missing or not executable: $APPIMAGE"
+            find build -maxdepth 1 -type f -print
+            exit 1
+          fi
+
           smoke_launch() {
             local label="$1"
             shift
+            local executable="$1"
+            shift
+            local launch_dir
+            launch_dir=$(cd "$(dirname "$executable")" && pwd)
+            executable="$launch_dir/$(basename "$executable")"
             set +e
-            HOME="$SMOKE_ROOT/home" SDL_AUDIODRIVER=dummy \
-              timeout 12s xvfb-run -a "$@" --showlog >"$SMOKE_ROOT/${label}.log" 2>&1
+            (
+              cd "$launch_dir"
+              HOME="$SMOKE_ROOT/home" SDL_AUDIODRIVER=dummy \
+                timeout 12s xvfb-run -a "$executable" "$@" --showlog
+            ) >"$SMOKE_ROOT/${label}.log" 2>&1
             local status=$?
             set -e
 
@@ -290,12 +309,18 @@ jobs:
               cat "$SMOKE_ROOT/${label}.log"
               find "$SMOKE_ROOT/home" -type f -name '*.log' -exec sh -c \
                 'echo "--- $1"; cat "$1"' _ {} \;
+              local details
+              details=$(sed -n '1,80p' "$SMOKE_ROOT/${label}.log")
+              details=${details//'%'/'%25'}
+              details=${details//$'\r'/'%0D'}
+              details=${details//$'\n'/'%0A'}
+              echo "::error title=${label} portable startup failed (status ${status})::${details:-No process output was captured.}"
               return 1
             fi
           }
 
           smoke_launch tgz "$TGZ_BIN"
-          smoke_launch appimage env APPIMAGE_EXTRACT_AND_RUN=1 "$APPIMAGE"
+          APPIMAGE_EXTRACT_AND_RUN=1 smoke_launch appimage "$APPIMAGE"
 
       - name: Upload Packages
         uses: actions/upload-artifact@v4
