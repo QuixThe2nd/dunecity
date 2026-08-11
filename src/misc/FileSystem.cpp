@@ -23,6 +23,7 @@
 
 #include <stdio.h>
 #include <algorithm>
+#include <array>
 #include <ctype.h>
 
 #include <SDL_filesystem.h>
@@ -616,13 +617,23 @@ std::string getDuneLegacyDataDir() {
         if(dataDir.empty()) {
             char* basePath = SDL_GetBasePath();
             if(basePath != nullptr) {
-                const std::string relativeDataDir = std::string(basePath) + "../share/DuneCity/";
+                const std::string executableDir = basePath;
                 SDL_free(basePath);
-                struct stat relativeDirCheck;
-                if(stat(relativeDataDir.c_str(), &relativeDirCheck) == 0
-                   && S_ISDIR(relativeDirCheck.st_mode)) {
-                    dataDir = relativeDataDir;
-                    SDL_Log("Using executable-relative Linux data dir: %s", dataDir.c_str());
+
+                // AppImages and installed packages use usr/bin + usr/share,
+                // while portable TGZ packages may use usr/bin + share.
+                const std::array<std::string, 2> relativeDataDirs = {
+                    executableDir + "../share/DuneCity/",
+                    executableDir + "../../share/DuneCity/",
+                };
+                for(const auto& relativeDataDir : relativeDataDirs) {
+                    struct stat relativeDirCheck;
+                    if(stat(relativeDataDir.c_str(), &relativeDirCheck) == 0
+                       && S_ISDIR(relativeDirCheck.st_mode)) {
+                        dataDir = relativeDataDir;
+                        SDL_Log("Using executable-relative Linux data dir: %s", dataDir.c_str());
+                        break;
+                    }
                 }
             }
         }
