@@ -873,6 +873,13 @@ int main(int argc, char *argv[]) {
         std::vector<std::string> missingFiles = FileManager::getMissingFiles();
 
         if(!missingFiles.empty()) {
+            SDL_LogError(SDL_LOG_CATEGORY_APPLICATION,
+                         "Required data check failed in '%s' (%zu missing file(s)):",
+                         getDuneLegacyDataDir().c_str(), missingFiles.size());
+            for(const auto& missingFile : missingFiles) {
+                SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "  %s", missingFile.c_str());
+            }
+
             // create data directory inside config directory
             char tmp[FILENAME_MAX];
             fnkdat("data/", tmp, FILENAME_MAX, FNKDAT_USER | FNKDAT_CREAT);
