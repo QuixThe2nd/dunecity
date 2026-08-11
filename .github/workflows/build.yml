@@ -171,7 +171,9 @@ jobs:
             "$DISCORD_WEBHOOK"
 
   build-linux:
-    runs-on: ubuntu-latest
+    # Keep the release ABI on an older, stable glibc baseline. A moving
+    # ubuntu-latest runner produced binaries requiring GLIBC_2.38.
+    runs-on: ubuntu-22.04
     needs: [verify-version]
     if: always() && (needs.verify-version.result == 'success' || needs.verify-version.result == 'skipped')
     steps:
@@ -195,7 +197,7 @@ jobs:
           sudo apt-get install -y \
             autoconf autoconf-archive automake libtool libltdl-dev \
             build-essential pkg-config bison flex \
-            libsystemd-dev
+            libsystemd-dev xvfb
 
       - name: Cache vcpkg binary packages
         uses: actions/cache@v4
@@ -260,6 +262,40 @@ jobs:
           # Rename with version for clarity
           VERSION=$(sed -n 's/^project(DuneCity VERSION \([0-9]*\.[0-9]*\.[0-9]*\).*/\1/p' ../CMakeLists.txt)
           mv DuneCity-*.AppImage "DuneCity-${VERSION}-Linux-x86_64.AppImage" 2>/dev/null || true
+
+      - name: Smoke-test portable Linux packages
+        run: |
+          set -euo pipefail
+
+          VERSION=$(sed -n 's/^project(DuneCity VERSION \([0-9]*\.[0-9]*\.[0-9]*\).*/\1/p' CMakeLists.txt)
+          SMOKE_ROOT="$RUNNER_TEMP/dunecity-linux-smoke"
+          rm -rf "$SMOKE_ROOT"
+          mkdir -p "$SMOKE_ROOT/tgz" "$SMOKE_ROOT/home"
+
+          tar -xzf "build/DuneCity-${VERSION}-Linux-x64.tar.gz" -C "$SMOKE_ROOT/tgz"
+          TGZ_BIN=$(find "$SMOKE_ROOT/tgz" -type f -path '*/bin/dunecity' -print -quit)
+          APPIMAGE="build/DuneCity-${VERSION}-Linux-x86_64.AppImage"
+
+          smoke_launch() {
+            local label="$1"
+            shift
+            set +e
+            HOME="$SMOKE_ROOT/home" SDL_AUDIODRIVER=dummy \
+              timeout 12s xvfb-run -a "$@" --showlog >"$SMOKE_ROOT/${label}.log" 2>&1
+            local status=$?
+            set -e
+
+            if [ "$status" -ne 124 ]; then
+              echo "${label} exited during startup (status ${status})"
+              cat "$SMOKE_ROOT/${label}.log"
+              find "$SMOKE_ROOT/home" -type f -name '*.log' -exec sh -c \
+                'echo "--- $1"; cat "$1"' _ {} \;
+              return 1
+            fi
+          }
+
+          smoke_launch tgz "$TGZ_BIN"
+          smoke_launch appimage env APPIMAGE_EXTRACT_AND_RUN=1 "$APPIMAGE"
 
       - name: Upload Packages
         uses: actions/upload-artifact@v4
