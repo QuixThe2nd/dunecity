@@ -609,7 +609,6 @@ std::string getDuneLegacyDataDir() {
         }
 #endif
 
-#ifdef DUNELEGACY_DATADIR
         // Prefer data installed relative to the executable. This keeps Linux
         // AppImages, extracted TGZ builds, and nonstandard prefixes isolated
         // from an unrelated system-wide DuneCity installation.
@@ -622,9 +621,8 @@ std::string getDuneLegacyDataDir() {
 
                 // AppImages and installed packages use usr/bin + usr/share,
                 // while portable TGZ packages may use usr/bin + share.
-                const std::array<std::string, 3> relativeDataDirs = {
+                const std::array<std::string, 2> relativeDataDirs = {
                     executableDir + "../share/DuneCity/",
-                    executableDir + "../usr/share/DuneCity/",
                     executableDir + "../../share/DuneCity/",
                 };
                 for(const auto& relativeDataDir : relativeDataDirs) {
@@ -640,6 +638,7 @@ std::string getDuneLegacyDataDir() {
         }
 #endif
 
+#ifdef DUNELEGACY_DATADIR
         // Only use the compile-time install path if it actually exists
         // (i.e. the binary was installed, not run from a build directory)
         if(dataDir.empty()) {
