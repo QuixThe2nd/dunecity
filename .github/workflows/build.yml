@@ -274,7 +274,11 @@ jobs:
 
           tar -xzf "build/DuneCity-${VERSION}-Linux-x64.tar.gz" -C "$SMOKE_ROOT/tgz"
           TGZ_BIN=$(find "$SMOKE_ROOT/tgz" -type f -path '*/bin/dunecity' -print -quit)
+          TGZ_DATA=$(find "$SMOKE_ROOT/tgz" -type f -name 'DUNE.PAK' -print)
           APPIMAGE="build/DuneCity-${VERSION}-Linux-x86_64.AppImage"
+
+          echo "TGZ executable: ${TGZ_BIN:-missing}"
+          echo "TGZ DUNE.PAK: ${TGZ_DATA:-missing}"
 
           if [ -z "$TGZ_BIN" ] || [ ! -x "$TGZ_BIN" ]; then
             echo "::error title=TGZ smoke setup failed::Packaged dunecity executable was not found or is not executable."
@@ -319,10 +323,13 @@ jobs:
             fi
           }
 
-          smoke_launch tgz "$TGZ_BIN"
-          APPIMAGE_EXTRACT_AND_RUN=1 smoke_launch appimage "$APPIMAGE"
+          smoke_status=0
+          smoke_launch tgz "$TGZ_BIN" || smoke_status=1
+          APPIMAGE_EXTRACT_AND_RUN=1 smoke_launch appimage "$APPIMAGE" || smoke_status=1
+          exit "$smoke_status"
 
       - name: Upload Packages
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: DuneCity-Linux-Packages
