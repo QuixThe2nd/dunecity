@@ -5,6 +5,7 @@ param(
     [string]$AndroidNdk = "",
     [string]$VcpkgRoot = "",
     [string]$NativeBuildDir = "build-android-arm64-ndk",
+    [string]$GradleExecutable = "",
     [switch]$BuildApk
 )
 
@@ -91,12 +92,24 @@ if (-not (Test-Path -LiteralPath $nativeLib)) {
     throw "Missing native library: $nativeLib. Build target 'dunecity' in $NativeBuildDir first."
 }
 
-$sdlSourceRoot = Join-Path $VcpkgRoot "buildtrees\sdl2\src"
-$sdlSource = Get-ChildItem -LiteralPath $sdlSourceRoot -Directory |
-    Where-Object { Test-Path -LiteralPath (Join-Path $_.FullName "android-project\app\src\main\java\org\libsdl\app\SDLActivity.java") } |
-    Select-Object -First 1
+$sdlSourceRoots = @(
+    (Join-Path $VcpkgRoot "buildtrees\sdl2\src"),
+    (Join-Path $VcpkgRoot "vcpkg_installed\vcpkg\blds\sdl2\src")
+) | Select-Object -Unique
+$sdlSource = $null
+foreach ($sdlSourceRoot in $sdlSourceRoots) {
+    if (-not (Test-Path -LiteralPath $sdlSourceRoot)) {
+        continue
+    }
+    $sdlSource = Get-ChildItem -LiteralPath $sdlSourceRoot -Directory |
+        Where-Object { Test-Path -LiteralPath (Join-Path $_.FullName "android-project\app\src\main\java\org\libsdl\app\SDLActivity.java") } |
+        Select-Object -First 1
+    if ($null -ne $sdlSource) {
+        break
+    }
+}
 if ($null -eq $sdlSource) {
-    throw "Could not find SDL android-project under $sdlSourceRoot"
+    throw "Could not find SDL android-project under: $($sdlSourceRoots -join ', ')"
 }
 
 $stageDir = Join-Path $RepoRoot "build-android-apk"
@@ -364,7 +377,15 @@ if ($BuildApk) {
     $env:Path = "$env:JAVA_HOME\bin;$AndroidSdk\platform-tools;$env:Path"
     Push-Location $stageDir
     try {
-        & .\gradlew.bat assembleDebug --no-daemon
+        $gradleCommand = if ([string]::IsNullOrWhiteSpace($GradleExecutable)) {
+            Join-Path $stageDir "gradlew.bat"
+        } else {
+            Get-FullPath $GradleExecutable
+        }
+        if (-not (Test-Path -LiteralPath $gradleCommand)) {
+            throw "Missing Gradle executable: $gradleCommand"
+        }
+        & $gradleCommand assembleDebug --no-daemon --max-workers=1
         if ($LASTEXITCODE -ne 0) {
             throw "Gradle assembleDebug failed with exit code $LASTEXITCODE"
         }

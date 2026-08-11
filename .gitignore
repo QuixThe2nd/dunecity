@@ -88,6 +88,7 @@ documents/
 dist/
 build0/
 analysis/
+/_CPack_Packages/
 
 # Imported Micropolis sprites — committed so CI doesn't regenerate each build.
 # categories/roads/ is NOT ignored — GFXManager loads road tiles from there.
