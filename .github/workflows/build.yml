@@ -471,6 +471,9 @@ jobs:
           fi
 
       - name: Update dunelegacy.com website
+        # Release assets are already public at this point. A stale cross-repo
+        # deploy key must not turn a successful platform release red.
+        continue-on-error: true
         env:
           WEBSITE_DEPLOY_KEY: ${{ secrets.WEBSITE_DEPLOY_KEY }}
           TAG: ${{ github.ref_name }}
