@@ -33,6 +33,27 @@ left drag             box-select units
 right click / press   action command, move/attack/cancel contextual cursor
 ```
 
+External mice use Android's native system cursor rather than SDL color
+cursors. The Video options expose three cursor policies:
+
+```text
+Auto      show for physical mouse input and hide for touch input
+Hidden    always hide
+Visible   always show, including Mentat, briefing, gameplay, and editor screens
+```
+
+Android may reset pointer visibility while changing SDL views or window
+focus. The runtime therefore reapplies the selected policy across menu,
+cutscene, gameplay, and map-editor transitions.
+
+## Android TV
+
+The generated APK supports both the standard Android launcher and Android
+TV's Leanback launcher. It declares touchscreen, gamepad, Bluetooth, USB host,
+and Leanback support as optional, includes a 320x180 TV banner, and remains
+locked to landscape. This makes the app discoverable from launchers such as
+Nvidia Shield Home while preserving phone and tablet installation.
+
 The next control layer should add explicit map panning. A safe default is
 two-finger drag for camera pan, leaving one-finger drag for selection boxes.
 
@@ -42,10 +63,11 @@ The PC needs these discoverable by Android Studio or environment variables:
 
 ```text
 Android SDK
-Android NDK
-CMake for Android
-JDK
-Gradle or Android Gradle Plugin wrapper
+Android NDK 26 or newer (28.2 is the currently tested local toolchain)
+CMake 3.24 or newer
+Ninja
+JDK 17
+vcpkg (VCPKG_ROOT or the Visual Studio vcpkg component)
 ```
 
 Expected variables:
@@ -70,6 +92,13 @@ call scripts\android-env.cmd
 
 Dune2R builds a native Android shared library and debug APK with this toolchain.
 Runtime was verified on an Android 13 Ulefone Armor 21 over ADB.
+
+The packager records a toolchain fingerprint in the native build directory.
+It includes the checkout path, SDK/NDK and vcpkg locations and versions, CMake,
+Ninja, both CMake project files, and `vcpkg.json`. If any requirement changes, only the
+Android native build directory is recreated. This prevents CMake or vcpkg from
+reusing absolute paths and compiler identities from an older checkout while
+preserving a warm build when the toolchain is unchanged.
 
 ## Verified Build Status
 
@@ -132,19 +161,18 @@ two-finger right-click gesture
 
 ## Build Commands
 
-Configure and build the native Android library:
-
-```bat
-call scripts\android-env.cmd
-cmake -S . -B build-android-arm64-ndk -G Ninja -DCMAKE_TOOLCHAIN_FILE=%VCPKG_ROOT%/scripts/buildsystems/vcpkg.cmake -DVCPKG_CHAINLOAD_TOOLCHAIN_FILE=%ANDROID_NDK_HOME%/build/cmake/android.toolchain.cmake -DVCPKG_TARGET_TRIPLET=arm64-android -DVCPKG_HOST_TRIPLET=x64-windows -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-28 -DANDROID_STL=c++_shared -DCMAKE_BUILD_TYPE=Release
-cmake --build build-android-arm64-ndk --target dunecity -- -j 4
-```
-
-Stage and build the debug APK:
+Configure the native Android library, build it with one worker, stage the
+payload, and build the APK:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File scripts\package-android-apk.ps1 -BuildApk
+powershell -ExecutionPolicy Bypass -File scripts\package-android-apk.ps1 -BuildNative -BuildApk -NativeBuildJobs 1
 ```
+
+The script discovers Visual Studio's vcpkg component when `VCPKG_ROOT` is not
+set. NDK discovery ignores incomplete or cloud-placeholder installations that
+do not contain `android.toolchain.cmake`, then checks the selected SDK and the
+standard per-user SDK. Pass `-AndroidSdk`, `-AndroidNdk`, or `-VcpkgRoot` only
+to override the discovered requirements.
 
 Install and push the staged payload after a device is attached:
 

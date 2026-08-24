@@ -32,6 +32,7 @@
 #include <misc/format.h>
 #include <misc/DiscordManager.h>
 #include <misc/TouchInput.h>
+#include <CursorManager.h>
 
 #include <mod/ModManager.h>
 
@@ -1090,6 +1091,7 @@ void MapEditor::processInput() {
     SDL_Event event;
 
     while(SDL_PollEvent(&event)) {
+        updateCursorVisibilityForInput(event);
         if(TouchInput::translateTouchEvent(event)) {
             continue;
         }

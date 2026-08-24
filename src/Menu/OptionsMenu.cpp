@@ -210,8 +210,17 @@ OptionsMenu::OptionsMenu() : MenuBase()
     showWatermarkCheckbox.setText(_("Show Watermark"));
     showWatermarkCheckbox.setChecked(settings.video.showWatermark);
     showWatermarkCheckbox.setOnClick(std::bind(&OptionsMenu::onChangeOption, this, true));
-    videoHBox2.addWidget(&showWatermarkCheckbox, 155);
-    videoHBox2.addWidget(Label::create(_("Cursor Scale")), 90);
+    videoHBox2.addWidget(&showWatermarkCheckbox, 135);
+    videoHBox2.addWidget(Label::create(_("Cursor")), 52);
+    cursorVisibilityDropDownBox.addEntry(_("Auto"), 0);
+    cursorVisibilityDropDownBox.addEntry(_("Hidden"), 1);
+    cursorVisibilityDropDownBox.addEntry(_("Visible"), 2);
+    int cursorVisibilityIndex = settings.video.cursorVisibility >= 0 && settings.video.cursorVisibility <= 2
+        ? settings.video.cursorVisibility : 0;
+    cursorVisibilityDropDownBox.setSelectedItem(cursorVisibilityIndex);
+    cursorVisibilityDropDownBox.setOnSelectionChange(std::bind(&OptionsMenu::onChangeOption, this, std::placeholders::_1));
+    videoHBox2.addWidget(&cursorVisibilityDropDownBox, 78);
+    videoHBox2.addWidget(Label::create(_("Scale")), 45);
     cursorScaleDropDownBox.addEntry(_("Auto"), 0);
     cursorScaleDropDownBox.addEntry("1x", 1);
     cursorScaleDropDownBox.addEntry("2x", 2);
@@ -333,6 +342,7 @@ void OptionsMenu::onChangeOption(bool bInteractive) {
     bChanged |= (settings.video.frameLimit != frameLimitCheckbox.isChecked());
     bChanged |= (settings.video.scaler != scalerDropDownBox.getSelectedEntry());
     bChanged |= (settings.video.showWatermark != showWatermarkCheckbox.isChecked());
+    bChanged |= (settings.video.cursorVisibility != cursorVisibilityDropDownBox.getSelectedEntryIntData());
     bChanged |= (settings.video.cursorScale != cursorScaleDropDownBox.getSelectedEntryIntData());
 
     bChanged |= (settings.audio.playSFX != playSFXCheckbox.isChecked());
@@ -402,6 +412,7 @@ void OptionsMenu::onOptionsOK() {
     settings.video.fullscreen = fullScreenCheckbox.isChecked();
     settings.video.frameLimit = frameLimitCheckbox.isChecked();
     settings.video.showWatermark = showWatermarkCheckbox.isChecked();
+    settings.video.cursorVisibility = cursorVisibilityDropDownBox.getSelectedEntryIntData();
     settings.video.cursorScale = cursorScaleDropDownBox.getSelectedEntryIntData();
 
     settings.audio.playSFX = playSFXCheckbox.isChecked();
@@ -471,6 +482,7 @@ void OptionsMenu::saveConfiguration2File() {
     myINIFile.setStringValue("Video","Scaler",settings.video.scaler);
     myINIFile.setBoolValue("Video","RotateUnitGraphics",settings.video.rotateUnitGraphics);
     myINIFile.setBoolValue("Video","Show Watermark",settings.video.showWatermark);
+    myINIFile.setIntValue("Video","Cursor Visibility",settings.video.cursorVisibility);
     myINIFile.setIntValue("Video","Cursor Scale",settings.video.cursorScale);
 
     myINIFile.setStringValue("General","Player Name",settings.general.playerName);

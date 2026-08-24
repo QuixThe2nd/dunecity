@@ -1025,6 +1025,7 @@ Coord QuantBot::findPlaceLocation(Uint32 itemID) {
 
 			// Count adjacent friendly structures and track unique buildings per side
 			int adjacentFriendlyStructureTiles = 0;
+			int oneTileGapFriendlyStructureTiles = 0;
 			std::set<Uint32> northSideBuildings;  // Buildings touching north side
 			std::set<Uint32> southSideBuildings;  // Buildings touching south side
 			std::set<Uint32> eastSideBuildings;   // Buildings touching east side
@@ -1082,6 +1083,23 @@ Coord QuantBot::findPlaceLocation(Uint32 itemID) {
 		// Don't penalize tiles outside map - edge placement should be encouraged
 			}
 		}
+
+		// A second perimeter identifies structures separated by exactly one tile.
+		// This lets some bases form lanes and courtyards without using randomness,
+		// which would risk multiplayer lockstep divergence.
+		for (int i = placeLocationX - 2; i <= placeLocationEndX + 1; i++) {
+			for (int j = placeLocationY - 2; j <= placeLocationEndY + 1; j++) {
+				const bool onOuterRing = (i == placeLocationX - 2 || i == placeLocationEndX + 1
+					|| j == placeLocationY - 2 || j == placeLocationEndY + 1);
+				if (!onOuterRing || !getMap().tileExists(i, j)) {
+					continue;
+				}
+				const Tile* tile = getMap().getTile(i, j);
+				if (tile->hasAStructure() && tile->getOwner() == getHouse()->getHouseID()) {
+					oneTileGapFriendlyStructureTiles++;
+				}
+			}
+		}
 		
 	// Penalty if any single side is touching multiple different buildings (gap-filling)
 	int sidesWithMultipleBuildings = 0;
@@ -1094,6 +1112,30 @@ Coord QuantBot::findPlaceLocation(Uint32 itemID) {
 		// BAD: At least one side is touching multiple buildings (gap-filling)
 		// Penalty should be smaller than benefit of adjacency to discourage but not completely prohibit
 		locationScore -= 10 * sidesWithMultipleBuildings;
+	}
+
+	// Deterministically vary ordinary base spacing. One third of placements
+	// prefer a one-cell lane, one third remain compact, and one third are
+	// neutral. Defensive pieces, slabs, and refineries retain their specialist
+	// placement behavior.
+	const bool supportsVariedSpacing = !(currentGame && currentGame->isCitySimEnabled())
+		&& getHouse()->getNumStructures() >= 3
+		&& itemID != Structure_GunTurret
+		&& itemID != Structure_RocketTurret
+		&& itemID != Structure_Wall
+		&& itemID != Structure_Slab1
+		&& itemID != Structure_Slab4
+		&& itemID != Structure_Refinery;
+	if (supportsVariedSpacing) {
+		const int spacingStyle = (getHouse()->getHouseID() * 37 + itemID * 17
+			+ getHouse()->getNumStructures()) % 3;
+		if (spacingStyle == 0) {
+			locationScore -= adjacentFriendlyStructureTiles * 16;
+			locationScore += std::min(oneTileGapFriendlyStructureTiles, 8) * 6;
+		} else if (spacingStyle == 2) {
+			locationScore -= adjacentFriendlyStructureTiles * 5;
+			locationScore += std::min(oneTileGapFriendlyStructureTiles, 4) * 2;
+		}
 	}
 
 	// Bonus for building on concrete tiles
@@ -1754,13 +1796,14 @@ void QuantBot::build(int militaryValue) {
 	}
 
 	int money = getHouse()->getCredits();
+	const bool citySimEnabled = currentGame && currentGame->isCitySimEnabled();
 
 	// Per-house city stats — CitySimulation now tracks these per player.
 	int ownResPop = 0, ownComPop = 0, ownIndPop = 0, ownTotalPop = 0;
 	int ownAvgLandValue = 0;
 	int16_t ownResValve = 0, ownComValve = 0, ownIndValve = 0;
 	bool ownHasStadium = false, ownHasAirport = false;
-	if (currentGame && currentGame->isCitySimEnabled()) {
+	if (citySimEnabled) {
 		auto* citySim = currentGame->getCitySimulation();
 		if (citySim) {
 			const auto& hs = citySim->getHouseState(getHouse()->getHouseID());
@@ -1950,6 +1993,40 @@ void QuantBot::build(int militaryValue) {
 	
 	capAndRedistribute();
 
+	// Preserve a visible combined-arms contingent at every difficulty. Higher
+	// difficulties still lean harder on efficient heavy units, while lower
+	// difficulties field more infantry and light vehicles.
+	int lightVehiclePercent = 12;
+	int infantryPercent = 10;
+	switch (difficulty) {
+		case Difficulty::Defend:
+		case Difficulty::Easy:
+			lightVehiclePercent = 24;
+			infantryPercent = 18;
+			break;
+		case Difficulty::Medium:
+			lightVehiclePercent = 20;
+			infantryPercent = 15;
+			break;
+		case Difficulty::Hard:
+			lightVehiclePercent = 16;
+			infantryPercent = 12;
+			break;
+		case Difficulty::Brutal:
+			break;
+	}
+
+	int lightVehicleValue = data[Unit_Trike][houseID].price * itemCount[Unit_Trike]
+		+ data[Unit_RaiderTrike][houseID].price * itemCount[Unit_RaiderTrike]
+		+ data[Unit_Quad][houseID].price * itemCount[Unit_Quad];
+	int infantryValue = data[Unit_Soldier][houseID].price * itemCount[Unit_Soldier]
+		+ data[Unit_Infantry][houseID].price * itemCount[Unit_Infantry]
+		+ data[Unit_Trooper][houseID].price * itemCount[Unit_Trooper]
+		+ data[Unit_Troopers][houseID].price * itemCount[Unit_Troopers];
+	int lightVehicleCount = itemCount[Unit_Trike] + itemCount[Unit_RaiderTrike] + itemCount[Unit_Quad];
+	int infantryCount = itemCount[Unit_Soldier] + itemCount[Unit_Infantry]
+		+ itemCount[Unit_Trooper] + itemCount[Unit_Troopers];
+
 	// lets analyse damage inflicted
 
 	if (emitStatsLog) {
@@ -2068,12 +2145,13 @@ void QuantBot::build(int militaryValue) {
 
 			case Structure_LightFactory: {
 				if (!pBuilder->isUpgrading()
-					&& (gameMode == GameMode::Campaign || (currentGame && currentGame->isCitySimEnabled()))
-					&& money > (currentGame && currentGame->isCitySimEnabled() ? 500 : 1000)
-					&& itemCount[Structure_HeavyFactory] == 0  // Only produce from Light Factory if no Heavy Factory exists
+					&& money > (citySimEnabled ? 500 : 700)
 					&& pBuilder->getProductionQueueSize() < 1
 					&& pBuilder->getBuildListSize() > 0
-					&& militaryValue < militaryValueLimit) {
+					&& militaryValue < militaryValueLimit
+					&& ((citySimEnabled && itemCount[Structure_HeavyFactory] == 0)
+						|| (!citySimEnabled && (lightVehicleCount < 2
+							|| lightVehicleValue * 100 < std::max(militaryValue, 1) * lightVehiclePercent)))) {
 
 					if (pBuilder->getCurrentUpgradeLevel() < pBuilder->getMaxUpgradeLevel() && getHouse()->getCredits() > 1500) {
 						doUpgrade(pBuilder);
@@ -2081,32 +2159,76 @@ void QuantBot::build(int militaryValue) {
 					else if (!getHouse()->isGroundUnitLimitReached()) {
 						Uint32 itemID = NONE_ID;
 
-						if (pBuilder->isAvailableToBuild(Unit_RaiderTrike)) {
-							itemID = Unit_RaiderTrike;
-						}
-						else if (pBuilder->isAvailableToBuild(Unit_Quad)) {
-							itemID = Unit_Quad;
-						}
-						else if (pBuilder->isAvailableToBuild(Unit_Trike)) {
-							itemID = Unit_Trike;
+						for (Uint32 candidate : {Unit_Trike, Unit_RaiderTrike, Unit_Quad}) {
+							if (pBuilder->isAvailableToBuild(candidate)
+								&& (itemID == NONE_ID || itemCount[candidate] < itemCount[itemID])) {
+								itemID = candidate;
+							}
 						}
 
 						if (itemID != NONE_ID) {
 							produceItemWithLogging(itemID);
 							itemCount[itemID]++;
+							lightVehicleCount++;
+							lightVehicleValue += data[itemID][houseID].price;
+							militaryValue += data[itemID][houseID].price;
 						}
 					}
 				}
 			} break;
 
 		case Structure_WOR: {
-			// QuantBot does not produce infantry from WOR - disabled
-			// Units will not be produced even if WOR exists
+			if (!citySimEnabled
+				&& !pBuilder->isUpgrading()
+				&& pBuilder->getProductionQueueSize() < 1
+				&& pBuilder->getBuildListSize() > 0
+				&& money > 450
+				&& militaryValue < militaryValueLimit
+				&& !getHouse()->isGroundUnitLimitReached()
+				&& (infantryCount < 3
+					|| infantryValue * 100 < std::max(militaryValue, 1) * infantryPercent)) {
+				Uint32 itemID = NONE_ID;
+				for (Uint32 candidate : {Unit_Trooper, Unit_Troopers}) {
+					if (pBuilder->isAvailableToBuild(candidate)
+						&& (itemID == NONE_ID || itemCount[candidate] < itemCount[itemID])) {
+						itemID = candidate;
+					}
+				}
+				if (itemID != NONE_ID) {
+					produceItemWithLogging(itemID);
+					itemCount[itemID]++;
+					infantryCount++;
+					infantryValue += data[itemID][houseID].price;
+					militaryValue += data[itemID][houseID].price;
+				}
+			}
 		} break;
 
 		case Structure_Barracks: {
-			// QuantBot does not produce infantry from Barracks - disabled
-			// Units will not be produced even if Barracks exists
+			if (!citySimEnabled
+				&& !pBuilder->isUpgrading()
+				&& pBuilder->getProductionQueueSize() < 1
+				&& pBuilder->getBuildListSize() > 0
+				&& money > 300
+				&& militaryValue < militaryValueLimit
+				&& !getHouse()->isGroundUnitLimitReached()
+				&& (infantryCount < 3
+					|| infantryValue * 100 < std::max(militaryValue, 1) * infantryPercent)) {
+				Uint32 itemID = NONE_ID;
+				for (Uint32 candidate : {Unit_Soldier, Unit_Infantry}) {
+					if (pBuilder->isAvailableToBuild(candidate)
+						&& (itemID == NONE_ID || itemCount[candidate] < itemCount[itemID])) {
+						itemID = candidate;
+					}
+				}
+				if (itemID != NONE_ID) {
+					produceItemWithLogging(itemID);
+					itemCount[itemID]++;
+					infantryCount++;
+					infantryValue += data[itemID][houseID].price;
+					militaryValue += data[itemID][houseID].price;
+				}
+			}
 		} break;
 
 				case Structure_HighTechFactory: {
@@ -2829,6 +2951,19 @@ void QuantBot::build(int militaryValue) {
 					&& money > 500) {
 					itemID = Structure_LightFactory;
 				}
+				// Infantry production is part of the normal combined-arms build.
+				if (itemID == NONE_ID && !skipRemainingStructureLogic && !isCitySim
+					&& itemCount[Structure_Barracks] == 0
+					&& pBuilder->isAvailableToBuild(Structure_Barracks)
+					&& money > 400) {
+					itemID = Structure_Barracks;
+				}
+				if (itemID == NONE_ID && !skipRemainingStructureLogic && !isCitySim
+					&& itemCount[Structure_WOR] == 0
+					&& pBuilder->isAvailableToBuild(Structure_WOR)
+					&& money > 600) {
+					itemID = Structure_WOR;
+				}
 				// 8. Repair Yard (only if starport or heavy factory exists)
 				if (itemID == NONE_ID && !skipRemainingStructureLogic
 					&& itemCount[Structure_RepairYard] == 0
@@ -3118,6 +3253,26 @@ void QuantBot::build(int militaryValue) {
 								itemID = Structure_Palace;
 							}
 				}
+				// Round out vanilla bases with regular turrets and short wall lines.
+				// Fixed count targets keep this deterministic and prevent defence spam.
+				if (itemID == NONE_ID && !skipRemainingStructureLogic && !isCitySim
+					&& itemCount[Structure_HeavyFactory] > 0 && money > 1000) {
+					const int productionBuildings = itemCount[Structure_LightFactory]
+						+ itemCount[Structure_HeavyFactory] + itemCount[Structure_Barracks]
+						+ itemCount[Structure_WOR];
+					const int desiredGunTurrets = 1 + productionBuildings / 3;
+					const int desiredWalls = 2 + (itemCount[Structure_GunTurret]
+						+ itemCount[Structure_RocketTurret]) * 2;
+					if (itemCount[Structure_GunTurret] < desiredGunTurrets
+						&& pBuilder->isAvailableToBuild(Structure_GunTurret)
+						&& findEffectiveTurretPlaceLocation(Structure_GunTurret).isValid()) {
+						itemID = Structure_GunTurret;
+					} else if (itemCount[Structure_Wall] < desiredWalls
+						&& pBuilder->isAvailableToBuild(Structure_Wall)
+						&& findPlaceLocation(Structure_Wall).isValid()) {
+						itemID = Structure_Wall;
+					}
+				}
 				// 18. City zone structures (when city sim is active)
 				// Zones are 2x2 structures built via the CY; runZoneGrowth()
 				// requires an actual structure object, so tile-flag placement
@@ -3231,7 +3386,14 @@ void QuantBot::build(int militaryValue) {
 				}
 			}
 
-			if (pBuilder->isAvailableToBuild(itemID) && findPlaceLocation(itemID).isValid() && itemID != NONE_ID) {
+			Coord selectedPlaceLocation = Coord::Invalid();
+			if (itemID != NONE_ID && pBuilder->isAvailableToBuild(itemID)) {
+				selectedPlaceLocation = (itemID == Structure_RocketTurret || itemID == Structure_GunTurret)
+					? findEffectiveTurretPlaceLocation(itemID)
+					: findPlaceLocation(itemID);
+			}
+
+			if (selectedPlaceLocation.isValid()) {
 				// Pre-lay concrete only for specific structures that need max health:
 				// - Heavy Factory (upgrades need full health)
 				// - High Tech Factory (upgrades need full health)
@@ -3247,7 +3409,7 @@ void QuantBot::build(int militaryValue) {
 							&& pBuilder->getCurrentUpgradeLevel() >= 2));
 
 				if (needsConcrete) {
-					Coord location = findPlaceLocation(itemID);
+					Coord location = selectedPlaceLocation;
 					Coord structureSize = getStructureSize(itemID);
 
 					// Determine starting corner based on build range (like AIPlayer)
@@ -3298,7 +3460,7 @@ void QuantBot::build(int militaryValue) {
 				produceItemWithLogging(itemID);
 				itemCount[itemID]++;
 			}
-			else if (itemID != NONE_ID && pBuilder->isAvailableToBuild(itemID) && !findPlaceLocation(itemID).isValid()) {
+			else if (itemID != NONE_ID && pBuilder->isAvailableToBuild(itemID)) {
 				// Only build concrete slabs to expand buildable area for structures that need it:
 				// Heavy Factory, High Tech Factory, Rocket Turrets, and turret-related Windtraps
 				bool needsConcreteExpansion = (itemID == Structure_HeavyFactory

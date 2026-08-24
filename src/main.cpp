@@ -39,6 +39,7 @@
 #include <Menu/OptionsMenu.h>
 
 #include <misc/DiscordManager.h>
+#include <CursorManager.h>
 
 #include <misc/fnkdat.h>
 #include <misc/FileSystem.h>
@@ -217,7 +218,7 @@ void setVideoMode(int displayIndex)
     SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
     SDL_SetTextureScaleMode(screenTexture, SDL_ScaleModeNearest);
 
-    SDL_ShowCursor(SDL_ENABLE);
+    applyCursorVisibilitySetting();
 }
 
 void toogleFullscreen()
@@ -637,7 +638,7 @@ void showMissingFilesMessageBox() {
     }
 #endif
 
-    SDL_ShowCursor(SDL_ENABLE);
+    applyCursorVisibilitySetting();
 
     std::string instruction = "DuneCity uses the data files from original Dune II. The following files are missing:\n";
 
@@ -932,6 +933,7 @@ int main(int argc, char *argv[]) {
             settings.video.scaler = myINIFile.getStringValue("Video","Scaler","ScaleHD");
             settings.video.rotateUnitGraphics = myINIFile.getBoolValue("Video","RotateUnitGraphics",false);
             settings.video.showWatermark = myINIFile.getBoolValue("Video","Show Watermark",true);
+            settings.video.cursorVisibility = myINIFile.getIntValue("Video","Cursor Visibility",0);
             settings.video.cursorScale = myINIFile.getIntValue("Video","Cursor Scale",0);
             settings.audio.musicType = myINIFile.getStringValue("Audio","Music Type","adl");
             settings.audio.adlHarmonicStereo = myINIFile.getBoolValue("Audio","ADL Harmonic Stereo", false);
@@ -1279,8 +1281,8 @@ int main(int argc, char *argv[]) {
 
                 bFirstInit = false;
 
-                // Re-enable cursor for main menu (fixes Windows cursor visibility issue)
-                SDL_ShowCursor(SDL_ENABLE);
+                // Re-apply the selected cursor policy for the main menu.
+                applyCursorVisibilitySetting();
 
                 // Initialize Discord Rich Presence
                 DiscordManager::instance().initialize();

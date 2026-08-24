@@ -28,6 +28,22 @@
 
 namespace {
 
+#ifdef __ANDROID__
+bool autoCursorHasPhysicalMouse = false;
+#else
+bool autoCursorHasPhysicalMouse = true;
+#endif
+
+bool shouldShowCursor() {
+    if (settings.video.cursorVisibility == 1) {
+        return false;
+    }
+    if (settings.video.cursorVisibility == 2) {
+        return true;
+    }
+    return autoCursorHasPhysicalMouse;
+}
+
 // Scale an SDL_Surface up by an integer factor. Returns a new surface the
 // caller must SDL_FreeSurface() after use, or nullptr on failure.
 SDL_Surface* scaleSurface(SDL_Surface* src, int scale) {
@@ -171,7 +187,7 @@ SDL_Point findTopLeftOpaquePixel(SDL_Surface* surface) {
 }
 
 SDL_Cursor* createColorCursorSafe(SDL_Surface* source, int hotspotX, int hotspotY, int scale, SDL_SystemCursor fallback) {
-#if defined(_WIN32)
+#if defined(_WIN32) || defined(__ANDROID__)
     (void) source;
     (void) hotspotX;
     (void) hotspotY;
@@ -205,6 +221,64 @@ SDL_Cursor* createColorCursorSafe(SDL_Surface* source, int hotspotX, int hotspot
     return cursor;
 #endif
 }
+}
+
+void applyCursorVisibilitySetting() {
+    SDL_ShowCursor(shouldShowCursor() ? SDL_ENABLE : SDL_DISABLE);
+}
+
+void updateCursorVisibilityForInput(const SDL_Event& event) {
+#ifdef __ANDROID__
+    if (settings.video.cursorVisibility != 0) {
+        // SDL's Android activity and pointer-icon handling may change cursor
+        // visibility during focus and view transitions. Forced modes are
+        // authoritative, so restore them whenever input reaches the game.
+        applyCursorVisibilitySetting();
+        return;
+    }
+
+    bool visibilityChanged = false;
+    switch (event.type) {
+        case SDL_FINGERDOWN:
+        case SDL_FINGERMOTION:
+            if (autoCursorHasPhysicalMouse) {
+                autoCursorHasPhysicalMouse = false;
+                visibilityChanged = true;
+            }
+            break;
+
+        case SDL_MOUSEMOTION:
+            if (event.motion.which != SDL_TOUCH_MOUSEID && !autoCursorHasPhysicalMouse) {
+                autoCursorHasPhysicalMouse = true;
+                visibilityChanged = true;
+            }
+            break;
+
+        case SDL_MOUSEBUTTONDOWN:
+        case SDL_MOUSEBUTTONUP:
+            if (event.button.which != SDL_TOUCH_MOUSEID && !autoCursorHasPhysicalMouse) {
+                autoCursorHasPhysicalMouse = true;
+                visibilityChanged = true;
+            }
+            break;
+
+        case SDL_MOUSEWHEEL:
+            if (event.wheel.which != SDL_TOUCH_MOUSEID && !autoCursorHasPhysicalMouse) {
+                autoCursorHasPhysicalMouse = true;
+                visibilityChanged = true;
+            }
+            break;
+
+        default:
+            break;
+    }
+
+    if (visibilityChanged) {
+        applyCursorVisibilitySetting();
+    }
+#else
+    (void) event;
+#endif
 }
 
 CursorManager::CursorManager() : 
@@ -265,7 +339,7 @@ void CursorManager::initialize() {
     // Set default cursor
     if (normalCursor) {
         SDL_SetCursor(normalCursor);
-        SDL_ShowCursor(SDL_ENABLE);
+        applyCursorVisibilitySetting();
     }
 
     initialized = true;
@@ -311,6 +385,7 @@ void CursorManager::setCursorMode(int mode) {
 
     if (cursorToSet) {
         SDL_SetCursor(cursorToSet);
+        applyCursorVisibilitySetting();
     }
 }
 

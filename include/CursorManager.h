@@ -41,4 +41,13 @@ public:
     bool isInitialized() const { return initialized; }
 };
 
+/** Apply the configured cursor visibility mode immediately. */
+void applyCursorVisibilitySetting();
+
+/**
+ * Update automatic cursor visibility from an input event. On Android,
+ * physical mouse input shows the cursor while touch input hides it.
+ */
+void updateCursorVisibilityForInput(const SDL_Event& event);
+
 #endif // CURSORMANAGER_H

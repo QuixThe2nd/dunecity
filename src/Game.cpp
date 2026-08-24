@@ -49,6 +49,7 @@ std::mutex Game::performanceLogMutex;
 #include <misc/DiscordManager.h>
 #include <misc/SaveCompat.h>
 #include <misc/TouchInput.h>
+#include <CursorManager.h>
 
 #include <players/HumanPlayer.h>
 
@@ -1915,6 +1916,7 @@ void Game::doInput()
 {
     SDL_Event event;
     while(SDL_PollEvent(&event)) {
+        updateCursorVisibilityForInput(event);
         if(TouchInput::translateTouchEvent(event)) {
             continue;
         }

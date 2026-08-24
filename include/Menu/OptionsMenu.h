@@ -90,6 +90,7 @@ private:
     Checkbox    showTutorialHintsCheckbox;
     HBox        videoHBox2;
     Checkbox    showWatermarkCheckbox;
+    DropDownBox cursorVisibilityDropDownBox;
     DropDownBox cursorScaleDropDownBox;
 
     HBox        audioHBox;

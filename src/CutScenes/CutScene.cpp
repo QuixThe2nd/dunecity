@@ -21,6 +21,7 @@
 #include <FileClasses/FileManager.h>
 #include <FileClasses/music/MusicPlayer.h>
 #include <misc/SDL2pp.h>
+#include <CursorManager.h>
 
 #include <globals.h>
 #include <sand.h>
@@ -46,9 +47,14 @@ void CutScene::run()
     {
         const int frameStart = SDL_GetTicks();
 
+#ifdef __ANDROID__
+        applyCursorVisibilitySetting();
+#endif
+
         const int nextFrameTime = draw();
 
         while(SDL_PollEvent(&event)) {
+            updateCursorVisibilityForInput(event);
 
             //check the events
             switch (event.type)

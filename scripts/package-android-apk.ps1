@@ -6,10 +6,38 @@ param(
     [string]$VcpkgRoot = "",
     [string]$NativeBuildDir = "build-android-arm64-ndk",
     [string]$GradleExecutable = "",
+    [switch]$BuildNative,
+    [ValidateRange(1, 8)]
+    [int]$NativeBuildJobs = 1,
     [switch]$BuildApk
 )
 
 $ErrorActionPreference = "Stop"
+$MinimumAndroidNdkMajor = 26
+$GradleWrapperVersion = "8.9.0"
+$GradleWrapperSha256 = "498495120A03B9A6AB5D155F5DE3C8F0D986A449153702FB80FC80E134484F17"
+
+function Get-AndroidNdkMajor([string]$Path) {
+    $sourceProperties = Join-Path $Path "source.properties"
+    if (Test-Path -LiteralPath $sourceProperties) {
+        $revision = Select-String -LiteralPath $sourceProperties -Pattern '^Pkg\.Revision\s*=\s*([0-9]+)' |
+            Select-Object -First 1
+        if ($null -ne $revision) {
+            return [int]$revision.Matches[0].Groups[1].Value
+        }
+    }
+
+    $directoryName = Split-Path -Leaf $Path
+    if ($directoryName -match '^([0-9]+)(?:\.|$)') {
+        return [int]$Matches[1]
+    }
+    return 0
+}
+
+function Test-SupportedAndroidNdk([string]$Path) {
+    return (Test-Path -LiteralPath (Join-Path $Path "build\cmake\android.toolchain.cmake")) -and
+        ((Get-AndroidNdkMajor $Path) -ge $MinimumAndroidNdkMajor)
+}
 
 if ([string]::IsNullOrWhiteSpace($RepoRoot)) {
     $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
@@ -24,22 +52,42 @@ if ([string]::IsNullOrWhiteSpace($AndroidNdk)) {
     $AndroidNdk = $env:ANDROID_NDK_HOME
 }
 if ([string]::IsNullOrWhiteSpace($AndroidNdk)) {
-    $ndkRoot = Join-Path $AndroidSdk "ndk"
-    if (Test-Path -LiteralPath $ndkRoot) {
-        $latestNdk = Get-ChildItem -LiteralPath $ndkRoot -Directory | Sort-Object Name -Descending | Select-Object -First 1
-        if ($null -ne $latestNdk) {
-            $AndroidNdk = $latestNdk.FullName
+    $ndkRoots = @(
+        (Join-Path $AndroidSdk "ndk"),
+        (Join-Path $env:LOCALAPPDATA "Android\Sdk\ndk")
+    ) | Select-Object -Unique
+    foreach ($ndkRoot in $ndkRoots) {
+        if (Test-Path -LiteralPath $ndkRoot) {
+            $latestNdk = Get-ChildItem -LiteralPath $ndkRoot -Directory |
+                Where-Object { Test-SupportedAndroidNdk $_.FullName } |
+                Sort-Object Name -Descending |
+                Select-Object -First 1
+            if ($null -ne $latestNdk) {
+                $AndroidNdk = $latestNdk.FullName
+                break
+            }
         }
     }
 }
 if ([string]::IsNullOrWhiteSpace($AndroidNdk)) {
-    throw "Set ANDROID_NDK_HOME, install an NDK under the Android SDK ndk directory, or pass -AndroidNdk."
+    throw "Set ANDROID_NDK_HOME, install a complete NDK under an Android SDK ndk directory, or pass -AndroidNdk."
 }
 if ([string]::IsNullOrWhiteSpace($VcpkgRoot)) {
     $VcpkgRoot = $env:VCPKG_ROOT
 }
 if ([string]::IsNullOrWhiteSpace($VcpkgRoot)) {
-    throw "Set VCPKG_ROOT or pass -VcpkgRoot."
+    $vcpkgCandidates = @(
+        "${env:ProgramFiles(x86)}\Microsoft Visual Studio\2022\BuildTools\VC\vcpkg",
+        "$env:ProgramFiles\Microsoft Visual Studio\2022\Community\VC\vcpkg",
+        "$env:ProgramFiles\Microsoft Visual Studio\2022\Professional\VC\vcpkg",
+        "$env:ProgramFiles\Microsoft Visual Studio\2022\Enterprise\VC\vcpkg"
+    )
+    $VcpkgRoot = $vcpkgCandidates |
+        Where-Object { Test-Path -LiteralPath (Join-Path $_ "scripts\buildsystems\vcpkg.cmake") } |
+        Select-Object -First 1
+}
+if ([string]::IsNullOrWhiteSpace($VcpkgRoot)) {
+    throw "Set VCPKG_ROOT, pass -VcpkgRoot, or install the Visual Studio vcpkg component."
 }
 
 function Get-FullPath([string]$Path) {
@@ -66,7 +114,82 @@ function Convert-ToPropertiesPath([string]$Path) {
     return $Path.Replace("\", "\\").Replace(":", "\:")
 }
 
+function Write-AndroidTvBanner([string]$IconPath, [string]$Destination) {
+    Add-Type -AssemblyName System.Drawing
+
+    $banner = New-Object System.Drawing.Bitmap 320, 180
+    $graphics = [System.Drawing.Graphics]::FromImage($banner)
+    $icon = [System.Drawing.Image]::FromFile($IconPath)
+    $titleFont = New-Object System.Drawing.Font "Segoe UI", 22, ([System.Drawing.FontStyle]::Bold), ([System.Drawing.GraphicsUnit]::Pixel)
+    $subtitleFont = New-Object System.Drawing.Font "Segoe UI", 11, ([System.Drawing.FontStyle]::Regular), ([System.Drawing.GraphicsUnit]::Pixel)
+    $titleBrush = New-Object System.Drawing.SolidBrush ([System.Drawing.Color]::FromArgb(255, 232, 190, 82))
+    $subtitleBrush = New-Object System.Drawing.SolidBrush ([System.Drawing.Color]::FromArgb(255, 225, 225, 225))
+    $borderPen = New-Object System.Drawing.Pen ([System.Drawing.Color]::FromArgb(255, 155, 97, 26)), 2
+
+    try {
+        $graphics.Clear([System.Drawing.Color]::FromArgb(255, 18, 15, 12))
+        $graphics.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::NearestNeighbor
+        $graphics.PixelOffsetMode = [System.Drawing.Drawing2D.PixelOffsetMode]::Half
+        $graphics.DrawRectangle($borderPen, 5, 5, 309, 169)
+        $graphics.DrawImage($icon, 22, 26, 128, 128)
+        $graphics.DrawString("DUNE LEGACY", $titleFont, $titleBrush, 164, 59)
+        $graphics.DrawString("DuneCity", $subtitleFont, $subtitleBrush, 165, 94)
+
+        $parent = Split-Path -Parent $Destination
+        New-Item -ItemType Directory -Force -Path $parent | Out-Null
+        $banner.Save($Destination, [System.Drawing.Imaging.ImageFormat]::Png)
+    } finally {
+        $borderPen.Dispose()
+        $subtitleBrush.Dispose()
+        $titleBrush.Dispose()
+        $subtitleFont.Dispose()
+        $titleFont.Dispose()
+        $icon.Dispose()
+        $graphics.Dispose()
+        $banner.Dispose()
+    }
+}
+
+function Install-GradleWrapperJar([string]$Destination) {
+    $url = "https://raw.githubusercontent.com/gradle/gradle/v$GradleWrapperVersion/gradle/wrapper/gradle-wrapper.jar"
+    $temporaryPath = "$Destination.download"
+    try {
+        [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+        Invoke-WebRequest -Uri $url -OutFile $temporaryPath -UseBasicParsing
+        $actualHash = (Get-FileHash -LiteralPath $temporaryPath -Algorithm SHA256).Hash
+        if ($actualHash -ne $GradleWrapperSha256) {
+            throw "Gradle wrapper checksum mismatch: expected $GradleWrapperSha256, got $actualHash"
+        }
+        Move-Item -LiteralPath $temporaryPath -Destination $Destination -Force
+    } finally {
+        if (Test-Path -LiteralPath $temporaryPath) {
+            Remove-Item -LiteralPath $temporaryPath -Force
+        }
+    }
+}
+
 $RepoRoot = Get-FullPath $RepoRoot
+$AndroidSdk = Get-FullPath $AndroidSdk
+$AndroidNdk = Get-FullPath $AndroidNdk
+$VcpkgRoot = Get-FullPath $VcpkgRoot
+
+if (-not (Test-SupportedAndroidNdk $AndroidNdk)) {
+    $detectedMajor = Get-AndroidNdkMajor $AndroidNdk
+    throw "Android NDK 26 or newer is required; '$AndroidNdk' reports major version $detectedMajor or is incomplete."
+}
+
+$requiredPaths = @(
+    (Join-Path $AndroidSdk "platform-tools"),
+    (Join-Path $AndroidNdk "build\cmake\android.toolchain.cmake"),
+    (Join-Path $VcpkgRoot "scripts\buildsystems\vcpkg.cmake"),
+    (Join-Path $VcpkgRoot "vcpkg.exe")
+)
+foreach ($requiredPath in $requiredPaths) {
+    if (-not (Test-Path -LiteralPath $requiredPath)) {
+        throw "Missing Android build requirement: $requiredPath"
+    }
+}
+
 $cmakeProject = Select-String -LiteralPath (Join-Path $RepoRoot "CMakeLists.txt") -Pattern '^project\(DuneCity VERSION ([0-9]+)\.([0-9]+)\.([0-9]+) '
 if ($null -eq $cmakeProject) {
     throw "Could not read the DuneCity version from CMakeLists.txt."
@@ -87,12 +210,109 @@ if ($androidVersionCode -le 0 -or $androidVersionCode -gt 2100000000) {
 }
 $payloadVersion = $androidVersionName -replace '[^0-9A-Za-z._-]', '_'
 
-$nativeLib = Join-Path $RepoRoot "$NativeBuildDir\lib\libmain.so"
+$nativeBuildPath = if ([System.IO.Path]::IsPathRooted($NativeBuildDir)) {
+    Get-FullPath $NativeBuildDir
+} else {
+    Get-FullPath (Join-Path $RepoRoot $NativeBuildDir)
+}
+Assert-UnderRoot $nativeBuildPath $RepoRoot
+
+if ($BuildNative) {
+    # vcpkg's nested Android compiler probe reads these from the process
+    # environment rather than inheriting only top-level CMake -D arguments.
+    $env:ANDROID_HOME = $AndroidSdk
+    $env:ANDROID_SDK_ROOT = $AndroidSdk
+    $env:ANDROID_NDK_HOME = $AndroidNdk
+    $env:VCPKG_ROOT = $VcpkgRoot
+
+    $cmakeCommand = Get-Command cmake -ErrorAction Stop
+    $ninjaCommand = Get-Command ninja -ErrorAction Stop
+    $cmakeVersion = (& $cmakeCommand.Source --version | Select-Object -First 1).Trim()
+    $ninjaVersion = (& $ninjaCommand.Source --version | Select-Object -First 1).Trim()
+    $vcpkgVersion = (& (Join-Path $VcpkgRoot "vcpkg.exe") version | Select-Object -First 1).Trim()
+    $fingerprintData = [ordered]@{
+        schema = 2
+        repoRoot = $RepoRoot
+        androidSdk = $AndroidSdk
+        androidNdk = $AndroidNdk
+        vcpkgRoot = $VcpkgRoot
+        cmake = $cmakeVersion
+        ninja = $ninjaVersion
+        vcpkg = $vcpkgVersion
+        abi = "arm64-v8a"
+        platform = "android-28"
+        triplet = "arm64-android"
+        hostTriplet = "x64-windows"
+        cmakeListsSha256 = (Get-FileHash -LiteralPath (Join-Path $RepoRoot "CMakeLists.txt") -Algorithm SHA256).Hash
+        sourceCmakeListsSha256 = (Get-FileHash -LiteralPath (Join-Path $RepoRoot "src\CMakeLists.txt") -Algorithm SHA256).Hash
+        manifestSha256 = (Get-FileHash -LiteralPath (Join-Path $RepoRoot "vcpkg.json") -Algorithm SHA256).Hash
+    }
+    $fingerprintJson = $fingerprintData | ConvertTo-Json -Compress
+    $fingerprintBytes = [System.Text.Encoding]::UTF8.GetBytes($fingerprintJson)
+    $sha256 = [System.Security.Cryptography.SHA256]::Create()
+    try {
+        $fingerprint = ([System.BitConverter]::ToString($sha256.ComputeHash($fingerprintBytes))).Replace("-", "")
+    } finally {
+        $sha256.Dispose()
+    }
+    $stampPath = Join-Path $nativeBuildPath ".android-toolchain.json"
+    $cachedFingerprint = ""
+    if (Test-Path -LiteralPath $stampPath) {
+        try {
+            $cachedFingerprint = [string]((Get-Content -LiteralPath $stampPath -Raw | ConvertFrom-Json).fingerprint)
+        } catch {
+            $cachedFingerprint = ""
+        }
+    }
+
+    if ($cachedFingerprint -ne $fingerprint) {
+        Write-Host "Android toolchain requirements changed; recreating $nativeBuildPath"
+        Reset-Directory $nativeBuildPath $RepoRoot
+    } else {
+        Write-Host "Android toolchain requirements unchanged; reusing warm native build cache."
+    }
+
+    $configureArguments = @(
+        "-S", $RepoRoot,
+        "-B", $nativeBuildPath,
+        "-G", "Ninja",
+        "-DCMAKE_MAKE_PROGRAM=$($ninjaCommand.Source)",
+        "-DCMAKE_TOOLCHAIN_FILE=$(Join-Path $VcpkgRoot 'scripts\buildsystems\vcpkg.cmake')",
+        "-DVCPKG_CHAINLOAD_TOOLCHAIN_FILE=$(Join-Path $AndroidNdk 'build\cmake\android.toolchain.cmake')",
+        "-DVCPKG_TARGET_TRIPLET=arm64-android",
+        "-DVCPKG_HOST_TRIPLET=x64-windows",
+        "-DVCPKG_INSTALLED_DIR=$(Join-Path $nativeBuildPath 'vcpkg_installed')",
+        "-DANDROID_ABI=arm64-v8a",
+        "-DANDROID_PLATFORM=android-28",
+        "-DANDROID_STL=c++_shared",
+        "-DCMAKE_BUILD_TYPE=Release",
+        "-DDUNECITY_BUILD_TESTS=OFF"
+    )
+    & $cmakeCommand.Source @configureArguments
+    if ($LASTEXITCODE -ne 0) {
+        throw "Android CMake configure failed with exit code $LASTEXITCODE"
+    }
+
+    [ordered]@{
+        fingerprint = $fingerprint
+        requirements = $fingerprintData
+    } | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $stampPath -Encoding ASCII
+
+    & $cmakeCommand.Source --build $nativeBuildPath --target dunecity --parallel $NativeBuildJobs
+    if ($LASTEXITCODE -ne 0) {
+        throw "Android native build failed with exit code $LASTEXITCODE"
+    }
+
+}
+
+$nativeLib = Join-Path $nativeBuildPath "lib\libmain.so"
 if (-not (Test-Path -LiteralPath $nativeLib)) {
-    throw "Missing native library: $nativeLib. Build target 'dunecity' in $NativeBuildDir first."
+    throw "Missing native library: $nativeLib. Run this script with -BuildNative."
 }
 
 $sdlSourceRoots = @(
+    (Join-Path $nativeBuildPath "vcpkg_installed\vcpkg\blds\sdl2\src"),
+    (Join-Path $nativeBuildPath "vcpkg_installed\vcpkg\buildtrees\sdl2\src"),
     (Join-Path $VcpkgRoot "buildtrees\sdl2\src"),
     (Join-Path $VcpkgRoot "vcpkg_installed\vcpkg\blds\sdl2\src")
 ) | Select-Object -Unique
@@ -119,6 +339,9 @@ Reset-Directory $payloadDir $RepoRoot
 
 $sdlAndroidProject = Join-Path $sdlSource.FullName "android-project"
 Copy-Item -Path (Join-Path $sdlAndroidProject "*") -Destination $stageDir -Recurse -Force
+
+$wrapperJar = Join-Path $stageDir "gradle\wrapper\gradle-wrapper.jar"
+Install-GradleWrapperJar $wrapperJar
 
 $jniDir = Join-Path $stageDir "app\jni"
 if (Test-Path -LiteralPath $jniDir) {
@@ -210,6 +433,7 @@ $manifest = @'
     <uses-feature android:name="android.hardware.gamepad" android:required="false" />
     <uses-feature android:name="android.hardware.usb.host" android:required="false" />
     <uses-feature android:name="android.hardware.type.pc" android:required="false" />
+    <uses-feature android:name="android.software.leanback" android:required="false" />
 
     <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.INTERNET" />
@@ -218,7 +442,10 @@ $manifest = @'
     <application
         android:label="@string/app_name"
         android:icon="@mipmap/ic_launcher"
+        android:banner="@drawable/tv_banner"
         android:allowBackup="true"
+        android:isGame="true"
+        android:appCategory="game"
         android:theme="@style/AppTheme"
         android:hardwareAccelerated="true"
         android:extractNativeLibs="true">
@@ -235,6 +462,10 @@ $manifest = @'
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
             </intent-filter>
         </activity>
     </application>
@@ -342,6 +573,8 @@ if (Test-Path -LiteralPath $iconSource) {
         New-Item -ItemType Directory -Force -Path $iconDir | Out-Null
         Copy-Item -LiteralPath $iconSource -Destination (Join-Path $iconDir "ic_launcher.png") -Force
     }
+
+    Write-AndroidTvBanner $iconSource (Join-Path $stageDir "app\src\main\res\drawable-xhdpi\tv_banner.png")
 }
 
 $jniLibsArm64 = Join-Path $stageDir "app\src\main\jniLibs\arm64-v8a"

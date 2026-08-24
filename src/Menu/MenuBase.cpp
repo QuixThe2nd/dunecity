@@ -25,6 +25,7 @@
 #include <misc/draw_util.h>
 #include <misc/DiscordManager.h>
 #include <misc/TouchInput.h>
+#include <CursorManager.h>
 
 #include <globals.h>
 
@@ -56,6 +57,13 @@ int MenuBase::showMenu() {
     while(!quiting) {
         int frameStart = SDL_GetTicks();
 
+#ifdef __ANDROID__
+        // Android may reset pointer visibility when SDL views or windows
+        // transition. Keep Auto/Hidden/Visible effective in every menu,
+        // including Mentat and briefing screens.
+        applyCursorVisibilitySetting();
+#endif
+
         update();
 
         // Update Discord Rich Presence callbacks
@@ -77,6 +85,7 @@ int MenuBase::showMenu() {
         SDL_RenderPresent(renderer);
 
         while(SDL_PollEvent(&event)) {
+            updateCursorVisibilityForInput(event);
             if(TouchInput::translateTouchEvent(event)) {
                 continue;
             }
