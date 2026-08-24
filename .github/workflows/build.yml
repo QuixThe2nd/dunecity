@@ -448,11 +448,13 @@ jobs:
             echo
             echo "**Downloads** (attached below):"
             echo "- Windows: \`DuneCity-*.zip\`"
-            echo "- macOS (when available): \`DuneCity-*.dmg\`"
             echo "- Linux: \`.AppImage\` (recommended) / \`.deb\` / \`.rpm\` / \`.tar.gz\`"
             if compgen -G "dist/macos/*.dmg" > /dev/null; then
+              echo "- macOS: \`DuneCity-*.dmg\`"
               echo
               echo "**Running on macOS:** the build is ad-hoc signed, so Gatekeeper blocks it on first launch (\"dunecity.app was blocked to protect your Mac\"). It's not damaged — approve it once: **System Settings → Privacy & Security → Open Anyway** (macOS 15/26), or right-click the app → **Open** on macOS 14 and earlier. Details: https://dunelegacy.com/dune-city.html#macos-fix"
+            else
+              echo "- macOS: no build was produced for this release. The last stable Mac build remains Dune City 1.0.359."
             fi
             echo
             echo "Upgrading from a previous Dune City install? Your built-in mod INI files are reseeded automatically on first launch."
