@@ -23,6 +23,7 @@
 #include <players/QuantBotConfig.h>
 
 #include <DataTypes.h>
+#include <limits>
 #include <set>
 #include <map>
 #include <unordered_map>
@@ -96,6 +97,8 @@ private:
     Coord squadRetreatLocation = Coord::Invalid();
     bool supportMode = false;
     Uint32 lastStatsLogCycle = 0;
+    Uint32 ixEligibleSinceCycle = std::numeric_limits<Uint32>::max();
+    Uint32 palaceEligibleSinceCycle = std::numeric_limits<Uint32>::max();
     
     std::map<Uint32, int> idleHarvesterCounters; ///< Track idle time for each harvester (objectID -> cycle count)
     std::map<Uint32, int> harvesterMovingCounters; ///< Track continuous movement time (objectID -> cycle count)

@@ -1820,6 +1820,83 @@ void QuantBot::build(int militaryValue) {
 		}
 	}
 
+	// Strategic structures must eventually outrank repeatable choices such as
+	// factories, zones, and reactive turrets. These timers stay runtime-only so
+	// loading an older save starts a fresh bounded wait without changing save data.
+	const Uint32 currentBuildCycle = getGameCycleCount();
+	const Uint32 noEligibilityCycle = std::numeric_limits<Uint32>::max();
+	bool anyConstructionYardCanBuildIX = false;
+	bool anyConstructionYardCanBuildPalace = false;
+	for (const StructureBase* pStructure : getStructureList()) {
+		if (pStructure->getOwner() != getHouse()
+			|| pStructure->getItemID() != Structure_ConstructionYard
+			|| !pStructure->isABuilder()) {
+			continue;
+		}
+
+		const BuilderBase* pConstructionYard = static_cast<const BuilderBase*>(pStructure);
+		anyConstructionYardCanBuildIX |= pConstructionYard->isAvailableToBuild(Structure_IX);
+		anyConstructionYardCanBuildPalace |= pConstructionYard->isAvailableToBuild(Structure_Palace);
+	}
+
+	const bool customStrategicPlanning = gameMode == GameMode::Custom && !supportMode;
+	const bool stablePower = getHouse()->getProducedPower() >= getHouse()->getPowerRequirement();
+	const bool palaceAllowedNow = citySimEnabled
+		? itemCount[Structure_Palace] < 1 + ownTotalPop / 25
+		: itemCount[Structure_Palace] == 0;
+	const bool ixEligible = customStrategicPlanning
+		&& itemCount[Structure_IX] == 0
+		&& itemCount[Structure_HeavyFactory] > 0
+		&& itemCount[Structure_HighTechFactory] > 0
+		&& itemCount[Structure_RepairYard] > 0
+		&& anyConstructionYardCanBuildIX;
+	const bool palaceEligible = customStrategicPlanning
+		&& palaceAllowedNow
+		&& itemCount[Structure_HeavyFactory] > 0
+		&& itemCount[Structure_LightFactory] > 0
+		&& anyConstructionYardCanBuildPalace;
+
+	auto updateEligibilityTimer = [&](bool eligible, Uint32& eligibleSinceCycle) {
+		if (!eligible) {
+			eligibleSinceCycle = noEligibilityCycle;
+		} else if (eligibleSinceCycle == noEligibilityCycle) {
+			eligibleSinceCycle = currentBuildCycle;
+		}
+	};
+	updateEligibilityTimer(ixEligible, ixEligibleSinceCycle);
+	updateEligibilityTimer(palaceEligible, palaceEligibleSinceCycle);
+
+	Uint32 ixWaitMs = 75000;
+	Uint32 palaceWaitMs = 120000;
+	switch (difficulty) {
+		case Difficulty::Medium:
+			ixWaitMs = 50000;
+			palaceWaitMs = 90000;
+			break;
+		case Difficulty::Hard:
+			ixWaitMs = 35000;
+			palaceWaitMs = 60000;
+			break;
+		case Difficulty::Brutal:
+			ixWaitMs = 20000;
+			palaceWaitMs = 45000;
+			break;
+		case Difficulty::Defend:
+		case Difficulty::Easy:
+			break;
+	}
+
+	const bool ixOverdue = ixEligible
+		&& currentBuildCycle - ixEligibleSinceCycle >= MILLI2CYCLES(ixWaitMs);
+	const bool palaceOverdue = palaceEligible
+		&& currentBuildCycle - palaceEligibleSinceCycle >= MILLI2CYCLES(palaceWaitMs);
+	Uint32 strategicReserveItem = NONE_ID;
+	if (stablePower && ixOverdue) {
+		strategicReserveItem = Structure_IX;
+	} else if (stablePower && palaceOverdue) {
+		strategicReserveItem = Structure_Palace;
+	}
+
 	bool emitStatsLog = false;
 
     if (!supportMode && (militaryValue > 0 || getHouse()->getNumStructures() > 0)) {
@@ -2140,6 +2217,14 @@ void QuantBot::build(int militaryValue) {
 					}
 					doProduceItem(pBuilder, itemID);
 				};
+
+				// Preserve the bank regardless of builder iteration order once strategic
+				// infrastructure has aged into priority. The Construction Yard remains
+				// active so it can spend the reserved credits on the intended structure.
+				if (strategicReserveItem != NONE_ID
+					&& pStructure->getItemID() != Structure_ConstructionYard) {
+					continue;
+				}
 				
 				switch (pStructure->getItemID()) {
 
@@ -2360,29 +2445,37 @@ void QuantBot::build(int militaryValue) {
 
 							/// Use current value and what percentage of military we want to determine
 							/// whether to build an additional unit.
-							if (pBuilder->isAvailableToBuild(Unit_Launcher) && (militaryValue * launcherPercent > launcherValue)) {
+							Uint32 availableSpecial = NONE_ID;
+							for (Uint32 candidate : {Unit_Devastator, Unit_SonicTank, Unit_Deviator}) {
+								if (pBuilder->isAvailableToBuild(candidate)) {
+									availableSpecial = candidate;
+									break;
+								}
+							}
+							const bool specialTargetNeedsUnit = militaryValue * specialPercent > specialValue;
+							const bool prioritizeSpecial = availableSpecial != NONE_ID
+								&& specialTargetNeedsUnit
+								&& (specialValue == 0
+									|| difficulty == Difficulty::Hard
+									|| difficulty == Difficulty::Brutal);
+
+							if (prioritizeSpecial) {
+								produceItemWithLogging(availableSpecial);
+								itemCount[availableSpecial]++;
+								money -= data[availableSpecial][houseID].price;
+								militaryValue += data[availableSpecial][houseID].price;
+							}
+							else if (pBuilder->isAvailableToBuild(Unit_Launcher) && (militaryValue * launcherPercent > launcherValue)) {
 								produceItemWithLogging(Unit_Launcher);
 								itemCount[Unit_Launcher]++;
 								money -= data[Unit_Launcher][houseID].price;
 								militaryValue += data[Unit_Launcher][houseID].price;
 							}
-							else if (pBuilder->isAvailableToBuild(Unit_Devastator) && (militaryValue * specialPercent > specialValue)) {
-								produceItemWithLogging(Unit_Devastator);
-								itemCount[Unit_Devastator]++;
-								money -= data[Unit_Devastator][houseID].price;
-								militaryValue += data[Unit_Devastator][houseID].price;
-							}
-							else if (pBuilder->isAvailableToBuild(Unit_SonicTank) && (militaryValue * specialPercent > specialValue)) {
-								produceItemWithLogging(Unit_SonicTank);
-								itemCount[Unit_SonicTank]++;
-								money -= data[Unit_SonicTank][houseID].price;
-								militaryValue += data[Unit_SonicTank][houseID].price;
-							}
-							else if (pBuilder->isAvailableToBuild(Unit_Deviator) && (militaryValue * specialPercent > specialValue)) {
-								produceItemWithLogging(Unit_Deviator);
-								itemCount[Unit_Deviator]++;
-								money -= data[Unit_Deviator][houseID].price;
-								militaryValue += data[Unit_Deviator][houseID].price;
+							else if (availableSpecial != NONE_ID && specialTargetNeedsUnit) {
+								produceItemWithLogging(availableSpecial);
+								itemCount[availableSpecial]++;
+								money -= data[availableSpecial][houseID].price;
+								militaryValue += data[availableSpecial][houseID].price;
 							}
 							else if (pBuilder->isAvailableToBuild(Unit_SiegeTank) && (militaryValue * siegePercent > siegeValue)) {
 								produceItemWithLogging(Unit_SiegeTank);
@@ -2645,7 +2738,17 @@ void QuantBot::build(int militaryValue) {
 									}
 									}
 								}
-								int requiredTurrets = std::max(maxEnemyOrnithopters * 2, totalEnemyOrnithopters);
+								const int requiredTurrets = std::max(maxEnemyOrnithopters * 2, totalEnemyOrnithopters);
+								const bool ixExpected = data[Structure_IX][houseID].enabled
+									&& data[Structure_IX][houseID].techLevel <= currentGame->techLevel;
+								const bool palaceExpected = data[Structure_Palace][houseID].enabled
+									&& data[Structure_Palace][houseID].techLevel <= currentGame->techLevel;
+								const bool strategicInfrastructureIncomplete = customStrategicPlanning
+									&& ((ixExpected && itemCount[Structure_IX] == 0)
+										|| (palaceExpected && itemCount[Structure_Palace] == 0));
+								const int activeRocketTurretGoal = strategicInfrastructureIncomplete
+									? std::min(requiredTurrets, 2)
+									: requiredTurrets;
 
 								// Power buffer check for rocket turrets (2 windtraps = 200 power buffer + 25 turret = 225)
 								// Only applies if rocketTurretsNeedPower is enabled
@@ -2661,7 +2764,7 @@ void QuantBot::build(int militaryValue) {
 								// CRITICAL: Counter enemy ornithopters ASAP (prep prerequisites if needed)
 								if (itemID == NONE_ID && !skipRemainingStructureLogic
 									&& maxEnemyOrnithopters > 0
-									&& itemCount[Structure_RocketTurret] < requiredTurrets) {
+									&& itemCount[Structure_RocketTurret] < activeRocketTurretGoal) {
 								bool hasWindtrap = itemCount[Structure_WindTrap] > 0;
 								bool hasRadar = itemCount[Structure_Radar] > 0;
 								
@@ -2694,7 +2797,7 @@ void QuantBot::build(int militaryValue) {
 							&& findEffectiveTurretPlaceLocation(Structure_RocketTurret).isValid()
 										&& hasPowerBufferForTurret()) {
 							itemID = Structure_RocketTurret;
-										logDebug("COUNTER-ORNITHOPTER: Building rocket turret (enemy ornis: %d, target turrets: %d)", maxEnemyOrnithopters, requiredTurrets);
+										logDebug("COUNTER-ORNITHOPTER: Building rocket turret (enemy ornis: %d, target turrets: %d)", maxEnemyOrnithopters, activeRocketTurretGoal);
 									}
 								}
 
@@ -3056,21 +3159,8 @@ void QuantBot::build(int militaryValue) {
 					&& pBuilder->getCurrentUpgradeLevel() >= 2
 					&& pBuilder->isAvailableToBuild(Structure_RocketTurret)
 					&& findEffectiveTurretPlaceLocation(Structure_RocketTurret).isValid()
-					&& [&]() {
-						int maxEnemyOrnithopters = 0;
-						if (currentGame) {
-							for (int i = 0; i < NUM_HOUSES; i++) {
-								const House* pHouse = currentGame->getHouse(i);
-								if (pHouse && pHouse->getTeamID() != getHouse()->getTeamID()) {
-									int houseOrnis = pHouse->getNumItems(Unit_Ornithopter);
-									if (houseOrnis > maxEnemyOrnithopters) {
-										maxEnemyOrnithopters = houseOrnis;
-									}
-								}
-							}
-						}
-						return (maxEnemyOrnithopters > 0 && itemCount[Structure_RocketTurret] < maxEnemyOrnithopters * 2);
-					}()) {
+					&& maxEnemyOrnithopters > 0
+					&& itemCount[Structure_RocketTurret] < activeRocketTurretGoal) {
 					itemID = Structure_RocketTurret;
 					logDebug("COUNTER-ORNITHOPTER: Building rocket turret to counter enemy ornithopters");
 				}
@@ -3103,6 +3193,15 @@ void QuantBot::build(int militaryValue) {
 					&& money > 1000) {
 					itemID = Structure_IX;
 					logDebug("Build IX... money: %d", money);
+				}
+				if (ixOverdue && !skipRemainingStructureLogic
+					&& stablePower
+					&& money > 1000
+					&& pBuilder->isAvailableToBuild(Structure_IX)
+					&& itemID != Structure_IX
+					&& itemID != Structure_WindTrap
+					&& itemID != Structure_NuclearPlant) {
+					itemID = Structure_IX;
 				}
 				// 12. Additional Heavy Factories (expansion).
 				//     City sim: scale HF count with credits/sec income (same formula
@@ -3237,13 +3336,7 @@ void QuantBot::build(int militaryValue) {
 				// 17b. Palace (after military infrastructure)
 				//       City sim: 1 palace per 30000 population
 				{
-				bool palaceAllowed;
-				if (currentGame && currentGame->isCitySimEnabled()) {
-					// Use AI's own population (not local player's)
-					palaceAllowed = (itemCount[Structure_Palace] < 1 + ownTotalPop / 25);
-				} else {
-					palaceAllowed = (itemCount[Structure_Palace] == 0 || !getGameInitSettings().getGameOptions().onlyOnePalace);
-				}
+				const bool palaceAllowed = palaceAllowedNow;
 				if (itemID == NONE_ID && !skipRemainingStructureLogic
 									&& money > 5000
 									&& pBuilder->isAvailableToBuild(Structure_Palace)
@@ -3252,6 +3345,19 @@ void QuantBot::build(int militaryValue) {
 									&& itemCount[Structure_LightFactory] > 0) {
 								itemID = Structure_Palace;
 							}
+				if (palaceOverdue && !skipRemainingStructureLogic
+					&& stablePower
+					&& money > 5000
+					&& pBuilder->isAvailableToBuild(Structure_Palace)
+					&& palaceAllowed
+					&& itemCount[Structure_HeavyFactory] > 0
+					&& itemCount[Structure_LightFactory] > 0
+					&& itemID != Structure_Palace
+					&& itemID != Structure_IX
+					&& itemID != Structure_WindTrap
+					&& itemID != Structure_NuclearPlant) {
+					itemID = Structure_Palace;
+				}
 				}
 				// Round out vanilla bases with regular turrets and short wall lines.
 				// Fixed count targets keep this deterministic and prevent defence spam.
