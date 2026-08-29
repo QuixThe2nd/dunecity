@@ -46,8 +46,9 @@ its own `dune2/units/<unit>` authoring cache. `~dune2mount <UnitName>` converts
 that material into the runtime manifests and atlases above. It prefers authored
 full-unit products and otherwise composes completed chassis and turret layers,
 so adding or refreshing unit art is normally data-only and needs no game
-rebuild. The source mount is committed to Git like any other mod asset and is
-therefore packaged into future releases; raw authoring material is not shipped.
+rebuild. Runtime mounts are committed to Git for collaborators and release-pack
+generation, but the large atlases are excluded from the base Windows, Linux,
+and Android packages. Raw authoring material is not shipped.
 
 When Dune2R is active, the main menu exposes `Dune2R EditoR`. It lists only
 units and directional motion slots that have packaged Dune2R assets. Each slot
@@ -57,3 +58,10 @@ firing transitions. These are local presentation preferences stored in the
 user's `Dune City.ini`; they do not enter saves, simulation state, or the
 multiplayer protocol. The editor and its preferences are ignored by Vanilla,
 DuneCity, Tornie, and every mod whose exact name is not `Dune2R`.
+
+The editor's `ASSETS` screen installs remastered packs per unit or as an `ALL`
+queue. Downloads resume from `.part` files, are verified against the pinned
+size and SHA-256 catalog, and are installed atomically into the user's managed
+Dune2R mount. A game or managed-mod refresh preserves those installed packs.
+Developers can regenerate the version-pinned catalog with
+`scripts/generate-dune2r-asset-catalog.py` after committing a new asset set.

@@ -154,6 +154,28 @@ bool refreshManagedMod(const std::string& modName,
             std::filesystem::copy_options::recursive |
             std::filesystem::copy_options::overwrite_existing);
 
+        // Dune2R art is downloaded independently of the managed mod shell.
+        // Carry user-installed packs into the replacement before the atomic
+        // swap so a game update never erases a large, verified download.
+        if(modName == DUNE2R_MOD_NAME && std::filesystem::is_directory(destination)) {
+            const std::filesystem::path persistentDirectories[] = {
+                std::filesystem::path("graphics_hd") / "units",
+                std::filesystem::path("graphics_compact") / "objpics"
+            };
+            for(const auto& relative : persistentDirectories) {
+                const auto installedAssets = destination / relative;
+                if(!std::filesystem::is_directory(installedAssets)) {
+                    continue;
+                }
+                const auto stagedAssets = staged / relative;
+                std::filesystem::remove_all(stagedAssets);
+                std::filesystem::create_directories(stagedAssets.parent_path());
+                std::filesystem::copy(installedAssets, stagedAssets,
+                    std::filesystem::copy_options::recursive |
+                    std::filesystem::copy_options::overwrite_existing);
+            }
+        }
+
         const std::string fingerprint = bundledModFingerprint(source);
         std::ofstream stamp(staged / MANAGED_MOD_STAMP, std::ios::trunc);
         stamp << fingerprint << "\n";

@@ -1,0 +1,231 @@
+/*
+ *  This file is part of Dune Legacy.
+ *
+ *  Dune Legacy is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 2 of the License, or
+ *  (at your option) any later version.
+ */
+
+#include <Menu/Dune2RAssetMenu.h>
+
+#include <Colors.h>
+#include <FileClasses/GFXManager.h>
+#include <FileClasses/TextManager.h>
+#include <globals.h>
+#include <mod/ModManager.h>
+#include <sand.h>
+
+#include <algorithm>
+#include <chrono>
+#include <functional>
+#include <iomanip>
+#include <sstream>
+
+namespace {
+
+std::string formatSize(uint64_t bytes) {
+    std::ostringstream text;
+    text << std::fixed << std::setprecision(bytes >= 10u * 1024u * 1024u ? 0 : 1)
+         << (static_cast<double>(bytes) / (1024.0 * 1024.0)) << " MiB";
+    return text.str();
+}
+
+} // namespace
+
+Dune2RAssetMenu::Dune2RAssetMenu() {
+    SDL_Texture* background = pGFXManager->getUIGraphic(UI_MenuBackground);
+    setBackground(background);
+    resize(getTextureSize(background));
+    setWindowWidget(&windowWidget);
+
+    const int panelWidth = std::min(580, getRendererWidth() - 20);
+    const int panelHeight = std::min(340, getRendererHeight() - 20);
+    const int originX = (getRendererWidth() - panelWidth) / 2;
+    const int originY = (getRendererHeight() - panelHeight) / 2;
+
+    titleLabel.setText(_("DUNE2R ASSET PACKS"));
+    titleLabel.setTextFontSize(22);
+    titleLabel.setAlignment(Alignment_HCenter);
+    windowWidget.addWidget(&titleLabel, Point(originX + 10, originY + 12),
+                           Point(panelWidth - 20, 30));
+
+    introLabel.setText(_("Optional art is stored in app data and survives game updates."));
+    introLabel.setAlignment(Alignment_HCenter);
+    windowWidget.addWidget(&introLabel, Point(originX + 20, originY + 48),
+                           Point(panelWidth - 40, 24));
+
+    packLabel.setText(_("Asset pack"));
+    windowWidget.addWidget(&packLabel, Point(originX + 34, originY + 91), Point(105, 26));
+    packDropDown.setOnSelectionChange(
+        std::bind(&Dune2RAssetMenu::onSelectionChanged, this, std::placeholders::_1));
+    windowWidget.addWidget(&packDropDown, Point(originX + 142, originY + 88),
+                           Point(panelWidth - 176, 28));
+
+    statusLabel.setTextFontSize(14);
+    statusLabel.setAlignment(static_cast<Alignment_Enum>(Alignment_Left | Alignment_Top));
+    windowWidget.addWidget(&statusLabel, Point(originX + 34, originY + 132),
+                           Point(panelWidth - 68, 72));
+
+    progressBar.setProgress(0.0);
+    progressBar.setText(_("Ready"));
+    progressBar.setColor(COLOR_GREEN);
+    windowWidget.addWidget(&progressBar, Point(originX + 34, originY + 213),
+                           Point(panelWidth - 68, 26));
+
+    downloadButton.setText(_("DOWNLOAD"));
+    downloadButton.setOnClick(std::bind(&Dune2RAssetMenu::onDownload, this));
+    backButton.setText(_("BACK"));
+    backButton.setOnClick(std::bind(&Dune2RAssetMenu::onBack, this));
+    windowWidget.addWidget(&downloadButton, Point(originX + 155, originY + panelHeight - 48),
+                           Point(125, 30));
+    windowWidget.addWidget(&backButton, Point(originX + 300, originY + panelHeight - 48),
+                           Point(125, 30));
+
+    try {
+        assetManager = std::make_unique<Dune2RAssetManager>(
+            ModManager::instance().getModPath("Dune2R"));
+        const auto& packs = assetManager->getPacks();
+        if(!packs.empty()) {
+            packDropDown.addEntry(_("Remastered Assets: ALL"), 0);
+            for(size_t i = 0; i < packs.size(); ++i) {
+                packDropDown.addEntry(packs[i].displayName, static_cast<int>(i + 1));
+            }
+            packDropDown.setSelectedItem(0);
+        }
+    } catch(const std::exception& error) {
+        statusLabel.setText(std::string(_("Asset catalog error: ")) + error.what());
+    }
+
+    const bool ready = assetManager != nullptr && !assetManager->getPacks().empty();
+    packDropDown.setEnabled(ready);
+    downloadButton.setEnabled(ready);
+    if(ready) {
+        refreshSelectionStatus();
+    }
+}
+
+Dune2RAssetMenu::~Dune2RAssetMenu() {
+    if(installTask.valid()) {
+        installTask.wait();
+    }
+}
+
+std::vector<std::string> Dune2RAssetMenu::selectedPackIDs() const {
+    std::vector<std::string> result;
+    if(assetManager == nullptr) {
+        return result;
+    }
+    const auto& packs = assetManager->getPacks();
+    const int selected = packDropDown.getSelectedEntryIntData();
+    if(selected == 0) {
+        for(const auto& pack : packs) {
+            result.push_back(pack.id);
+        }
+    } else if(selected > 0 && selected <= static_cast<int>(packs.size())) {
+        result.push_back(packs[static_cast<size_t>(selected - 1)].id);
+    }
+    return result;
+}
+
+void Dune2RAssetMenu::onSelectionChanged(bool) {
+    refreshSelectionStatus();
+}
+
+void Dune2RAssetMenu::refreshSelectionStatus() {
+    if(assetManager == nullptr || downloading) {
+        return;
+    }
+    const auto ids = selectedPackIDs();
+    uint64_t bytes = 0;
+    int installed = 0;
+    for(const auto& pack : assetManager->getPacks()) {
+        if(std::find(ids.begin(), ids.end(), pack.id) == ids.end()) {
+            continue;
+        }
+        bytes += pack.totalBytes();
+        if(assetManager->isPackInstalled(pack)) {
+            ++installed;
+        }
+    }
+    statusLabel.setText(
+        std::to_string(ids.size()) + _(" pack(s), ") + formatSize(bytes)
+        + "\n" + std::to_string(installed) + _(" installed and checksum-verified.")
+        + "\n" + _("Interrupted downloads resume from their partial files."));
+    progressBar.setProgress(ids.empty() ? 0.0 : 100.0 * installed / ids.size());
+    progressBar.setText(installed == static_cast<int>(ids.size()) ? _("Verified") : _("Ready"));
+}
+
+void Dune2RAssetMenu::onDownload() {
+    if(assetManager == nullptr || downloading) {
+        return;
+    }
+    const auto ids = selectedPackIDs();
+    if(ids.empty()) {
+        return;
+    }
+
+    downloading = true;
+    completedBytes = 0;
+    totalBytes = 0;
+    packDropDown.setEnabled(false);
+    downloadButton.setEnabled(false);
+    backButton.setEnabled(false);
+    disableQuiting(true);
+    statusLabel.setText(_("Connecting to the Dune2R asset repository..."));
+    progressBar.setProgress(0.0);
+    progressBar.setText(_("Starting download"));
+
+    installTask = std::async(std::launch::async, [this, ids] {
+        return assetManager->install(ids, [this](const Dune2RAssetProgress& progress) {
+            completedBytes = progress.completedBytes;
+            totalBytes = progress.totalBytes;
+            std::lock_guard<std::mutex> lock(progressTextMutex);
+            progressPack = progress.packName;
+            progressFile = progress.filename;
+            return true;
+        });
+    });
+}
+
+void Dune2RAssetMenu::update() {
+    if(!downloading) {
+        return;
+    }
+    const uint64_t completed = completedBytes.load();
+    const uint64_t total = totalBytes.load();
+    progressBar.setProgress(total == 0 ? 0.0 : 100.0 * completed / total);
+    progressBar.setText(formatSize(completed) + " / " + formatSize(total));
+    {
+        std::lock_guard<std::mutex> lock(progressTextMutex);
+        if(!progressPack.empty()) {
+            statusLabel.setText(progressPack + "\n" + progressFile);
+        }
+    }
+
+    if(installTask.wait_for(std::chrono::seconds(0)) != std::future_status::ready) {
+        return;
+    }
+
+    const Dune2RAssetInstallResult result = installTask.get();
+    downloading = false;
+    packDropDown.setEnabled(true);
+    downloadButton.setEnabled(true);
+    backButton.setEnabled(true);
+    disableQuiting(false);
+    statusLabel.setText((result.success ? std::string(_("OK: ")) : std::string(_("ERROR: ")))
+                        + result.message);
+    if(result.success) {
+        progressBar.setProgress(100.0);
+        progressBar.setText(_("Installed and verified"));
+        pGFXManager->reloadEnhancedUnitMounts();
+    } else {
+        progressBar.setText(_("Download paused; retry to resume"));
+    }
+}
+
+void Dune2RAssetMenu::onBack() {
+    if(!downloading) {
+        quit();
+    }
+}

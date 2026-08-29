@@ -18,6 +18,8 @@
 #ifndef ENETHTTP_H
 #define ENETHTTP_H
 
+#include <cstdint>
+#include <functional>
 #include <string>
 #include <map>
 
@@ -34,6 +36,14 @@ std::string percentEncode(const std::string & s);
 std::string loadFromHttp(const std::string& url, const std::map<std::string, std::string>& parameters = std::map<std::string, std::string>());
 
 std::string loadFromHttp(const std::string& domain, const std::string& filepath, unsigned short port = PORT_HTTP);
+
+/**
+ * Download a URL to a local file. An existing partial file is resumed when the
+ * server supports byte ranges; servers that return a full response are handled
+ * by safely restarting the file. The callback returns false to cancel.
+ */
+void downloadHttpFile(const std::string& url, const std::string& filename,
+                      const std::function<bool(uint64_t, uint64_t)>& progress = {});
 
 
 #endif // ENETHTTP_H

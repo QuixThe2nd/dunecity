@@ -31,6 +31,7 @@ target_sources(dunelegacy_tests
         PoliceStationTestCase/PoliceStationTestCase.cpp
         SaveCompatTestCase/SaveCompatTestCase.cpp
         NeutralHouseTestCase/NeutralHouseTestCase.cpp
+        Dune2RAssetManagerTestCase/Dune2RAssetManagerTestCase.cpp
         # DuneCity core sources (needed for CitySimulation tests)
         ${CMAKE_SOURCE_DIR}/src/dunecity/CitySimulation.cpp
         CityEffectsRuntime_test_stub.cpp
@@ -42,6 +43,11 @@ target_sources(dunelegacy_tests
         ${CMAKE_SOURCE_DIR}/src/dunecity/CityScanner.cpp
         ${CMAKE_SOURCE_DIR}/src/dunecity/CityEvaluation.cpp
         ${CMAKE_SOURCE_DIR}/src/audio/sounds.cpp
+        ${CMAKE_SOURCE_DIR}/src/mod/Dune2RAssetManager.cpp
+        ${CMAKE_SOURCE_DIR}/src/Network/ENetHttp.cpp
+        ${CMAKE_SOURCE_DIR}/src/FileClasses/INIFile.cpp
+        ${CMAKE_SOURCE_DIR}/src/misc/FileSystem.cpp
+        ${CMAKE_SOURCE_DIR}/src/misc/fnkdat.cpp
         globals_test_stub.cpp
         TextManager_stub.cpp
         # ENet library sources (needed for NetworkManager tests)
@@ -74,6 +80,7 @@ target_link_libraries(dunelegacy_tests
         Catch2::Catch2WithMain
         SDL2::SDL2
         $<IF:$<TARGET_EXISTS:SDL2_mixer::SDL2_mixer>,SDL2_mixer::SDL2_mixer,SDL2_mixer::SDL2_mixer-static>
+        CURL::libcurl
 )
 
 if(WIN32)
@@ -109,4 +116,4 @@ add_custom_command(
         "${CMAKE_SOURCE_DIR}/data"
         "${CMAKE_BINARY_DIR}/tests/data"
     COMMENT "Copying test data to build directory"
-) 
+)

@@ -41,6 +41,7 @@ private:
     void onApply();
     void onResetSlot();
     void onReloadMounts();
+    void onAssets();
     void onBack();
     void rebuildStateEntries();
     void rebuildDirectionEntries();
@@ -68,6 +69,7 @@ private:
     TextButton applyButton;
     TextButton resetButton;
     TextButton reloadButton;
+    TextButton assetsButton;
     TextButton backButton;
     std::unique_ptr<Dune2RPreviewWidget> previewWidget;
     std::vector<GFXManager::EnhancedUnitEditorInfo> units;

@@ -210,6 +210,7 @@ target_sources(dunecity
         Menu/CampaignStatsMenu.cpp
         Menu/ModMenu.cpp
         Menu/ModEditorMenu.cpp
+        Menu/Dune2RAssetMenu.cpp
         Menu/Dune2REditorMenu.cpp
         Menu/HowToPlayMenu.cpp
 
@@ -235,6 +236,7 @@ target_sources(dunecity
         players/SmartBot.cpp
 
         # Mod System
+        mod/Dune2RAssetManager.cpp
         mod/ModManager.cpp
 
         # Structures
@@ -494,6 +496,14 @@ function(add_copy_mods DEST_DIR)
             COMMAND ${CMAKE_COMMAND} -E copy_directory
                 "${MODS_DIR}"
                 "${DEST_DIR}/mods"
+            COMMAND ${CMAKE_COMMAND} -E remove_directory
+                "${DEST_DIR}/mods/Dune2R/graphics_hd/units"
+            COMMAND ${CMAKE_COMMAND} -E make_directory
+                "${DEST_DIR}/mods/Dune2R/graphics_hd/units"
+            COMMAND ${CMAKE_COMMAND} -E remove_directory
+                "${DEST_DIR}/mods/Dune2R/graphics_compact/objpics"
+            COMMAND ${CMAKE_COMMAND} -E make_directory
+                "${DEST_DIR}/mods/Dune2R/graphics_compact/objpics"
             COMMENT "Copying selectable mods"
         )
     endif()
@@ -680,6 +690,8 @@ if(EXISTS "${MODS_DIR}" AND NOT APPLE)
     install(
         DIRECTORY "${MODS_DIR}/"
         DESTINATION "${MODS_INSTALL_BASE}/mods"
+        PATTERN "Dune2R/graphics_hd/units/*" EXCLUDE
+        PATTERN "Dune2R/graphics_compact/objpics/*" EXCLUDE
     )
 endif()
 

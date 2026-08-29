@@ -124,7 +124,10 @@ The debug APK also embeds this payload under `assets/dune2r_payload/` and the
 generated `Dune2RActivity` copies it to Android app storage before launching
 the native SDL game. The payload marker uses the Android release version, so
 installing a newer APK refreshes bundled game and mod files while preserving
-the user's `config/Dune City.ini` and any additional custom files.
+the user's `config/Dune City.ini` and any additional custom files. Optional
+Dune2R remastered atlases are not embedded in the APK. They can be installed
+per unit or as one resumable, verified queue from `Dune2R EditoR` -> `ASSETS`;
+managed payload refreshes preserve those downloads.
 
 Android package versions are maintained independently in
 `android-version.json`. Increment `versionCode` for every distributed APK and
@@ -173,6 +176,11 @@ set. NDK discovery ignores incomplete or cloud-placeholder installations that
 do not contain `android.toolchain.cmake`, then checks the selected SDK and the
 standard per-user SDK. Pass `-AndroidSdk`, `-AndroidNdk`, or `-VcpkgRoot` only
 to override the discovered requirements.
+
+Current MSYS packages contain hard links, so vcpkg's `VCPKG_DOWNLOADS` must be
+on an NTFS volume during Android dependency builds. An exFAT downloads path
+fails while extracting aliases such as `gawk.exe` or `ld.exe`. The binary cache
+and the large build tree may still remain on an external exFAT drive.
 
 Install and push the staged payload after a device is attached:
 

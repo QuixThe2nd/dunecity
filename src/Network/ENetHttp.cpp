@@ -24,8 +24,9 @@
 
 #include <algorithm>
 #include <array>
+#include <cstdlib>
+#include <cstdio>
 #include <filesystem>
-#include <stdio.h>
 #include <curl/curl.h>
 #include <enet/enet.h>
 
@@ -88,6 +89,86 @@ const char* getAndroidCertificatePath() {
     return nullptr;
 }
 #endif
+
+void configureCurlCertificates(CURL* curl) {
+#if defined(_WIN32) && defined(CURLSSLOPT_NATIVE_CA)
+    curl_easy_setopt(curl, CURLOPT_SSL_OPTIONS, CURLSSLOPT_NATIVE_CA);
+#endif
+
+    if(const char* certificateBundle = getBundledCertificateBundle()) {
+        curl_easy_setopt(curl, CURLOPT_CAINFO, certificateBundle);
+    }
+
+#ifdef __ANDROID__
+    if(const char* certificateBundle = getAndroidCertificateBundle()) {
+        curl_easy_setopt(curl, CURLOPT_CAINFO, certificateBundle);
+    } else if(const char* certificatePath = getAndroidCertificatePath()) {
+        curl_easy_setopt(curl, CURLOPT_CAPATH, certificatePath);
+    }
+#endif
+}
+
+struct FileDownloadContext {
+    std::filesystem::path filename;
+    std::FILE* file = nullptr;
+    curl_off_t resumeOffset = 0;
+    bool responseModeKnown = false;
+    bool cancelled = false;
+    std::function<bool(uint64_t, uint64_t)> progress;
+
+    ~FileDownloadContext() {
+        if(file != nullptr) {
+            std::fclose(file);
+        }
+    }
+};
+
+size_t curlDownloadHeaderCallback(char* buffer, size_t size, size_t count, void* userdata) {
+    const size_t bytes = size * count;
+    auto& context = *static_cast<FileDownloadContext*>(userdata);
+    const std::string header(buffer, bytes);
+    if(header.rfind("HTTP/", 0) == 0) {
+        const size_t statusStart = header.find(' ');
+        const int status = statusStart == std::string::npos
+                               ? 0
+                               : std::atoi(header.c_str() + statusStart + 1);
+        if(status == 200 || status == 206) {
+            if(context.file != nullptr) {
+                std::fclose(context.file);
+                context.file = nullptr;
+            }
+            if(status == 200) {
+                context.resumeOffset = 0;
+            }
+            const char* mode = status == 206 && context.resumeOffset > 0 ? "ab" : "wb";
+            context.file = std::fopen(context.filename.string().c_str(), mode);
+            context.responseModeKnown = context.file != nullptr;
+        }
+    }
+    return bytes;
+}
+
+size_t curlDownloadWriteCallback(void* contents, size_t size, size_t count, void* userdata) {
+    auto& context = *static_cast<FileDownloadContext*>(userdata);
+    if(!context.responseModeKnown || context.file == nullptr) {
+        return 0;
+    }
+    return std::fwrite(contents, size, count, context.file) * size;
+}
+
+int curlDownloadProgressCallback(void* userdata, curl_off_t downloadTotal,
+                                 curl_off_t downloaded, curl_off_t, curl_off_t) {
+    auto& context = *static_cast<FileDownloadContext*>(userdata);
+    if(!context.progress) {
+        return 0;
+    }
+    const uint64_t current = static_cast<uint64_t>(std::max<curl_off_t>(0, downloaded))
+                             + static_cast<uint64_t>(std::max<curl_off_t>(0, context.resumeOffset));
+    const uint64_t total = static_cast<uint64_t>(std::max<curl_off_t>(0, downloadTotal))
+                           + static_cast<uint64_t>(std::max<curl_off_t>(0, context.resumeOffset));
+    context.cancelled = !context.progress(current, total);
+    return context.cancelled ? 1 : 0;
+}
 
 } // namespace
 
@@ -208,26 +289,7 @@ std::string loadFromHttp(const std::string& url, const std::map<std::string, std
     curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 1L); // Verify SSL certificates
     curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 2L); // Verify hostname
 
-#if defined(_WIN32) && defined(CURLSSLOPT_NATIVE_CA)
-    // Use the Windows trust store when supported by the selected curl TLS
-    // backend. The bundled Mozilla store below remains a portable fallback.
-    curl_easy_setopt(curl, CURLOPT_SSL_OPTIONS, CURLSSLOPT_NATIVE_CA);
-#endif
-
-    if(const char* certificateBundle = getBundledCertificateBundle()) {
-        curl_easy_setopt(curl, CURLOPT_CAINFO, certificateBundle);
-    }
-
-#ifdef __ANDROID__
-    // Android's trust store uses legacy hash names that OpenSSL 3 may not
-    // resolve through CURLOPT_CAPATH. Prefer the packaged Mozilla CA bundle
-    // and retain the platform directory as a fallback.
-    if(const char* certificateBundle = getAndroidCertificateBundle()) {
-        curl_easy_setopt(curl, CURLOPT_CAINFO, certificateBundle);
-    } else if(const char* certificatePath = getAndroidCertificatePath()) {
-        curl_easy_setopt(curl, CURLOPT_CAPATH, certificatePath);
-    }
-#endif
+    configureCurlCertificates(curl);
     
     // Perform the request
     CURLcode res = curl_easy_perform(curl);
@@ -273,6 +335,82 @@ std::string loadFromHttp(const std::string& domain, const std::string& filepath,
     
     // Use the URL-based version
     return loadFromHttp(url, std::map<std::string, std::string>());
+}
+
+void downloadHttpFile(const std::string& url, const std::string& filename,
+                      const std::function<bool(uint64_t, uint64_t)>& progress) {
+    const std::filesystem::path output(filename);
+    std::error_code error;
+    if(!output.parent_path().empty()) {
+        std::filesystem::create_directories(output.parent_path(), error);
+        if(error) {
+            THROW(std::runtime_error, "Could not create download directory: " + error.message());
+        }
+    }
+
+    FileDownloadContext context;
+    context.filename = output;
+    context.progress = progress;
+    if(std::filesystem::is_regular_file(output, error)) {
+        context.resumeOffset = static_cast<curl_off_t>(std::filesystem::file_size(output, error));
+        if(error) {
+            context.resumeOffset = 0;
+        }
+    }
+
+    CURL* curl = curl_easy_init();
+    if(curl == nullptr) {
+        THROW(std::runtime_error, "Failed to initialize libcurl");
+    }
+    std::array<char, CURL_ERROR_SIZE> errorBuffer{};
+    curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
+    curl_easy_setopt(curl, CURLOPT_ERRORBUFFER, errorBuffer.data());
+    curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
+    curl_easy_setopt(curl, CURLOPT_MAXREDIRS, 5L);
+    curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 30L);
+    curl_easy_setopt(curl, CURLOPT_LOW_SPEED_LIMIT, 1024L);
+    curl_easy_setopt(curl, CURLOPT_LOW_SPEED_TIME, 60L);
+    curl_easy_setopt(curl, CURLOPT_USERAGENT, "DuneCity-Dune2R/1.0");
+    curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 1L);
+    curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 2L);
+    curl_easy_setopt(curl, CURLOPT_FAILONERROR, 1L);
+    // Do not feed an HTTPS proxy's "200 Connection established" response
+    // into the resume-mode header callback; only origin response headers
+    // decide whether the output file is appended or restarted.
+    curl_easy_setopt(curl, CURLOPT_SUPPRESS_CONNECT_HEADERS, 1L);
+    curl_easy_setopt(curl, CURLOPT_HEADERFUNCTION, curlDownloadHeaderCallback);
+    curl_easy_setopt(curl, CURLOPT_HEADERDATA, &context);
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, curlDownloadWriteCallback);
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA, &context);
+    curl_easy_setopt(curl, CURLOPT_XFERINFOFUNCTION, curlDownloadProgressCallback);
+    curl_easy_setopt(curl, CURLOPT_XFERINFODATA, &context);
+    curl_easy_setopt(curl, CURLOPT_NOPROGRESS, 0L);
+    if(context.resumeOffset > 0) {
+        curl_easy_setopt(curl, CURLOPT_RESUME_FROM_LARGE, context.resumeOffset);
+    }
+    configureCurlCertificates(curl);
+
+    const CURLcode result = curl_easy_perform(curl);
+    long status = 0;
+    curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &status);
+    curl_easy_cleanup(curl);
+
+    if(context.file != nullptr) {
+        std::fclose(context.file);
+        context.file = nullptr;
+    }
+    if(result != CURLE_OK) {
+        if(context.cancelled) {
+            THROW(std::runtime_error, "Download cancelled");
+        }
+        const std::string message = errorBuffer[0] != '\0'
+                                        ? errorBuffer.data()
+                                        : curl_easy_strerror(result);
+        THROW(std::runtime_error, "HTTP download failed: " + message);
+    }
+    if(status != 200 && status != 206) {
+        THROW(std::runtime_error, "Server Error: Received HTTP status code " + std::to_string(status));
+    }
 }
 
 

@@ -592,6 +592,17 @@ Set-Content -LiteralPath (Join-Path $stageDir "local.properties") -Value ("sdk.d
 Copy-Item -LiteralPath (Join-Path $RepoRoot "data") -Destination (Join-Path $payloadDir "data") -Recurse -Force
 Copy-Item -LiteralPath (Join-Path $RepoRoot "config") -Destination (Join-Path $payloadDir "config") -Recurse -Force
 Copy-Item -LiteralPath (Join-Path $RepoRoot "mods") -Destination (Join-Path $payloadDir "mods") -Recurse -Force
+$optionalAssetRoots = @(
+    (Join-Path $payloadDir "mods\Dune2R\graphics_hd\units"),
+    (Join-Path $payloadDir "mods\Dune2R\graphics_compact\objpics")
+)
+foreach ($optionalAssetRoot in $optionalAssetRoots) {
+    Assert-UnderRoot $optionalAssetRoot $payloadDir
+    if (Test-Path -LiteralPath $optionalAssetRoot) {
+        Remove-Item -LiteralPath $optionalAssetRoot -Recurse -Force
+    }
+    New-Item -ItemType Directory -Force -Path $optionalAssetRoot | Out-Null
+}
 if (Test-Path -LiteralPath (Join-Path $RepoRoot "imported_sprites")) {
     Copy-Item -LiteralPath (Join-Path $RepoRoot "imported_sprites") -Destination (Join-Path $payloadDir "imported_sprites") -Recurse -Force
 }

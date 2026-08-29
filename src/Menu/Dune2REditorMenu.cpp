@@ -8,6 +8,7 @@
  */
 
 #include <Menu/Dune2REditorMenu.h>
+#include <Menu/Dune2RAssetMenu.h>
 
 #include <Colors.h>
 #include <FileClasses/TextManager.h>
@@ -184,13 +185,16 @@ Dune2REditorMenu::Dune2REditorMenu() {
     resetButton.setOnClick(std::bind(&Dune2REditorMenu::onResetSlot, this));
     reloadButton.setText(_("RELOAD MOUNTS"));
     reloadButton.setOnClick(std::bind(&Dune2REditorMenu::onReloadMounts, this));
+    assetsButton.setText(_("ASSETS"));
+    assetsButton.setOnClick(std::bind(&Dune2REditorMenu::onAssets, this));
     backButton.setText(_("BACK"));
     backButton.setOnClick(std::bind(&Dune2REditorMenu::onBack, this));
     const int buttonY = originY + panelHeight - 42;
-    windowWidget.addWidget(&reloadButton, Point(originX + 50, buttonY), Point(125, 28));
-    windowWidget.addWidget(&applyButton, Point(originX + 185, buttonY), Point(105, 28));
-    windowWidget.addWidget(&resetButton, Point(originX + 300, buttonY), Point(105, 28));
-    windowWidget.addWidget(&backButton, Point(originX + 415, buttonY), Point(105, 28));
+    windowWidget.addWidget(&assetsButton, Point(originX + 25, buttonY), Point(90, 28));
+    windowWidget.addWidget(&reloadButton, Point(originX + 123, buttonY), Point(112, 28));
+    windowWidget.addWidget(&applyButton, Point(originX + 243, buttonY), Point(85, 28));
+    windowWidget.addWidget(&resetButton, Point(originX + 336, buttonY), Point(100, 28));
+    windowWidget.addWidget(&backButton, Point(originX + 444, buttonY), Point(85, 28));
 
     rebuildUnitEntries();
 }
@@ -391,6 +395,13 @@ void Dune2REditorMenu::onReloadMounts() {
     pGFXManager->reloadEnhancedUnitMounts();
     rebuildUnitEntries();
     refreshStatus(_("Mounted Dune2R unit assets reloaded."));
+}
+
+void Dune2REditorMenu::onAssets() {
+    Dune2RAssetMenu menu;
+    menu.showMenu();
+    pGFXManager->reloadEnhancedUnitMounts();
+    rebuildUnitEntries();
 }
 
 void Dune2REditorMenu::onBack() {

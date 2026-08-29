@@ -17,7 +17,9 @@ Android Back as Escape
 two-finger right-click gesture
 ```
 
-The debug APK embeds the staged payload under `assets/dune2r_payload/`.
+The debug APK embeds the base staged payload under `assets/dune2r_payload/`.
+Large Dune2R remastered atlases are downloaded independently from the in-game
+`Dune2R EditoR` asset manager and are not part of the APK.
 
 The Android launcher icon is staged from the existing desktop icon asset:
 `dunecity-128x128.png`.
