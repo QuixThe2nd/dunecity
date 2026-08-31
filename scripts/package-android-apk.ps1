@@ -16,6 +16,8 @@ $ErrorActionPreference = "Stop"
 $MinimumAndroidNdkMajor = 26
 $GradleWrapperVersion = "8.9.0"
 $GradleWrapperSha256 = "498495120A03B9A6AB5D155F5DE3C8F0D986A449153702FB80FC80E134484F17"
+$SdlSourceVersion = "2.32.10"
+$SdlSourceSha512 = "D5622D6BB7266F7942A7B8AD43E8A22524893BF0C2EA1AF91204838D9B78D32768843F6FAA248757427B8404B8C6443776D4AFA6B672CD8571A4E0C03A829383"
 
 function Get-AndroidNdkMajor([string]$Path) {
     $sourceProperties = Join-Path $Path "source.properties"
@@ -166,6 +168,54 @@ function Install-GradleWrapperJar([string]$Destination) {
             Remove-Item -LiteralPath $temporaryPath -Force
         }
     }
+}
+
+function Get-SdlAndroidSource([string]$Root) {
+    $cacheRoot = Join-Path $Root "build-android-sdl-source"
+    $sourceRoot = Join-Path $cacheRoot "SDL-release-$SdlSourceVersion"
+    $androidActivity = Join-Path $sourceRoot "android-project\app\src\main\java\org\libsdl\app\SDLActivity.java"
+    if (Test-Path -LiteralPath $androidActivity) {
+        return Get-Item -LiteralPath $sourceRoot
+    }
+
+    Assert-UnderRoot $cacheRoot $Root
+    New-Item -ItemType Directory -Force -Path $cacheRoot | Out-Null
+    $archive = Join-Path $cacheRoot "SDL-release-$SdlSourceVersion.tar.gz"
+    $temporaryArchive = "$archive.download"
+    $archiveUrl = "https://github.com/libsdl-org/SDL/archive/refs/tags/release-$SdlSourceVersion.tar.gz"
+
+    try {
+        [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+        Invoke-WebRequest -Uri $archiveUrl -OutFile $temporaryArchive -UseBasicParsing
+        $actualHash = (Get-FileHash -LiteralPath $temporaryArchive -Algorithm SHA512).Hash
+        if ($actualHash -ne $SdlSourceSha512) {
+            throw "SDL source checksum mismatch: expected $SdlSourceSha512, got $actualHash"
+        }
+        Move-Item -LiteralPath $temporaryArchive -Destination $archive -Force
+    } finally {
+        if (Test-Path -LiteralPath $temporaryArchive) {
+            Remove-Item -LiteralPath $temporaryArchive -Force
+        }
+    }
+
+    if (Test-Path -LiteralPath $sourceRoot) {
+        Assert-UnderRoot $sourceRoot $Root
+        Remove-Item -LiteralPath $sourceRoot -Recurse -Force
+    }
+    $cmakeCommand = Get-Command cmake -ErrorAction Stop
+    Push-Location $cacheRoot
+    try {
+        & $cmakeCommand.Source -E tar xzf $archive
+        if ($LASTEXITCODE -ne 0) {
+            throw "SDL source extraction failed with exit code $LASTEXITCODE"
+        }
+    } finally {
+        Pop-Location
+    }
+    if (-not (Test-Path -LiteralPath $androidActivity)) {
+        throw "Downloaded SDL $SdlSourceVersion does not contain the expected Android project."
+    }
+    return Get-Item -LiteralPath $sourceRoot
 }
 
 $RepoRoot = Get-FullPath $RepoRoot
@@ -329,7 +379,8 @@ foreach ($sdlSourceRoot in $sdlSourceRoots) {
     }
 }
 if ($null -eq $sdlSource) {
-    throw "Could not find SDL android-project under: $($sdlSourceRoots -join ', ')"
+    Write-Host "SDL source tree was not retained by vcpkg; restoring verified SDL $SdlSourceVersion source."
+    $sdlSource = Get-SdlAndroidSource $RepoRoot
 }
 
 $stageDir = Join-Path $RepoRoot "build-android-apk"
