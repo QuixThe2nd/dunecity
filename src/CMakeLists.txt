@@ -660,7 +660,6 @@ if(WIN32)
             "${DATA_DIR}/ChaniMentat.png"
             "${DATA_DIR}/ChaniMentatEyes.png"
             "${DATA_DIR}/ChaniMentatMouth.png"
-            "${DATA_DIR}/PalaceRebelsChargingIcon.png"
             "${DATA_DIR}/PalaceRebelsIcon.png"
             "${DATA_DIR}/Custom_IBM.pal"
         DESTINATION data
