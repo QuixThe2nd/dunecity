@@ -307,7 +307,7 @@ sdl2::surface_ptr INIMapPreviewCreator::createMinimapImageOfMap(int borderWidth,
 
                     case 'G': {
                         // Tornie thick green spice
-                        color = COLOR_RGB(20, 92, 42);
+                        color = COLOR_RGB(28, 124, 48);
                     } break;
 
                     case 'b': {
@@ -322,7 +322,7 @@ sdl2::surface_ptr INIMapPreviewCreator::createMinimapImageOfMap(int borderWidth,
 
                     case 'R': {
                         // Tornie thick red spice
-                        color = COLOR_RGB(104, 32, 28);
+                        color = COLOR_RGB(154, 48, 38);
                     } break;
 
                     case 'B': {

@@ -18,6 +18,7 @@
 #include <FileClasses/PictureFactory.h>
 
 #include <globals.h>
+#include <sand.h>
 
 #include <config.h>
 
@@ -641,6 +642,43 @@ sdl2::surface_ptr PictureFactory::createGreyHouseChoice(SDL_Surface* HouseChoice
 
 
     auto pic = copySurface(HouseChoice);
+    // Vanilla heralds are 8-bit indexed images, while mod heralds may be
+    // truecolor RGBA. Treating an RGBA row as one byte per pixel only greys
+    // the first quarter of it and leaves the remaining herald coloured.
+    // Convert truecolor heralds pixel-by-pixel and preserve their alpha.
+    if(pic->format->BytesPerPixel != 1 || pic->format->palette == nullptr) {
+        sdl2::surface_ptr rgba{
+            SDL_ConvertSurfaceFormat(pic.get(), SDL_PIXELFORMAT_RGBA32, 0)
+        };
+        if(rgba == nullptr) {
+            return pic;
+        }
+
+        const bool mustLock = SDL_MUSTLOCK(rgba.get());
+        if(mustLock && SDL_LockSurface(rgba.get()) != 0) {
+            return rgba;
+        }
+
+        for(int y = 0; y < rgba->h; ++y) {
+            auto* row = reinterpret_cast<Uint32*>(
+                static_cast<Uint8*>(rgba->pixels) + y * rgba->pitch);
+            for(int x = 0; x < rgba->w; ++x) {
+                Uint8 r = 0;
+                Uint8 g = 0;
+                Uint8 b = 0;
+                Uint8 a = 0;
+                SDL_GetRGBA(row[x], rgba->format, &r, &g, &b, &a);
+                const Uint8 grey = static_cast<Uint8>(
+                    (77u * r + 150u * g + 29u * b) >> 8u);
+                row[x] = SDL_MapRGBA(rgba->format, grey, grey, grey, a);
+            }
+        }
+
+        if(mustLock) {
+            SDL_UnlockSurface(rgba.get());
+        }
+        return rgba;
+    }
 
     for(auto y = 0; y < pic->h; ++y) {
         unsigned char * const RESTRICT  p = static_cast<unsigned char*>(pic->pixels) + y * pic->pitch;
@@ -708,18 +746,18 @@ sdl2::surface_ptr PictureFactory::createMapChoiceScreen(int House) const {
     SDL_Rect clearRect = {8,24,304,119};
     SDL_FillRect(pMapChoiceScreen.get(),&clearRect,PALCOLOR_TRANSPARENT);
 
-    auto houseColorScreen = mapSurfaceColorRange(pMapChoiceScreen.get(), PALCOLOR_HARKONNEN, getHouseColorPaletteIndexFromSlot(House));
-    if(House == HOUSE_REBELS) {
-        static const Uint8 rebelsGreyRamp[8] = { 82, 72, 62, 52, 42, 34, 27, 20 };
-        for(int k = 0; k < 8; k++) {
-            SDL_Color& color = houseColorScreen->format->palette->colors[PALCOLOR_REBELS + k];
-            color.r = rebelsGreyRamp[k];
-            color.g = rebelsGreyRamp[k];
-            color.b = rebelsGreyRamp[k];
-            color.a = 255;
+    const bool usesPrivateRamp = House == HOUSE_REBELS || isTornieGuestHouseColorSlot(House);
+    const int targetBase = usesPrivateRamp ? PALCOLOR_HARKONNEN : getHouseColorPaletteIndexFromSlot(House);
+    auto houseColorScreen = mapSurfaceColorRange(pMapChoiceScreen.get(), PALCOLOR_HARKONNEN, targetBase);
+    if(usesPrivateRamp && (House == HOUSE_REBELS || customPaletteLoaded)
+       && targetBase >= 0 && targetBase + 7 < houseColorScreen->format->palette->ncolors) {
+        SDL_Color visualRamp[8];
+        for(int k = 0; k < 8; ++k) {
+            visualRamp[k] = getHouseColorSDL(House, k);
+            visualRamp[k].a = 255;
         }
-    }
-    pMapChoiceScreen = Scaler::defaultDoubleSurface(houseColorScreen.get());
+        SDL_SetPaletteColors(houseColorScreen->format->palette, visualRamp, targetBase, 8);
+    }    pMapChoiceScreen = Scaler::defaultDoubleSurface(houseColorScreen.get());
     auto pFullMapChoiceScreen = copySurface(background.get());
 
     SDL_Rect dest = calcAlignedDrawingRect(pMapChoiceScreen.get(), pFullMapChoiceScreen.get());
@@ -749,8 +787,12 @@ sdl2::surface_ptr PictureFactory::createMentatHouseChoiceQuestion(int House, Pal
         case HOUSE_SARDAUKAR:   pQuestionPart2 = Scaler::defaultDoubleSurface(LoadPNG_RW(pFileManager->openFile("Sardaukar.png").get()).get());   break;
         case HOUSE_MERCENARY:   pQuestionPart2 = Scaler::defaultDoubleSurface(LoadPNG_RW(pFileManager->openFile("Mercenary.png").get()).get());   break;
         case HOUSE_NEUTRAL:
-        case HOUSE_REBELS: {
-            const std::string houseName = (House == HOUSE_NEUTRAL) ? "Neutral ?" : "Rebels ?";
+        case HOUSE_REBELS:
+        case HOUSE_CUSTOM:
+        case HOUSE_WILDSPADE:
+        case HOUSE_KLESHMERSH:
+        case HOUSE_THARPIQUE: {
+            const std::string houseName = std::string(getHouseNameByNumber(static_cast<HOUSETYPE>(House))) + " ?";
             unsigned int fontSize = 30;
             while(fontSize > 18 && (pFontManager->getTextWidth(houseName, fontSize) > 198 || pFontManager->getTextHeight(fontSize) > 44)) {
                 fontSize--;

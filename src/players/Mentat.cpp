@@ -1983,7 +1983,7 @@ void Mentat::handleSpecialWeapon(const StructureBase* pStructure, MentatBuildCon
 	const Palace* pPalace = static_cast<const Palace*>(pStructure);
 	if (!pPalace->isSpecialWeaponReady()) return;
 
-	if (ctx.houseID != HOUSE_HARKONNEN && ctx.houseID != HOUSE_SARDAUKAR) {
+	if (!pPalace->usesTargetedSpecialWeapon()) {
 		doSpecialWeapon(pPalace);
 	}
 	else {
@@ -1999,7 +1999,7 @@ void Mentat::handleSpecialWeapon(const StructureBase* pStructure, MentatBuildCon
 			}
 		}
 
-		if ((enemyHouseID != -1) && (ctx.houseID == HOUSE_HARKONNEN || ctx.houseID == HOUSE_SARDAUKAR)) {
+		if (enemyHouseID != -1) {
 			Coord target = findBestDeathHandTarget(enemyHouseID);
 			if (target.isValid()) {
 				doLaunchDeathhand(pPalace, target.x, target.y);
@@ -2019,6 +2019,13 @@ void Mentat::handleLightFactory(const BuilderBase* pBuilder, MentatBuildContext&
 		&& pBuilder->getProductionQueueSize() < 1
 		&& pBuilder->getBuildListSize() > 0
 		&& ctx.militaryValue < ctx.militaryValueLimit) {
+
+		const int customItem = chooseLowPriorityCustomUnit(pBuilder);
+		if (customItem != ItemID_Invalid) {
+			doProduceItem(pBuilder, customItem);
+			ctx.itemCount[customItem]++;
+			return;
+		}
 
 		if (pBuilder->getCurrentUpgradeLevel() < pBuilder->getMaxUpgradeLevel() && getHouse()->getCredits() > 1500) {
 			doUpgrade(pBuilder);
@@ -2065,6 +2072,18 @@ void Mentat::handleHighTechFactory(const BuilderBase* pBuilder, MentatBuildConte
 		doProduceItem(pBuilder, itemID);
 	};
 
+	if (!pBuilder->isUpgrading() && pBuilder->getProductionQueueSize() < 1
+		&& ctx.money > 1000) {
+		const int customItem = chooseLowPriorityCustomUnit(pBuilder);
+		if (customItem != ItemID_Invalid) {
+			produceItemWithLogging(customItem);
+			ctx.itemCount[customItem]++;
+			ctx.money -= data[customItem][houseID].price;
+			ctx.militaryValue += data[customItem][houseID].price;
+			return;
+		}
+	}
+
 	if (pBuilder->isAvailableToBuild(Unit_Carryall)
 		&& ctx.itemCount[Unit_Carryall] < (ctx.militaryValue + ctx.itemCount[Unit_Harvester] * 500) / 3000
 		&& (pBuilder->getProductionQueueSize() < 1)
@@ -2109,6 +2128,18 @@ void Mentat::handleHeavyFactory(const BuilderBase* pBuilder, MentatBuildContext&
 		}
 		doProduceItem(pBuilder, itemID);
 	};
+
+	if (!pBuilder->isUpgrading() && pBuilder->getProductionQueueSize() < 1
+		&& ctx.money > 1500) {
+		const int customItem = chooseLowPriorityCustomUnit(pBuilder);
+		if (customItem != ItemID_Invalid) {
+			produceItemWithLogging(customItem);
+			ctx.itemCount[customItem]++;
+			ctx.money -= data[customItem][houseID].price;
+			ctx.militaryValue += data[customItem][houseID].price;
+			return;
+		}
+	}
 
 	// Log HF status when idle with money (Custom mode diagnostics)
 	if (ctx.isCustom && emitStatsLog) {

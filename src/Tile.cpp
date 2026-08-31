@@ -106,6 +106,10 @@ bool shouldDrawTerrainBelowStructure(int itemID) noexcept {
         case Structure_Worfinery:
         case Structure_TechCenter:
         case Structure_Scoutpost:
+        case Structure_Flamepost:
+        case Structure_Chemipost:
+        case Structure_LoveFactory:
+        case Structure_ChaosFactory:
             return true;
 
         default:
@@ -152,11 +156,21 @@ void Tile::load(InputStream& stream) {
     explored[HOUSE_CUSTOM] = (currentGame && currentGame->getLoadedSavegameVersion() >= 9821)
         ? stream.readBool()
         : false;
+    if(currentGame && currentGame->getLoadedSavegameVersion() >= 9823) {
+        explored[HOUSE_WILDSPADE] = stream.readBool();
+        explored[HOUSE_KLESHMERSH] = stream.readBool();
+        explored[HOUSE_THARPIQUE] = stream.readBool();
+    }
 
     bool bLastAccess[NUM_HOUSES]{};
     stream.readBools(&bLastAccess[0], &bLastAccess[1], &bLastAccess[2], &bLastAccess[3], &bLastAccess[4], &bLastAccess[5], &bLastAccess[6], &bLastAccess[7]);
     if(currentGame && currentGame->getLoadedSavegameVersion() >= 9821) {
         bLastAccess[HOUSE_CUSTOM] = stream.readBool();
+    }
+    if(currentGame && currentGame->getLoadedSavegameVersion() >= 9823) {
+        bLastAccess[HOUSE_WILDSPADE] = stream.readBool();
+        bLastAccess[HOUSE_KLESHMERSH] = stream.readBool();
+        bLastAccess[HOUSE_THARPIQUE] = stream.readBool();
     }
 
     for (int i = 0; i < NUM_HOUSES; i++) {
@@ -247,9 +261,15 @@ void Tile::save(OutputStream& stream) const {
 
     stream.writeBools(explored[0], explored[1], explored[2], explored[3], explored[4], explored[5], explored[6], explored[7]);
     stream.writeBool(explored[HOUSE_CUSTOM]);
+    stream.writeBool(explored[HOUSE_WILDSPADE]);
+    stream.writeBool(explored[HOUSE_KLESHMERSH]);
+    stream.writeBool(explored[HOUSE_THARPIQUE]);
 
     stream.writeBools((lastAccess[0] != 0), (lastAccess[1] != 0), (lastAccess[2] != 0), (lastAccess[3] != 0), (lastAccess[4] != 0), (lastAccess[5] != 0), (lastAccess[6] != 0), (lastAccess[7] != 0));
     stream.writeBool(lastAccess[HOUSE_CUSTOM] != 0);
+    stream.writeBool(lastAccess[HOUSE_WILDSPADE] != 0);
+    stream.writeBool(lastAccess[HOUSE_KLESHMERSH] != 0);
+    stream.writeBool(lastAccess[HOUSE_THARPIQUE] != 0);
     for (int i = 0; i < NUM_HOUSES; ++i) {
         if (lastAccess[i] != 0) {
             stream.writeUint32(lastAccess[i]);

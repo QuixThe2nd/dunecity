@@ -67,8 +67,13 @@ public:
      * \return Mod name (e.g., "vanilla")
      */
     std::string getActiveModName() const;
+    bool isTornieContentActive() const {
+        return getActiveModName() == "Tornie";
+    }
     const CustomHouseInfo& getActiveCustomHouseInfo() const;
+    const CustomHouseInfo& getCustomHouseInfo(int house) const;
     bool isCustomHouseRegistered() const;
+    bool isCustomHouseRegistered(int house) const;
     const ModMentatInfo& getActiveMentatInfo(int house) const;
     int getEffectiveMentatIdentity(int house) const;
 
@@ -164,6 +169,9 @@ public:
      * \return true if created successfully
      */
     bool createMod(const std::string& name, const std::string& baseMod = "vanilla");
+
+    /** Return true when a mod name is safe to use as one directory component. */
+    bool isValidModName(const std::string& name) const;
     
     /**
      * Delete a mod (cannot delete "vanilla").
@@ -277,7 +285,8 @@ private:
     
     std::string modsBasePath;        ///< Base path for mods directory
     std::string activeMod;
-    CustomHouseInfo activeCustomHouse;           ///< Currently active mod name
+    CustomHouseInfo activeCustomHouse;           ///< Active mod's campaign custom house
+    CustomHouseInfo activeGuestCustomHouse;      ///< Tornie guest custom house for custom games
     std::vector<ModMentatInfo> activeMentats;     ///< Mentat overrides owned by the active mod
     mutable ModChecksums cachedChecksums;  ///< Cached checksums
     mutable bool checksumsDirty;     ///< Do checksums need recalculation?

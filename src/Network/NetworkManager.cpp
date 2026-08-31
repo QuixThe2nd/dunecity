@@ -29,15 +29,18 @@
 #include <misc/fnkdat.h>
 
 #include <mod/ModManager.h>
+#include <mod/ModTransferValidation.h>
 
 #include <globals.h>
 #include <players/QuantBotConfig.h>
-#include <mod/ModManager.h>
 
 #include <stdio.h>
 #include <algorithm>
+#include <filesystem>
 #include <fstream>
 #include <iterator>
+#include <limits>
+#include <set>
 
 NetworkManager::NetworkManager(int port, const std::string& metaserver) {
 
@@ -1618,7 +1621,20 @@ void NetworkManager::requestModDownload(const std::string& modName) {
 
 void NetworkManager::sendModFilesToPeer(ENetPeer* peer, const std::string& modName) {
     // Host: Package and send mod files to requesting client
-    
+
+    if(!ModManager::instance().isValidModName(modName)
+       || modName != ModManager::instance().getActiveModName()) {
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
+                    "NetworkManager: Rejected request for non-active or invalid mod '%s'",
+                    modName.c_str());
+        ENetPacketOStream completePacket(ENET_PACKET_FLAG_RELIABLE);
+        completePacket.writeUint32(NETWORKPACKET_MOD_COMPLETE);
+        completePacket.writeBool(false);
+        completePacket.writeString("Invalid mod request");
+        sendPacketToPeer(peer, completePacket);
+        return;
+    }
+
     // Get mod path from ModManager
     std::string modPath = ModManager::instance().getModPath(modName);
     std::string modIniPath = modPath + "/mod.ini";
@@ -1652,23 +1668,72 @@ void NetworkManager::sendModFilesToPeer(ENetPeer* peer, const std::string& modNa
     // Write number of files placeholder (we'll update this)
     uint32_t numFiles = 0;
     
-    // List of files to include
-    std::vector<std::string> filesToInclude = {"ObjectData.ini", "QuantBot Config.ini", "GameOptions.ini", "mod.ini"};
     std::vector<std::pair<std::string, std::string>> fileData;  // name -> content pairs
-    
-    for(const std::string& filename : filesToInclude) {
-        std::string filePath = modPath + "/" + filename;
-        if(existsFile(filePath)) {
-            std::ifstream file(filePath, std::ios::binary);
-            if(file.is_open()) {
-                std::string content((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
-                file.close();
-                fileData.push_back({filename, content});
-                numFiles++;
-                SDL_Log("NetworkManager: Including file '%s' (%zu bytes)", filename.c_str(), content.size());
+
+    try {
+        const std::filesystem::path root = std::filesystem::weakly_canonical(modPath);
+        std::vector<std::filesystem::path> paths;
+        for(const auto& entry : std::filesystem::recursive_directory_iterator(root)) {
+            if(entry.is_symlink()) {
+                throw std::runtime_error("mod contains a symbolic link");
+            }
+            if(entry.is_regular_file()) {
+                paths.push_back(entry.path());
             }
         }
+        std::sort(paths.begin(), paths.end(), [&](const auto& lhs, const auto& rhs) {
+            return std::filesystem::relative(lhs, root).generic_string()
+                < std::filesystem::relative(rhs, root).generic_string();
+        });
+
+        std::size_t contentBytes = 0;
+        std::set<std::string> portablePathKeys;
+        for(const auto& filePath : paths) {
+            const std::string filename = std::filesystem::relative(filePath, root).generic_string();
+            if(filename == ".dunecity-managed") {
+                continue;
+            }
+            std::filesystem::path normalizedPath;
+            if(!ModTransferValidation::normalizeRelativeFilePath(filename, normalizedPath)
+               || normalizedPath.generic_string() != filename) {
+                throw std::runtime_error("mod contains a non-portable path");
+            }
+            if(!portablePathKeys.insert(
+                   ModTransferValidation::portablePathKey(normalizedPath)).second) {
+                throw std::runtime_error("mod contains duplicate or case-colliding paths");
+            }
+            if(fileData.size() >= 4096) {
+                throw std::runtime_error("mod exceeds transfer file-count limit");
+            }
+            const auto fileSize = std::filesystem::file_size(filePath);
+            if(fileSize > static_cast<std::uintmax_t>(MAX_MOD_TRANSFER_SIZE)
+               || contentBytes + static_cast<std::size_t>(fileSize) > MAX_MOD_TRANSFER_SIZE) {
+                throw std::runtime_error("mod exceeds transfer size limit");
+            }
+            std::ifstream file(filePath, std::ios::binary);
+            if(!file) {
+                throw std::runtime_error("could not read " + filename);
+            }
+            std::string content((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+            contentBytes += content.size();
+            fileData.push_back({filename, std::move(content)});
+        }
+    } catch(const std::exception& e) {
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "NetworkManager: Could not package mod '%s': %s",
+                    modName.c_str(), e.what());
+        ENetPacketOStream completePacket(ENET_PACKET_FLAG_RELIABLE);
+        completePacket.writeUint32(NETWORKPACKET_MOD_COMPLETE);
+        completePacket.writeBool(false);
+        completePacket.writeString("Could not package mod files");
+        sendPacketToPeer(peer, completePacket);
+        return;
     }
+
+    if(fileData.size() > UINT32_MAX) {
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "NetworkManager: Mod '%s' has too many files", modName.c_str());
+        return;
+    }
+    numFiles = static_cast<uint32_t>(fileData.size());
 
     if(numFiles == 0) {
         SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "NetworkManager: No files found in mod '%s'", modName.c_str());

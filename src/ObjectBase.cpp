@@ -55,6 +55,8 @@
 #include <structures/Worfinery.h>
 #include <structures/TechCenter.h>
 #include <structures/Scoutpost.h>
+#include <structures/LoveFactory.h>
+#include <structures/ChaosFactory.h>
 #include <structures/NuclearPlant.h>
 #include <structures/PoliceStation.h>
 #include <structures/Stadium.h>
@@ -64,6 +66,7 @@
 
 //units
 #include <units/Carryall.h>
+#include <units/ChemicalCarryall.h>
 #include <units/Devastator.h>
 #include <units/Deviator.h>
 #include <units/Frigate.h>
@@ -89,6 +92,7 @@
 #include <units/FlameTank.h>
 #include <units/EliteLauncher.h>
 #include <units/EliteSiegeTank.h>
+#include <units/ChemicalSiegeTank.h>
 
 #include <array>
 #include <vector>
@@ -439,7 +443,7 @@ namespace {
 
 // 0 = normal, 1 = walls (slightly deprioritized), 2 = carryalls (heavily deprioritized)
 int getTargetDeprioritizationLevel(const ObjectBase& candidate) {
-    if(candidate.getItemID() == Unit_Carryall) return 2;
+    if(isCarryallUnit(candidate.getItemID())) return 2;
     if(candidate.getItemID() == Structure_Wall) return 1;
     return 0;
 }
@@ -827,6 +831,11 @@ int ObjectBase::getInfSpawnProp() const {
 }
 
 ObjectBase* ObjectBase::createObject(int itemID, House* Owner, bool byScenario) {
+    if(isTornieExclusiveItem(itemID)
+       && !ModManager::instance().isTornieContentActive()) {
+        SDL_Log("ObjectBase::createObject(): rejected Tornie-only ItemID %d outside Tornie", itemID);
+        return nullptr;
+    }
 
     ObjectBase* newObject = nullptr;
     switch(itemID) {
@@ -852,6 +861,10 @@ ObjectBase* ObjectBase::createObject(int itemID, House* Owner, bool byScenario) 
         case Structure_Worfinery:           newObject = new Worfinery(Owner); break;
         case Structure_TechCenter:          newObject = new TechCenter(Owner); break;
         case Structure_Scoutpost:           newObject = new Scoutpost(Owner); break;
+        case Structure_Flamepost:           newObject = new Scoutpost(Owner, Structure_Flamepost); break;
+        case Structure_Chemipost:           newObject = new Scoutpost(Owner, Structure_Chemipost); break;
+        case Structure_LoveFactory:         newObject = new LoveFactory(Owner); break;
+        case Structure_ChaosFactory:        newObject = new ChaosFactory(Owner); break;
         case Structure_WOR:                 newObject = new WOR(Owner); break;
         case Structure_NuclearPlant:        newObject = new NuclearPlant(Owner); break;
         case Structure_PoliceStation:       newObject = new PoliceStation(Owner); break;
@@ -862,6 +875,7 @@ ObjectBase* ObjectBase::createObject(int itemID, House* Owner, bool byScenario) 
         case Structure_Airport:             newObject = new Airport(Owner); break;
 
         case Unit_Carryall:                 newObject = new Carryall(Owner); break;
+        case Unit_ChemicalCarryall:         newObject = new ChemicalCarryall(Owner); break;
         case Unit_Devastator:               newObject = new Devastator(Owner); break;
         case Unit_Deviator:                 newObject = new Deviator(Owner); break;
         case Unit_Frigate:                  newObject = new Frigate(Owner); break;
@@ -887,27 +901,25 @@ ObjectBase* ObjectBase::createObject(int itemID, House* Owner, bool byScenario) 
         case Unit_FlameTank:                newObject = new FlameTank(Owner); break;
         case Unit_EliteLauncher:            newObject = new EliteLauncher(Owner); break;
         case Unit_EliteSiegeTank:           newObject = new EliteSiegeTank(Owner); break;
+        case Unit_ChemicalSiegeTank:        newObject = new ChemicalSiegeTank(Owner); break;
         case Unit_Special: {
-            const bool tornieActive = ModManager::instance().isInitialized()
-                && ModManager::instance().getActiveModName() == "Tornie";
+            const bool modInitialized = ModManager::instance().isInitialized();
+            const bool tornieActive = modInitialized && ModManager::instance().isTornieContentActive();
             const int houseID = Owner->getHouseID();
-            std::vector<int> objectDataIxCandidates;
-            if(houseID == HOUSE_CUSTOM) {
-                objectDataIxCandidates = discoverCustomHouseSpecialVehicleCandidates([&](int candidate) {
-                    const auto& data = currentGame->objectData.data[candidate][houseID];
-                    return CustomHouseSpecialVehicleCandidateData{
-                        data.enabled,
-                        data.builder,
-                        data.prerequisiteStructuresSet[Structure_IX]
-                    };
-                });
-            }
+            const auto objectDataIxCandidates = discoverHouseSpecialVehicleCandidates([&](int candidate) {
+                const auto& data = currentGame->objectData.data[candidate][houseID];
+                return HouseSpecialVehicleCandidateData{
+                    data.enabled,
+                    data.builder,
+                    data.prerequisiteStructuresSet[Structure_IX]
+                };
+            });
 
             const auto pool = resolveSpecialVehiclePoolForHouse(
                 houseID, tornieActive, objectDataIxCandidates);
             std::vector<int> enabledPool;
             for(const int candidate : pool) {
-                if(currentGame->objectData.data[candidate][houseID].enabled) {
+                if(isSpecialVehicleSelectionCandidate(candidate) && currentGame->objectData.data[candidate][houseID].enabled) {
                     enabledPool.push_back(candidate);
                 }
             }
@@ -924,6 +936,7 @@ ObjectBase* ObjectBase::createObject(int itemID, House* Owner, bool byScenario) 
                     case Unit_FlameTank:       newObject = new FlameTank(Owner); break;
                     case Unit_EliteLauncher:   newObject = new EliteLauncher(Owner); break;
                     case Unit_EliteSiegeTank:  newObject = new EliteSiegeTank(Owner); break;
+                    case Unit_ChemicalSiegeTank: newObject = new ChemicalSiegeTank(Owner); break;
                     default: break;
                 }
             }
@@ -947,6 +960,11 @@ ObjectBase* ObjectBase::createObject(int itemID, House* Owner, bool byScenario) 
 }
 
 ObjectBase* ObjectBase::loadObject(InputStream& stream, int itemID, Uint32 objectID) {
+    if(isTornieExclusiveItem(itemID)
+       && !ModManager::instance().isTornieContentActive()) {
+        SDL_Log("ObjectBase::loadObject(): rejected Tornie-only ItemID %d outside Tornie", itemID);
+        return nullptr;
+    }
     ObjectBase* newObject = nullptr;
     switch(itemID) {
         case Structure_Barracks:            newObject = new Barracks(stream); break;
@@ -971,6 +989,10 @@ ObjectBase* ObjectBase::loadObject(InputStream& stream, int itemID, Uint32 objec
         case Structure_Worfinery:           newObject = new Worfinery(stream); break;
         case Structure_TechCenter:          newObject = new TechCenter(stream); break;
         case Structure_Scoutpost:           newObject = new Scoutpost(stream); break;
+        case Structure_Flamepost:           newObject = new Scoutpost(stream, Structure_Flamepost); break;
+        case Structure_Chemipost:           newObject = new Scoutpost(stream, Structure_Chemipost); break;
+        case Structure_LoveFactory:         newObject = new LoveFactory(stream); break;
+        case Structure_ChaosFactory:        newObject = new ChaosFactory(stream); break;
         case Structure_WOR:                 newObject = new WOR(stream); break;
         case Structure_NuclearPlant:        newObject = new NuclearPlant(stream); break;
         case Structure_PoliceStation:       newObject = new PoliceStation(stream); break;
@@ -981,6 +1003,7 @@ ObjectBase* ObjectBase::loadObject(InputStream& stream, int itemID, Uint32 objec
         case Structure_Airport:             newObject = new Airport(stream); break;
 
         case Unit_Carryall:                 newObject = new Carryall(stream); break;
+        case Unit_ChemicalCarryall:         newObject = new ChemicalCarryall(stream); break;
         case Unit_Devastator:               newObject = new Devastator(stream); break;
         case Unit_Deviator:                 newObject = new Deviator(stream); break;
         case Unit_Frigate:                  newObject = new Frigate(stream); break;
@@ -1006,6 +1029,7 @@ ObjectBase* ObjectBase::loadObject(InputStream& stream, int itemID, Uint32 objec
         case Unit_FlameTank:                newObject = new FlameTank(stream); break;
         case Unit_EliteLauncher:            newObject = new EliteLauncher(stream); break;
         case Unit_EliteSiegeTank:           newObject = new EliteSiegeTank(stream); break;
+        case Unit_ChemicalSiegeTank:        newObject = new ChemicalSiegeTank(stream); break;
 
         default:                            newObject = nullptr;
                                             SDL_Log("ObjectBase::loadObject(): %d is no valid ItemID!",itemID);

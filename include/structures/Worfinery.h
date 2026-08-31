@@ -18,17 +18,21 @@
 #ifndef WORFINERY_H
 #define WORFINERY_H
 
+#include <ObjectPointer.h>
 #include <structures/BuilderBase.h>
 
+class Carryall;
 class TrackedUnit;
+class UnitBase;
 
 /// Worfinery (Tornie mod) — WOR + Refinery combo that produces Troopers
 /// instead of (or in addition to) Harvesters. Spawns infantry via the
 /// base game's trooper production path. Stats come from ObjectData.ini.
 ///
 /// Per Tornie spec: this is a single building that combines the visual
-/// identity of a WOR with the production role of a Refinery. The 2-frame
-/// vertical animation runs at ConstructionYard speed (per Tornie OOB).
+/// identity of a WOR with the production role of a Refinery. Its two active
+/// frames are expanded into the vanilla Refinery's 10-frame layout and use
+/// the same idle, approach, loaded-state, and timing rules.
 class Worfinery final : public BuilderBase
 {
 public:
@@ -42,15 +46,29 @@ public:
     ObjectInterface* getInterfaceContainer() override;
 
     bool acceptsHarvesterDropoff() const override { return true; }
-    bool isHarvesterDropoffFree() const override { return true; }
-    int getHarvesterDropoffBookings() const override { return 0; }
-    void bookHarvesterDropoff() override { }
-    void unbookHarvesterDropoff() override { }
-    void startHarvesterDropoffAnimation() override { }
+    bool isHarvesterDropoffFree() const override { return !extractingSpice; }
+    int getHarvesterDropoffBookings() const override { return static_cast<int>(bookings); }
+    void bookHarvesterDropoff() override;
+    void unbookHarvesterDropoff() override;
+    void startHarvesterDropoffAnimation() override;
     bool receiveHarvester(TrackedUnit* unit) override;
+    void deployContainedHarvester(Carryall* carryall = nullptr) override;
+    UnitBase* getContainedHarvesterUnit() override { return harvester.getUnitPointer(); }
+    const UnitBase* getContainedHarvesterUnit() const override { return harvester.getUnitPointer(); }
 
 protected:
     void updateStructureSpecificStuff() override;
+
+private:
+    void startAnimate();
+    void stopAnimate();
+    void assignHarvester(TrackedUnit* unit);
+    void deployHarvester(Carryall* carryall = nullptr);
+
+    bool extractingSpice = false;
+    ObjectPointer harvester;
+    Uint32 bookings = 0;
+    bool firstRun = true;
 };
 
 #endif // WORFINERY_H

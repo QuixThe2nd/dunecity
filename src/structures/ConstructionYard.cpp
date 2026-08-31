@@ -22,6 +22,7 @@
 #include <FileClasses/GFXManager.h>
 #include <House.h>
 #include <Game.h>
+#include <mod/ModManager.h>
 
 ConstructionYard::ConstructionYard(House* newOwner) : BuilderBase(newOwner) {
     ConstructionYard::init();
@@ -56,5 +57,24 @@ bool ConstructionYard::doPlaceStructure(int x, int y) {
         return (getOwner()->placeStructure(getObjectID(), getCurrentProducedItem(), x, y) != nullptr);
     } else {
         return false;
+    }
+}
+
+void ConstructionYard::updateStructureSpecificStuff() {
+    if(!ModManager::instance().isTornieContentActive()
+       || currentGame == nullptr || getOwner() == nullptr || !getOwner()->isAI()
+       || currentGame->techLevel < 9
+       || getOwner()->getNumItems(Structure_LoveFactory) > 0
+       || getProductionQueueSize() > 0
+       || getCurrentProducedItem() != ItemID_Invalid
+       || isUpgrading()
+       || !isAvailableToBuild(Structure_LoveFactory)) {
+        return;
+    }
+
+    const BuildItem* loveFactory = getBuildItem(Structure_LoveFactory);
+    if(loveFactory != nullptr
+       && getOwner()->getCredits() >= static_cast<int>(loveFactory->price) + 1500) {
+        doProduceItem(Structure_LoveFactory);
     }
 }

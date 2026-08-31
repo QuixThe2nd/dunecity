@@ -89,6 +89,7 @@ TEST_CASE("Invalid optional Mentat fields disable the override safely",
     valid.enabled = true;
     valid.identityHouse = 1;
     valid.backgroundAsset = "mentat/background.png";
+    valid.foregroundAsset = "mentat/foreground.png";
     valid.eyesAsset = "mentat/eyes.png";
     valid.mouthAsset = "mentat/mouth.png";
     REQUIRE(ModMentatConfig::isValid(valid));
@@ -104,6 +105,10 @@ TEST_CASE("Invalid optional Mentat fields disable the override safely",
     ModMentatInfo invalidPath = valid;
     invalidPath.backgroundAsset = "../leaked.png";
     REQUIRE_FALSE(ModMentatConfig::isValid(invalidPath));
+
+    ModMentatInfo invalidForegroundPath = valid;
+    invalidForegroundPath.foregroundAsset = "../other-mod/foreground.png";
+    REQUIRE_FALSE(ModMentatConfig::isValid(invalidForegroundPath));
 }
 
 TEST_CASE("Custom-house presentation numbers parse safely and remain bounded",
@@ -149,8 +154,8 @@ TEST_CASE("Custom-house presentation defaults request safe fallbacks",
 
 TEST_CASE("Tornie custom house prefers its ObjectData IX vehicles",
           "[custom-house][special-vehicle][tornie]") {
-    std::vector<CustomHouseSpecialVehicleCandidateData> objectData(ItemID_LastID + 1);
-    const CustomHouseSpecialVehicleCandidateData enabledIxVehicle{
+    std::vector<HouseSpecialVehicleCandidateData> objectData(ItemID_LastID + 1);
+    const HouseSpecialVehicleCandidateData enabledIxVehicle{
         true,
         Structure_HeavyFactory,
         true
@@ -164,38 +169,42 @@ TEST_CASE("Tornie custom house prefers its ObjectData IX vehicles",
     objectData[Unit_Harvester] = enabledIxVehicle;
     objectData[Unit_FlameTank] = { true, Structure_HeavyFactory, false };
 
-    const auto tornieIxCandidates = discoverCustomHouseSpecialVehicleCandidates(
+    const auto tornieIxCandidates = discoverHouseSpecialVehicleCandidates(
         [&](int itemID) { return objectData[itemID]; });
-    const std::vector<int> expectedCandidates = {
-        Unit_Deviator,
-        Unit_EliteLauncher
+    const std::vector<int> expectedCorruptiqueCandidates = {
+        Unit_Devastator,
+        Unit_EliteSiegeTank
     };
 
     REQUIRE(resolveSpecialVehiclePoolForHouse(
                 HOUSE_CUSTOM, true, tornieIxCandidates)
-            == expectedCandidates);
-    REQUIRE_FALSE(isCustomHouseSpecialVehicleCandidate(
+            == expectedCorruptiqueCandidates);
+    REQUIRE_FALSE(isHouseSpecialVehicleCandidate(
         Unit_Ornithopter, objectData[Unit_Ornithopter]));
-    REQUIRE_FALSE(isCustomHouseSpecialVehicleCandidate(
+    REQUIRE_FALSE(isHouseSpecialVehicleCandidate(
         Unit_Devastator, objectData[Unit_Devastator]));
-    REQUIRE_FALSE(isCustomHouseSpecialVehicleCandidate(
+    REQUIRE_FALSE(isHouseSpecialVehicleCandidate(
         Unit_Trooper, objectData[Unit_Trooper]));
-    REQUIRE_FALSE(isCustomHouseSpecialVehicleCandidate(
+    REQUIRE_FALSE(isHouseSpecialVehicleCandidate(
         Unit_Harvester, objectData[Unit_Harvester]));
 }
 
-TEST_CASE("Custom house uses the generic special-vehicle fallback only when needed",
+TEST_CASE("House fallback follows the active faction plan when ObjectData has no candidates",
           "[custom-house][special-vehicle][fallback]") {
     const std::vector<int> noModOwnedCandidates;
     const std::vector<int> genericFallback = {
         Unit_SonicTank,
         Unit_Devastator
     };
+    const std::vector<int> expectedTornieFremen = {
+        Unit_EliteSiegeTank,
+        Unit_FlameTank
+    };
 
     REQUIRE(resolveSpecialVehiclePoolForHouse(
-                HOUSE_CUSTOM, false, noModOwnedCandidates)
+                HOUSE_FREMEN, false, noModOwnedCandidates)
             == genericFallback);
     REQUIRE(resolveSpecialVehiclePoolForHouse(
-                HOUSE_CUSTOM, true, noModOwnedCandidates)
-            == genericFallback);
+                HOUSE_FREMEN, true, noModOwnedCandidates)
+            == expectedTornieFremen);
 }

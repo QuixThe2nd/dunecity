@@ -36,24 +36,72 @@
 
 namespace {
 
+bool isTornieContentActive() {
+    return ModManager::instance().isInitialized()
+        && ModManager::instance().isTornieContentActive();
+}
+
+bool isTornieMapObject(int itemID) {
+    switch(itemID) {
+        case Unit_RocketTrike:
+        case Unit_SonicTrike:
+        case Unit_FlameTank:
+        case Unit_EliteLauncher:
+        case Unit_EliteSiegeTank:
+        case Unit_ChemicalSiegeTank:
+        case Unit_ChemicalCarryall:
+        case Unit_RebelHarvester:
+        case Structure_AdvancedWindTrap:
+        case Structure_Worfinery:
+        case Structure_AdvancedWindTrapMK2:
+        case Structure_TechCenter:
+        case Structure_AdvancedWindTrapMK3:
+        case Structure_Scoutpost:
+        case Structure_LoveFactory:
+        case Structure_Flamepost:
+        case Structure_ChaosFactory:
+        case Structure_Chemipost:
+            return true;
+        default:
+            return false;
+    }
+}
+
+int normalizeVanillaSpiceTerrain(int terrainType) {
+    if(isTornieContentActive()) {
+        return terrainType;
+    }
+
+    switch(terrainType) {
+        case Terrain_GreenSpice:
+        case Terrain_RedSpice:
+            return Terrain_Spice;
+        case Terrain_ThickGreenSpice:
+        case Terrain_ThickRedSpice:
+            return Terrain_ThickSpice;
+        case Terrain_GreenSpiceBloom:
+        case Terrain_RedSpiceBloom:
+            return Terrain_SpiceBloom;
+        default:
+            return terrainType;
+    }
+}
+
 int chooseSpecialVehicle(Game* pGame, int houseID) {
     if(pGame == nullptr || houseID < 0 || houseID >= NUM_HOUSES) {
         return ItemID_Invalid;
     }
 
-    const bool tornieActive = ModManager::instance().isInitialized()
-        && ModManager::instance().getActiveModName() == "Tornie";
-    std::vector<int> objectDataIxCandidates;
-    if(houseID == HOUSE_CUSTOM) {
-        objectDataIxCandidates = discoverCustomHouseSpecialVehicleCandidates([&](int candidate) {
-            const auto& data = pGame->objectData.data[candidate][houseID];
-            return CustomHouseSpecialVehicleCandidateData{
-                data.enabled,
-                data.builder,
-                data.prerequisiteStructuresSet[Structure_IX]
-            };
-        });
-    }
+    const bool modInitialized = ModManager::instance().isInitialized();
+    const bool tornieActive = modInitialized && ModManager::instance().isTornieContentActive();
+    const auto objectDataIxCandidates = discoverHouseSpecialVehicleCandidates([&](int candidate) {
+        const auto& data = pGame->objectData.data[candidate][houseID];
+        return HouseSpecialVehicleCandidateData{
+            data.enabled,
+            data.builder,
+            data.prerequisiteStructuresSet[Structure_IX]
+        };
+    });
 
     const auto pool = resolveSpecialVehiclePoolForHouse(
         houseID, tornieActive, objectDataIxCandidates);
@@ -62,7 +110,7 @@ int chooseSpecialVehicle(Game* pGame, int houseID) {
     enabledPool.reserve(pool.size());
 
     for(const int candidate : pool) {
-        if(isUnit(candidate) && pGame->objectData.data[candidate][houseID].enabled) {
+        if(isSpecialVehicleSelectionCandidate(candidate) && pGame->objectData.data[candidate][houseID].enabled) {
             enabledPool.push_back(candidate);
         }
     }
@@ -417,7 +465,8 @@ void INIMapLoader::loadMap() {
                     } break;
                 }
 
-                currentGameMap->getTile(x,y)->setType(type);
+                currentGameMap->getTile(x,y)->setType(
+                    normalizeVanillaSpiceTerrain(type));
             }
         }
 
@@ -447,7 +496,7 @@ void INIMapLoader::loadHouses()
     std::vector<HOUSETYPE> unboundedHouses;
 
     for(int h=0;h<NUM_HOUSES;h++) {
-        if(!isHouseAvailable(static_cast<HOUSETYPE>(h))) continue;
+        if(!isCustomGameHouseAvailable(static_cast<HOUSETYPE>(h))) continue;
         bool bFound = false;
         for(const GameInitSettings::HouseInfo& houseInfo : houseInfoList) {
             if(houseInfo.houseID == (HOUSETYPE) h) {
@@ -464,7 +513,7 @@ void INIMapLoader::loadHouses()
 
     // init housename2house mapping with every house section marked as unused
     for(int i=0;i<NUM_HOUSES;i++) {
-        if(!isHouseAvailable(static_cast<HOUSETYPE>(i))) continue;
+        if(!isCustomGameHouseAvailable(static_cast<HOUSETYPE>(i))) continue;
         std::string houseName = getHouseNameByNumber((HOUSETYPE) i);
         convertToLower(houseName);
 
@@ -498,7 +547,7 @@ void INIMapLoader::loadHouses()
 
         int colorOfHouse = houseInfo.colorOfHouse;
         if(!isValidHouseColorSlot(colorOfHouse)) {
-            colorOfHouse = houseID;
+            colorOfHouse = getDefaultHouseColorSlot(houseID);
         }
         resolvedHouseInfo.colorOfHouse = colorOfHouse;
 
@@ -632,6 +681,7 @@ void INIMapLoader::loadChoam()
             }
         }
     }
+
 }
 
 /**
@@ -694,7 +744,15 @@ void INIMapLoader::loadUnits()
                 }
             }
 
-            if(!pGame->objectData.data[itemID][houseID].enabled) {
+            if(isTornieMapObject(itemID) && !isTornieContentActive()) {
+                continue;
+            }
+
+            // Editor-placed Chemical Carryalls are valid for every faction;
+            // production availability remains controlled separately by the builder rules.
+            const bool editorPlacedChemicalCarryall =
+                itemID == Unit_ChemicalCarryall && isTornieContentActive();
+            if(!pGame->objectData.data[itemID][houseID].enabled && !editorPlacedChemicalCarryall) {
                 continue;
             }
 
@@ -816,6 +874,10 @@ void INIMapLoader::loadStructures()
                 continue;
             }
 
+            if(isTornieMapObject(itemID) && !isTornieContentActive()) {
+                continue;
+            }
+
             if (itemID != 0 && pGame->objectData.data[itemID][houseID].enabled) {
                 ObjectBase* newStructure = getOrCreateHouse(houseID)->placeStructure(NONE_ID, itemID, getXPos(pos), getYPos(pos), true);
                 if(newStructure == nullptr) {
@@ -868,6 +930,10 @@ void INIMapLoader::loadReinforcements()
         Uint32 itemID = getItemIDByName(strUnitName);
         if((itemID == ItemID_Invalid) || !isUnit(itemID)) {
             logWarning(key.getLineNumber(), "Invalid unit string: '" + strUnitName + "'!");
+            continue;
+        }
+
+        if(isTornieMapObject(static_cast<int>(itemID)) && !isTornieContentActive()) {
             continue;
         }
 

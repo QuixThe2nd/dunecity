@@ -27,8 +27,9 @@
 
 #include <FileClasses/GFXManager.h>
 #include <FileClasses/TextManager.h>
+#include <mod/ModManager.h>
 
-static const ItemID_enum choamUnits[] = { Unit_Carryall,  Unit_Ornithopter,
+static const ItemID_enum allChoamUnits[] = { Unit_Carryall, Unit_ChemicalCarryall, Unit_Ornithopter,
                                            Unit_Harvester, Unit_MCV,
                                            Unit_Trike,     Unit_RaiderTrike,
                                            Unit_Quad,      Unit_Tank,
@@ -36,11 +37,18 @@ static const ItemID_enum choamUnits[] = { Unit_Carryall,  Unit_Ornithopter,
                                            Unit_Devastator,Unit_Deviator,
                                            Unit_SonicTank, Unit_RocketTrike, Unit_SonicTrike,
                                            Unit_FlameTank, Unit_EliteLauncher,
-                                           Unit_EliteSiegeTank, Unit_RebelHarvester,
+                                           Unit_EliteSiegeTank, Unit_ChemicalSiegeTank, Unit_RebelHarvester,
                                            ItemID_Invalid
                                           };
 
 ChoamWindow::ChoamWindow(MapEditor* pMapEditor, HOUSETYPE currentHouse) : Window(0,0,0,0), pMapEditor(pMapEditor), house(currentHouse) {
+
+    const bool tornieActive = ModManager::instance().isTornieContentActive();
+    for(const ItemID_enum itemID : allChoamUnits) {
+        if(itemID != ItemID_Invalid && (tornieActive || !isTornieExclusiveItem(itemID))) {
+            choamUnits_.push_back(itemID);
+        }
+    }
 
     color = getHouseInterfaceColor(house);
 
@@ -74,12 +82,12 @@ ChoamWindow::ChoamWindow(MapEditor* pMapEditor, HOUSETYPE currentHouse) : Window
 
     std::map<int,int>& choam = pMapEditor->getChoam();
 
-    const int numChoamItems = static_cast<int>(sizeof(choamUnits) / sizeof(choamUnits[0])) - 1;
+    const int numChoamItems = static_cast<int>(choamUnits_.size());
     const int numChoamRows = (numChoamItems + 1) / 2;
     for(int i=0;i<numChoamRows;i++) {
 
-        ItemID_enum unit1 = choamUnits[i*2];
-        ItemID_enum unit2 = choamUnits[i*2+1];
+        ItemID_enum unit1 = choamUnits_[i*2];
+        ItemID_enum unit2 = i*2 + 1 < numChoamItems ? choamUnits_[i*2+1] : ItemID_Invalid;
 
         centralVBox.addWidget(VSpacer::create(2));
 
@@ -154,9 +162,9 @@ void ChoamWindow::onOK() {
 
     pMapEditor->startOperation();
 
-    for(unsigned int i = 0; i < sizeof(choamUnits)/sizeof(choamUnits[0]); i++) {
+    for(unsigned int i = 0; i < choamUnits_.size(); i++) {
         int rowNum = i/2;
-        int itemID = choamUnits[i];
+        int itemID = choamUnits_[i];
 
         if(itemID != ItemID_Invalid) {
 
@@ -191,8 +199,8 @@ void ChoamWindow::onOK() {
 }
 
 void ChoamWindow::onUnitCheckbox(int itemID) {
-    for(unsigned int i = 0; i < sizeof(choamUnits)/sizeof(choamUnits[0]); i++) {
-        if(choamUnits[i] == itemID) {
+    for(unsigned int i = 0; i < choamUnits_.size(); i++) {
+        if(choamUnits_[i] == itemID) {
             int rowNum = i/2;
 
             if((i%2) == 0) {

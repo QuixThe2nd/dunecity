@@ -77,8 +77,36 @@ Finale::Finale(int house) {
     if(pPlanetDuneInHouseColorSurface == nullptr) {
         THROW(std::runtime_error, "Finale::Finale(): Cannot open MAPPLAN.CPS!");
     }
-    pPlanetDuneInHouseColorSurface = mapSurfaceColorRange(pPlanetDuneInHouseColorSurface.get(), houseToPaletteIndex[HOUSE_HARKONNEN], getHousePaletteIndex(static_cast<HOUSETYPE>(house)));
+    const int colorSlot = getHouseVisualHouse(house);
+    const bool usesPrivateVisualRamp =
+        colorSlot == HOUSE_REBELS
+        || (customPaletteLoaded
+            && (colorSlot == HOUSE_CUSTOM
+                || isCustomHouseColorSlot(colorSlot)
+                || isTornieGuestHouseColorSlot(colorSlot)
+                || isVanillaRebelsColorSlot(colorSlot)));
+    const int targetPaletteBase = usesPrivateVisualRamp
+        ? houseToPaletteIndex[HOUSE_HARKONNEN]
+        : getHouseColorPaletteIndexFromSlot(colorSlot);
 
+    pPlanetDuneInHouseColorSurface = mapSurfaceColorRange(
+        pPlanetDuneInHouseColorSurface.get(),
+        houseToPaletteIndex[HOUSE_HARKONNEN],
+        targetPaletteBase);
+
+    if(usesPrivateVisualRamp
+        && pPlanetDuneInHouseColorSurface->format != nullptr
+        && pPlanetDuneInHouseColorSurface->format->palette != nullptr
+        && targetPaletteBase >= 0
+        && targetPaletteBase + 7 < pPlanetDuneInHouseColorSurface->format->palette->ncolors) {
+        SDL_Color visualRamp[8];
+        for(int shade = 0; shade < 8; ++shade) {
+            visualRamp[shade] = getHouseColorSDL(colorSlot, shade);
+            visualRamp[shade].a = 255;
+        }
+        SDL_SetPaletteColors(pPlanetDuneInHouseColorSurface->format->palette,
+                             visualRamp, targetPaletteBase, 8);
+    }
     if(house == HOUSE_HARKONNEN || house == HOUSE_ATREIDES || house == HOUSE_ORDOS) {
         lizard = getChunkFromFile("LIZARD1.VOC");
         glass = getChunkFromFile("GLASS6.VOC");
@@ -89,7 +117,7 @@ Finale::Finale(int house) {
 
     const auto pIntroText = std::make_unique<IndexedTextFile>(pFileManager->openFile("INTRO." + _("LanguageFileExtension")).get());
 
-    const Uint32 color = SDL2RGB(palette[getHousePaletteIndex(static_cast<HOUSETYPE>(house))+1]);
+    const Uint32 color = getHouseColorRGB(getHouseVisualHouse(house), 1);
     const Uint32 sardaukarColor = SDL2RGB(palette[PALCOLOR_SARDAUKAR+1]);
 
     switch(house) {

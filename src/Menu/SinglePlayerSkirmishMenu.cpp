@@ -16,6 +16,7 @@
  */
 
 #include <Menu/SinglePlayerSkirmishMenu.h>
+#include <mod/ModManager.h>
 
 #include <globals.h>
 

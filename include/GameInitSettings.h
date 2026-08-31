@@ -53,7 +53,11 @@ public:
     class HouseInfo {
     public:
         HouseInfo(HOUSETYPE newHouseID, int newTeam)
-         : houseID(newHouseID), colorOfHouse(newHouseID), team(newTeam) {
+         : houseID(newHouseID),
+           colorOfHouse((newHouseID >= HOUSE_WILDSPADE && newHouseID <= HOUSE_THARPIQUE)
+                            ? HOUSECOLOR_GUEST_1 + (newHouseID - HOUSE_WILDSPADE)
+                            : newHouseID),
+           team(newTeam) {
         }
 
         explicit HouseInfo(InputStream& stream) {

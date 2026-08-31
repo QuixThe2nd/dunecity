@@ -522,8 +522,8 @@ void Harvester::setReturned()
     awaitingPickup = false;
 
     if(!storedInside) {
-        // Worfinery unloads instantly, but the harvester must leave the
-        // occupied structure tiles before resuming its harvesting cycle.
+        // A non-storing drop-off must let the harvester leave the occupied
+        // structure tiles before resuming its harvesting cycle.
         Coord deployPos = currentGameMap->findDeploySpot(
             this, dropoff->getLocation(), currentGame->randomGen,
             getGuardPoint(), dropoff->getStructureSize());

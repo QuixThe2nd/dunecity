@@ -187,6 +187,13 @@ protected:
     void doBuildRandom(const BuilderBase* pBuilder) const;
 
     /**
+        Selects an available Tornie custom unit at a deliberately low frequency.
+        The exact active-mod gate and active ObjectData list keep this path out
+        of Vanilla, DuneCity, Dune2R, and unrelated user mods.
+    */
+    int chooseLowPriorityCustomUnit(const BuilderBase* pBuilder, int chanceDenominator = 5) const;
+
+    /**
         Send order and wait for delivery to pStarport.
         \param  pStarport  the Starport to send order for
     */

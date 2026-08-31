@@ -49,6 +49,17 @@ Bullet::Bullet(Uint32 shooterID, Coord* newRealLocation, Coord* newRealDestinati
 
     Bullet::init();
 
+    const ObjectBase* pShooter = currentGame->getObjectManager().getObject(shooterID);
+    const bool usesPreciseFlameTrajectory = bulletID == Bullet_Flame
+        && pShooter != nullptr
+        && (pShooter->getItemID() == Unit_Trooper
+            || pShooter->getItemID() == Structure_Flamepost);
+    if(usesPreciseFlameTrajectory) {
+        // Trooper rockets travel directly to their target. Keep the flame
+        // projectile and impact, but remove the delayed point-blank miss.
+        detonationTimer = 0;
+    }
+
     if(bulletID == Bullet_TurretRocket) {
         const ObjectBase* pInitialTarget = target.getObjPointer();
         if(pInitialTarget && pInitialTarget->isAFlyingUnit()) {
@@ -84,7 +95,8 @@ Bullet::Bullet(Uint32 shooterID, Coord* newRealLocation, Coord* newRealDestinati
         FixPoint ratio = (weaponrange*TILESIZE)/square_root;
         destination.x = newRealLocation->x + floor(diffX*ratio);
         destination.y = newRealLocation->y + floor(diffY*ratio);
-    } else if(bulletID == Bullet_Rocket || bulletID == Bullet_DRocket || bulletID == Bullet_Flame) {
+    } else if((bulletID == Bullet_Rocket || bulletID == Bullet_DRocket || bulletID == Bullet_Flame)
+              && !usesPreciseFlameTrajectory) {
         // Dynasty scatter algorithm - applies to both ground AND air targets
         FixPoint distance = distanceFrom(*newRealLocation, *newRealDestination);
         const int distanceInTiles = std::max(0, lround(distance / TILESIZE));
@@ -180,7 +192,14 @@ void Bullet::init()
             graphic = pGFXManager->getObjPic(ObjPic_Bullet_MediumRocket, houseID);
         } break;
 
-        case Bullet_LargeRocket: {
+                case Bullet_Heal: {
+            damageRadius = 0;
+            speed = 19.2_fix;
+            detonationTimer = -1;
+            numFrames = 16;
+            graphic = pGFXManager->getObjPic(ObjPic_Bullet_MediumRocket, houseID);
+        } break;
+case Bullet_LargeRocket: {
             damageRadius = TILESIZE;
             speed = 32.0_fix;
             detonationTimer = -1;
@@ -412,7 +431,7 @@ void Bullet::update()
         ySpeed = speed * -FixPoint::sin(Deg256ToRad(angle));
 
         drawnAngle = lround(numFrames*angle/256) % numFrames;
-    } else if(bulletID == Bullet_TurretRocket) {
+    } else if(bulletID == Bullet_TurretRocket || bulletID == Bullet_Heal) {
 
         // Dynasty: Turret rockets actively track their moving target
         ObjectBase* pTarget = target.getObjPointer();
@@ -577,7 +596,17 @@ void Bullet::destroy()
             currentGame->getExplosionList().push_back(new Explosion(Explosion_Gas,position,houseID));
         } break;
 
-        case Bullet_LargeRocket: {
+                case Bullet_Heal: {
+            ObjectBase* pTarget = target.getObjPointer();
+            if(pTarget != nullptr && pTarget->getHealth() > 0
+                    && pTarget->getHealth() < pTarget->getMaxHealth()
+                    && pTarget->getOwner()->getTeamID() == owner->getTeamID()) {
+                pTarget->setHealth(std::min(FixPoint(pTarget->getMaxHealth()), pTarget->getHealth() + FixPoint(damage)));
+            }
+            soundPlayer->playSoundAt(Sound_ExplosionGas, position);
+            currentGame->getExplosionList().push_back(new Explosion(Explosion_Gas, position, houseID));
+        } break;
+case Bullet_LargeRocket: {
             soundPlayer->playSoundAt(Sound_ExplosionLarge, position);
 
             for(int i = 0; i < 5; i++) {

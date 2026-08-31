@@ -139,6 +139,7 @@ public:
     inline void setDestination(const Coord& location) { setDestination(location.x, location.y); }
     inline void setLocation(const Coord& location) { setLocation(location.x, location.y); }
     inline bool canAttack() const { return canAttackStuff; }
+    virtual bool canHeal() const { return false; }
     inline bool hasATarget() const { return (target); }
     inline bool hasObjectID(Uint32 id) const { return (objectID == id); }
     inline bool isActive() const { return active; }

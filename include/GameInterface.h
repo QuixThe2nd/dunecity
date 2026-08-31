@@ -133,6 +133,7 @@ private:
 
     ChatManager         chatManager;            ///< Manages chat manages shown overlayed with the main map
     TextButton          ornithopterSelectButton;///< Button that selects all owned ornithopters
+    TextButton          chemicalCarryallSelectButton;///< Button that selects all owned chemical carryalls
 
     bool                showCityStatsOverlay;   ///< Whether to show the city stats overlay
 

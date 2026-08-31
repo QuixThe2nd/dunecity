@@ -67,6 +67,7 @@ EXTERN SDL_Texture*         screenTexture;              ///< the texture
 EXTERN Palette              palette;                    ///< the palette for the screen
 EXTERN Palette              customPalette;              ///< optional Custom_IBM.PAL for extra visual color ramps
 EXTERN bool                 customPaletteLoaded;        ///< true when Custom_IBM.PAL is available
+EXTERN std::array<SDL_Color, 8> rebelsColorRamp;         ///< private Rebels ramp; never written into IBM.PAL
 EXTERN int                  drawnMouseX;                ///< the current mouse position (x coordinate)
 EXTERN int                  drawnMouseY;                ///< the current mouse position (y coordinate)
 EXTERN int                  currentZoomlevel;           ///< 0 = the smallest zoom level, 1 = medium zoom level, 2 = maximum zoom level
@@ -104,23 +105,29 @@ EXTERN std::array<int, NUM_HOUSES> houseToVisualHouse;  ///< runtime visual colo
 
 
 // constants
-static const int houseToPaletteIndex[NUM_HOUSES] = { PALCOLOR_HARKONNEN, PALCOLOR_ATREIDES, PALCOLOR_ORDOS, PALCOLOR_FREMEN, PALCOLOR_SARDAUKAR, PALCOLOR_MERCENARY, PALCOLOR_NEUTRAL, PALCOLOR_REBELS, PALCOLOR_HARKONNEN };    ///< the base colors for the different houses
+static const int houseToPaletteIndex[NUM_HOUSES] = {
+    PALCOLOR_HARKONNEN, PALCOLOR_ATREIDES, PALCOLOR_ORDOS, PALCOLOR_FREMEN,
+    PALCOLOR_SARDAUKAR, PALCOLOR_MERCENARY, PALCOLOR_NEUTRAL, PALCOLOR_REBELS,
+    PALCOLOR_HARKONNEN, PALCOLOR_NEUTRAL, PALCOLOR_REBELS, PALCOLOR_MERCENARY
+};    ///< the base colors for the different house identities
 static const int houseColorToPaletteIndex[NUM_HOUSE_COLOR_SLOTS] = {
     PALCOLOR_HARKONNEN, PALCOLOR_ATREIDES, PALCOLOR_ORDOS, PALCOLOR_FREMEN,
     PALCOLOR_SARDAUKAR, PALCOLOR_MERCENARY, PALCOLOR_NEUTRAL, PALCOLOR_REBELS, PALCOLOR_HARKONNEN,
     PALCOLOR_HARKONNEN, PALCOLOR_ATREIDES, PALCOLOR_ORDOS, PALCOLOR_FREMEN,
-    PALCOLOR_SARDAUKAR, PALCOLOR_MERCENARY
+    PALCOLOR_SARDAUKAR, PALCOLOR_MERCENARY,
+    PALCOLOR_HARKONNEN, PALCOLOR_HARKONNEN, PALCOLOR_HARKONNEN
 };    ///< palette ramp used by house colors, including custom visual-only colors
-static const char houseChar[] = { 'H', 'A', 'O', 'F', 'S', 'M', 'N', 'R', '?' };   ///< character for each house
+static const char houseChar[] = { 'H', 'A', 'O', 'F', 'S', 'M', 'N', 'R', 'C', 'W', 'K', 'T' };
 
 int getHousePaletteIndex(HOUSETYPE house);
+int getHouseColorPaletteIndexFromSlot(int colorSlot);
 
 inline bool isValidHouseColorSlot(int colorSlot) {
     return colorSlot >= 0 && colorSlot < NUM_HOUSE_COLOR_SLOTS;
 }
 
 inline bool isCustomHouseColorSlot(int colorSlot) {
-    return colorSlot >= NUM_HOUSES && colorSlot < NUM_HOUSE_COLOR_SLOTS;
+    return colorSlot >= NUM_BASE_HOUSE_COLOR_SLOTS && colorSlot < HOUSECOLOR_GUEST_1;
 }
 
 inline int getHouseVisualHouse(int house) {
@@ -137,44 +144,35 @@ inline int getHouseVisualHouse(int house) {
 inline int getHouseColorPaletteIndex(int house) {
     const int visualHouse = getHouseVisualHouse(house);
     if(isValidHouseColorSlot(visualHouse)) {
-        return visualHouse == HOUSE_CUSTOM ? getHousePaletteIndex(HOUSE_CUSTOM) : houseColorToPaletteIndex[visualHouse];
+        return getHouseColorPaletteIndexFromSlot(visualHouse);
     }
 
     return PALCOLOR_HARKONNEN;
 }
 
-inline int getHouseColorPaletteIndexFromSlot(int colorSlot) {
-    if(isValidHouseColorSlot(colorSlot)) {
-        return colorSlot == HOUSE_CUSTOM ? getHousePaletteIndex(HOUSE_CUSTOM) : houseColorToPaletteIndex[colorSlot];
-    }
-
-    return PALCOLOR_HARKONNEN;
-}
+bool isTornieGuestHouseColorSlot(int colorSlot);
+bool isTornieRebelsColorSlot(int colorSlot);
+bool isVanillaRebelsColorSlot(int colorSlot);
 
 inline const Palette& getPaletteForHouseColorSlot(int colorSlot) {
-    return (colorSlot == HOUSE_CUSTOM || isCustomHouseColorSlot(colorSlot)) && customPaletteLoaded
+    return (colorSlot == HOUSE_CUSTOM || isCustomHouseColorSlot(colorSlot) || isTornieGuestHouseColorSlot(colorSlot)) && customPaletteLoaded
         ? customPalette
         : palette;
 }
 
-inline SDL_Color getHouseColorSDL(int colorSlot, int shadeOffset = 3) {
-    const Palette& sourcePalette = getPaletteForHouseColorSlot(colorSlot);
-    const int paletteIndex = getHouseColorPaletteIndexFromSlot(colorSlot) + shadeOffset;
-    if(paletteIndex >= 0 && paletteIndex < sourcePalette.getNumColors()) {
-        return sourcePalette[paletteIndex];
-    }
-
-    return SDL_Color{ 0, 0, 0, 255 };
-}
-
-inline Uint32 getHouseColorRGB(int colorSlot, int shadeOffset = 3) {
-    return SDL2RGB(getHouseColorSDL(colorSlot, shadeOffset));
-}
+SDL_Color getHouseColorSDL(int colorSlot, int shadeOffset = 3);
+Uint32 getHouseColorRGB(int colorSlot, int shadeOffset = 3);
 
 void loadCustomPalette();
 void applyCustomPaletteRuntimeHouseRamps();
 bool isHouseAvailable(HOUSETYPE house);
 int getNumAvailableHouses();
+bool isCustomGameHouseAvailable(HOUSETYPE house);
+int getNumCustomGameHouses();
+HOUSETYPE getHouseFactionIdentity(HOUSETYPE house);
+HOUSETYPE getRuntimeHouseForIdentity(HOUSETYPE identity);
+bool isHouseFaction(HOUSETYPE house, HOUSETYPE identity);
+int getDefaultHouseColorSlot(HOUSETYPE house);
 char getHouseScenarioLetter(HOUSETYPE house);
 std::string getHouseRegionPrefix(HOUSETYPE house);
 HOUSETYPE getHouseFallbackHouse(HOUSETYPE house);

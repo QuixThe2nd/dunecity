@@ -47,7 +47,7 @@ std::string getBaseFilenameUpper(const std::string& filepath) {
 }
 
 bool isTornieModActive() {
-    return ModManager::instance().isInitialized() && strToUpper(ModManager::instance().getActiveModName()) == "TORNIE";
+    return ModManager::instance().isInitialized() && ModManager::instance().isTornieContentActive();
 }
 
 std::vector<std::string> getActiveModDataPaths() {
@@ -385,12 +385,13 @@ sdl2::RWops_ptr FileManager::openCampaignFile(const std::string& filename) {
     const bool isTornieCampaign = isCampaignFile(filename) && isTornieModActive();
 
     if(isTornieCampaign) {
+        const std::string activeModName = ModManager::instance().getActiveModName();
         std::vector<std::string> candidates;
-        addCampaignCandidates(candidates, ModManager::instance().getModPath("Tornie") + "/campaign", filename);
+        addCampaignCandidates(candidates, ModManager::instance().getModPath(activeModName) + "/campaign", filename);
 
         for(const auto& searchPath : getSearchPath()) {
-            addCampaignCandidates(candidates, searchPath + "/mods/Tornie/campaign", filename);
-            addCampaignCandidates(candidates, searchPath + "/../mods/Tornie/campaign", filename);
+            addCampaignCandidates(candidates, searchPath + "/mods/" + activeModName + "/campaign", filename);
+            addCampaignCandidates(candidates, searchPath + "/../mods/" + activeModName + "/campaign", filename);
         }
 
         for(const auto& candidate : candidates) {

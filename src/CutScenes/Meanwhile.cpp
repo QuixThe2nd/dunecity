@@ -54,9 +54,9 @@ Meanwhile::Meanwhile(int house, bool firstMeanwhile) {
     }
 
     int houseOfVisitor = (house+2)%3;
-    Uint32 color = SDL2RGB(palette[getHousePaletteIndex(static_cast<HOUSETYPE>(house))+1]);
+    Uint32 color = getHouseColorRGB(getHouseVisualHouse(house), 1);
     Uint32 sardaukarColor = SDL2RGB(palette[PALCOLOR_SARDAUKAR+1]);
-    Uint32 visitorColor = SDL2RGB(palette[getHousePaletteIndex(static_cast<HOUSETYPE>(houseOfVisitor))+1]);
+    Uint32 visitorColor = getHouseColorRGB(getHouseVisualHouse(houseOfVisitor), 1);
 
     if(firstMeanwhile == true) {
         // Meanwhile after level 4

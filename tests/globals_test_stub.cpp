@@ -54,3 +54,7 @@ bool         debug          = false;
 // Settings stubs (empty structs, test context)
 SettingsClass settings;
 SettingsClass::GameOptionsClass effectiveGameOptions;
+
+HOUSETYPE getHouseFactionIdentity(HOUSETYPE house) {
+    return house;
+}

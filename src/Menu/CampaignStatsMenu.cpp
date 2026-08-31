@@ -42,8 +42,11 @@ CampaignStatsMenu::CampaignStatsMenu(int level) : MenuBase()
 {
     calculateScore(level);
 
-    Uint32 colorYou = getHouseColorRGB(getHouseVisualHouse(pLocalHouse->getHouseID()), 1);
-    Uint32 colorEnemy = SDL2RGB(palette[PALCOLOR_SARDAUKAR + 1]);
+    const int localHouseID = pLocalHouse->getHouseID();
+    Uint32 colorYou = getHouseColorRGB(getHouseVisualHouse(localHouseID), 1);
+    Uint32 colorEnemy = localHouseID == HOUSE_SARDAUKAR
+        ? COLOR_RGB(255, 32, 192)
+        : SDL2RGB(palette[PALCOLOR_SARDAUKAR + 1]);
 
     // set up window
     SDL_Texture *pBackground = pGFXManager->getUIGraphic(UI_GameStatsBackground);

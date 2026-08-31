@@ -24,6 +24,7 @@
 #include <DataTypes.h>
 
 #include <globals.h>
+#include <mod/ModManager.h>
 
 #include <misc/string_util.h>
 #include <misc/SDL2pp.h>
@@ -46,8 +47,11 @@ public:
         if(gameType == GameType::Campaign) {
             inifile = std::make_unique<INIFile>(pFileManager->openCampaignFile(this->mapname).get());
         } else if(gameType == GameType::Skirmish) {
-            // load from PAK-File
-            inifile = std::make_unique<INIFile>(pFileManager->openFile(this->mapname).get());
+            const bool tornieSkirmish = ModManager::instance().isInitialized()
+                && ModManager::instance().isTornieContentActive();
+            inifile = std::make_unique<INIFile>((tornieSkirmish
+                ? pFileManager->openCampaignFile(this->mapname)
+                : pFileManager->openFile(this->mapname)).get());
         } else if(gameType == GameType::CustomGame || gameType == GameType::CustomMultiplayer) {
             SDL_RWops* RWops = SDL_RWFromConstMem(mapdata.c_str(), mapdata.size());
             inifile = std::make_unique<INIFile>(RWops);

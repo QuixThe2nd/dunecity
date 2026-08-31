@@ -172,7 +172,7 @@ bool getTornieStructurePlacementPreview(int itemID, StructurePlacementPreview& p
             return true;
 
         case Structure_Worfinery:
-            preview = { ObjPic_Worfinery, 4, 1, TornieStructureFrame_BuildSite, -1 };
+            preview = { ObjPic_Worfinery, 10, 1, TornieStructureFrame_BuildSite, -1 };
             return true;
 
         case Structure_TechCenter:
@@ -181,6 +181,22 @@ bool getTornieStructurePlacementPreview(int itemID, StructurePlacementPreview& p
 
         case Structure_Scoutpost:
             preview = { ObjPic_Scoutpost, 4, 1, TornieStructureFrame_BuildSite, -1 };
+            return true;
+
+        case Structure_Flamepost:
+            preview = { ObjPic_Flamepost, 4, 1, TornieStructureFrame_BuildSite, -1 };
+            return true;
+
+        case Structure_Chemipost:
+            preview = { ObjPic_Chemipost, 4, 1, TornieStructureFrame_BuildSite, -1 };
+            return true;
+
+        case Structure_LoveFactory:
+            preview = { ObjPic_LoveFactory, 10, 1, TornieStructureFrame_BuildSite, -1 };
+            return true;
+
+        case Structure_ChaosFactory:
+            preview = { ObjPic_ChaosFactory, 4, 1, TornieStructureFrame_BuildSite, -1 };
             return true;
 
         default:
@@ -1622,6 +1638,11 @@ void Game::drawScreen()
                 if(pBuilder) {
                     int placeItem = pBuilder->getCurrentProducedItem();
                     Coord structuresize = getStructureSize(placeItem);
+                    const bool footprintInsideMap =
+                        structuresize.x > 0 && structuresize.y > 0
+                        && xPos >= 0 && yPos >= 0
+                        && xPos + structuresize.x <= currentGameMap->getSizeX()
+                        && yPos + structuresize.y <= currentGameMap->getSizeY();
                     static int loggedPlacementStateCount = 0;
                     StructurePlacementPreview placementPreviewForLog;
                     if(loggedPlacementStateCount < 12 && getTornieStructurePlacementPreview(placeItem, placementPreviewForLog)) {
@@ -1639,10 +1660,12 @@ void Game::drawScreen()
                     }
 
                     bool withinRange = false;
-                    for (int i = xPos; i < (xPos + structuresize.x); i++) {
-                        for (int j = yPos; j < (yPos + structuresize.y); j++) {
-                            if (currentGameMap->isWithinBuildRange(i, j, pBuilder->getOwner())) {
-                                withinRange = true;         //find out if the structure is close enough to other buildings
+                    if(footprintInsideMap) {
+                        for (int i = xPos; i < (xPos + structuresize.x); i++) {
+                            for (int j = yPos; j < (yPos + structuresize.y); j++) {
+                                if (currentGameMap->isWithinBuildRange(i, j, pBuilder->getOwner())) {
+                                    withinRange = true;         //find out if the structure is close enough to other buildings
+                                }
                             }
                         }
                     }
@@ -1674,7 +1697,7 @@ void Game::drawScreen()
                             SDL_Texture* image;
 
                             bool tileValid = false;
-                            if(withinRange && currentGameMap->tileExists(i,j)) {
+                            if(footprintInsideMap && withinRange && currentGameMap->tileExists(i,j)) {
                                 Tile* pTile = currentGameMap->getTile(i,j);
                                 if(isZoneStructure(placeItem)) {
                                     tileValid = DuneCity::isCityBuildableTerrain(pTile->getType())
@@ -1693,7 +1716,7 @@ void Game::drawScreen()
                     }
 
                     StructurePlacementPreview preview;
-                    if(getTornieStructurePlacementPreview(placeItem, preview)) {
+                    if(footprintInsideMap && getTornieStructurePlacementPreview(placeItem, preview)) {
                         const int ownerHouse = pBuilder->getOwner()->getHouseID();
                         static int loggedPlacementPreviewCandidateCount = 0;
                         if(loggedPlacementPreviewCandidateCount < 12) {
@@ -2031,6 +2054,14 @@ void Game::doInput()
 
                                     if(screenborder->isScreenCoordInsideMap(mouse->x, mouse->y) == true) {
                                         handleSelectedObjectsAttackClick(screenborder->screen2MapX(mouse->x), screenborder->screen2MapY(mouse->y));
+                                    }
+
+                                } break;
+
+case CursorMode_Heal: {
+
+                                    if(screenborder->isScreenCoordInsideMap(mouse->x, mouse->y) == true) {
+                                        handleSelectedObjectsHealClick(screenborder->screen2MapX(mouse->x), screenborder->screen2MapY(mouse->y));
                                     }
 
                                 } break;
@@ -3526,7 +3557,7 @@ bool Game::loadSaveGame(InputStream& stream) {
             }
         }
         if(!isValidHouseColorSlot(colorOfHouse)) {
-            colorOfHouse = setupHouseInfo.houseID;
+            colorOfHouse = getDefaultHouseColorSlot(setupHouseInfo.houseID);
         }
         setHouseVisualHouse(setupHouseInfo.houseID, colorOfHouse);
     }
@@ -3555,7 +3586,9 @@ bool Game::loadSaveGame(InputStream& stream) {
     //   "dunelegacy*"               → 41 items (original Dune Legacy 0.99.x)
     //   "dunecity1.0.0"–"1.0.7"    → 48 items
     //   "dunecity1.0.8"–"1.0.10"   → 52 items
-    const int savedHouseCount = (savegameVersion >= 9821) ? NUM_HOUSES : NUM_LEGACY_HOUSES;
+    const int savedHouseCount = savegameVersion >= 9823
+        ? NUM_HOUSES
+        : (savegameVersion >= 9821 ? NUM_CAMPAIGN_HOUSES : NUM_LEGACY_HOUSES);
     int savedItemCount = determineLegacySavedItemCount(savegameVersion, duneVersion);
     if(savedItemCount != 0) {
         SDL_Log("Game::loadSaveGame(): legacy save v%d (%s) — loading %d items (current: %d)",
@@ -3904,6 +3937,42 @@ void Game::selectAllOrnithopters()
     screenborder->setNewScreenCenter(averagePosition * TILESIZE);
 }
 
+void Game::selectAllChemicalCarryalls()
+{
+    std::set<Uint32> chemicalCarryallIDs;
+    Coord summedPosition;
+
+    for(UnitBase* pUnit : unitList) {
+        if((pUnit->getOwner() == pLocalHouse) &&
+           (pUnit->getItemID() == Unit_ChemicalCarryall) &&
+           pUnit->isRespondable()) {
+            chemicalCarryallIDs.insert(pUnit->getObjectID());
+            summedPosition += pUnit->getLocation();
+        }
+    }
+
+    if(chemicalCarryallIDs.empty()) {
+        return;
+    }
+
+    unselectAll(selectedList);
+    selectedList.clear();
+
+    for(Uint32 objectID : chemicalCarryallIDs) {
+        ObjectBase* pObject = objectManager.getObject(objectID);
+        if(pObject != nullptr) {
+            pObject->setSelected(true);
+            selectedList.insert(objectID);
+        }
+    }
+
+    selectionChanged();
+    currentCursorMode = CursorMode_Normal;
+
+    Coord averagePosition = summedPosition / static_cast<int>(chemicalCarryallIDs.size());
+    screenborder->setNewScreenCenter(averagePosition * TILESIZE);
+}
+
 
 void Game::unselectAll(const std::set<Uint32>& aList)
 {
@@ -4015,6 +4084,11 @@ bool Game::onRadarClick(Coord worldPosition, bool bRightMouseButton, bool bDrag)
             switch(currentCursorMode) {
                 case CursorMode_Attack: {
                     handleSelectedObjectsAttackClick(worldPosition.x / TILESIZE, worldPosition.y / TILESIZE);
+                    return false;
+                } break;
+
+case CursorMode_Heal: {
+                    handleSelectedObjectsHealClick(worldPosition.x / TILESIZE, worldPosition.y / TILESIZE);
                     return false;
                 } break;
 
@@ -4523,7 +4597,24 @@ bool Game::handlePlacementClick(int xPos, int yPos) {
     }
 
     int placeItem = pBuilder->getCurrentProducedItem();
+    if(!pBuilder->isWaitingToPlace() || placeItem == ItemID_Invalid || !isStructure(placeItem)) {
+        setCursorMode(CursorMode_Normal);
+        soundPlayer->playSound(Sound_InvalidAction);
+        return false;
+    }
+
     Coord structuresize = getStructureSize(placeItem);
+
+    const bool footprintInsideMap =
+        structuresize.x > 0 && structuresize.y > 0
+        && xPos >= 0 && yPos >= 0
+        && xPos + structuresize.x <= currentGameMap->getSizeX()
+        && yPos + structuresize.y <= currentGameMap->getSizeY();
+    if(!footprintInsideMap) {
+        currentGame->addToNewsTicker(fmt::sprintf(_("@DUNE.ENG|134#Cannot place %%s here."), resolveItemName(placeItem)));
+        soundPlayer->playSound(Sound_InvalidAction);
+        return false;
+    }
 
             if(placeItem == Structure_Slab1) {
             if((currentGameMap->isWithinBuildRange(xPos, yPos, pBuilder->getOwner()))
@@ -4609,6 +4700,25 @@ bool Game::handlePlacementClick(int xPos, int yPos) {
 }
 
 
+bool Game::handleSelectedObjectsHealClick(int xPos, int yPos) {
+    UnitBase* pResponder = nullptr;
+    for(Uint32 objectID : selectedList) {
+        ObjectBase* pObject = objectManager.getObject(objectID);
+        if(pObject != nullptr && pObject->isAUnit() && pObject->getOwner() == pLocalHouse
+                && pObject->isRespondable() && pObject->canHeal()) {
+            pResponder = static_cast<UnitBase*>(pObject);
+            pResponder->handleHealClick(xPos, yPos);
+        }
+    }
+
+    setCursorMode(CursorMode_Normal);
+    if(pResponder != nullptr) {
+        pResponder->playConfirmSound();
+        return true;
+    }
+    return false;
+}
+
 bool Game::handleSelectedObjectsAttackClick(int xPos, int yPos) {
     UnitBase* pResponder = nullptr;
     for(Uint32 objectID : selectedList) {
@@ -4617,9 +4727,9 @@ bool Game::handleSelectedObjectsAttackClick(int xPos, int yPos) {
         if(pObject->isAUnit() && (pOwner == pLocalHouse) && pObject->isRespondable()) {
             pResponder = static_cast<UnitBase*>(pObject);
             pResponder->handleAttackClick(xPos,yPos);
-        } else if((pObject->getItemID() == Structure_Palace) && ((pOwner->getHouseID() == HOUSE_HARKONNEN) || (pOwner->getHouseID() == HOUSE_SARDAUKAR))) {
+        } else if(pObject->getItemID() == Structure_Palace && pOwner == pLocalHouse) {
             Palace* pPalace = static_cast<Palace*>(pObject);
-            if(pPalace->isSpecialWeaponReady()) {
+            if(pPalace->isSpecialWeaponReady() && pPalace->usesTargetedSpecialWeapon()) {
                 pPalace->handleDeathhandClick(xPos, yPos);
             }
         }

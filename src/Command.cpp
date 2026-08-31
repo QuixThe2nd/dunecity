@@ -36,6 +36,7 @@
 #include <structures/TurretBase.h>
 #include <structures/Palace.h>
 #include <structures/TechCenter.h>
+#include <structures/Scoutpost.h>
 #include <structures/StarPort.h>
 #include <structures/ConstructionYard.h>
 
@@ -172,7 +173,20 @@ void Command::executeCommand() const {
             pUnit->doAttackObject((int) parameter[1], true);
         } break;
 
-        case CMD_INFANTRY_CAPTURE: {
+                case CMD_UNIT_HEAL: {
+            if(parameter.size() != 2) {
+                THROW(std::invalid_argument, "Command::executeCommand(): CMD_UNIT_HEAL needs 2 Parameters!");
+            }
+            UnitBase* pUnit = dynamic_cast<UnitBase*>(currentGame->getObjectManager().getObject(parameter[0]));
+            ObjectBase* pTarget = currentGame->getObjectManager().getObject(parameter[1]);
+            if(pUnit == nullptr || pTarget == nullptr || !pUnit->canHeal() || !pTarget->isAUnit()
+                    || pTarget->getOwner()->getTeamID() != pUnit->getOwner()->getTeamID()
+                    || pTarget->getHealth() >= pTarget->getMaxHealth()) {
+                return;
+            }
+            pUnit->doAttackObject((int) parameter[1], true);
+        } break;
+case CMD_INFANTRY_CAPTURE: {
             if(parameter.size() != 2) {
                 THROW(std::invalid_argument, "Command::executeCommand(): CMD_INFANTRY_CAPTURE needs 2 Parameters!");
             }
@@ -379,6 +393,28 @@ void Command::executeCommand() const {
                 return;
             }
             pTechCenter->doSpawnVehicles();
+        } break;
+
+        case CMD_SCOUTPOST_UPGRADE: {
+            if(parameter.size() != 1) {
+                THROW(std::invalid_argument, "Command::executeCommand(): CMD_SCOUTPOST_UPGRADE needs 1 Parameter!");
+            }
+            Scoutpost* pScoutpost = dynamic_cast<Scoutpost*>(currentGame->getObjectManager().getObject(parameter[0]));
+            if(pScoutpost == nullptr) {
+                return;
+            }
+            pScoutpost->doUpgradeToFlamepost();
+        } break;
+
+        case CMD_SCOUTPOST_CHEMIPOST_UPGRADE: {
+            if(parameter.size() != 1) {
+                THROW(std::invalid_argument, "Command::executeCommand(): CMD_SCOUTPOST_CHEMIPOST_UPGRADE needs 1 Parameter!");
+            }
+            Scoutpost* pScoutpost = dynamic_cast<Scoutpost*>(currentGame->getObjectManager().getObject(parameter[0]));
+            if(pScoutpost == nullptr) {
+                return;
+            }
+            pScoutpost->doUpgradeToChemipost();
         } break;
         
         case CMD_PLAYER_PAUSE: {

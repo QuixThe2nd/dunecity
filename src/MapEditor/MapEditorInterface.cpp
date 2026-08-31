@@ -60,7 +60,7 @@ MapEditorInterface::MapEditorInterface(MapEditor* pMapEditor)
     currentEditStructureID = INVALID;
     currentEditUnitID = INVALID;
 
-    tornieContentVisible_ = (ModManager::instance().getActiveModName() == "Tornie");
+    tornieContentVisible_ = (ModManager::instance().isTornieContentActive());
 
 
     setTransparentBackground(true);
@@ -558,6 +558,18 @@ MapEditorInterface::MapEditorInterface(MapEditor* pMapEditor)
     editorModeStructs_Scoutpost.setToggleButton(true);
     editorModeStructs_Scoutpost.setTooltipText(resolveItemName(Structure_Scoutpost));
     editorModeStructs_Scoutpost.setOnClick(std::bind(&MapEditorInterface::onStructButton, this, Structure_Scoutpost));
+    editorModeStructs_Flamepost.setToggleButton(true);
+    editorModeStructs_Flamepost.setTooltipText(resolveItemName(Structure_Flamepost));
+    editorModeStructs_Flamepost.setOnClick(std::bind(&MapEditorInterface::onStructButton, this, Structure_Flamepost));
+    editorModeStructs_Chemipost.setToggleButton(true);
+    editorModeStructs_Chemipost.setTooltipText(resolveItemName(Structure_Chemipost));
+    editorModeStructs_Chemipost.setOnClick(std::bind(&MapEditorInterface::onStructButton, this, Structure_Chemipost));
+    editorModeStructs_LoveFactory.setToggleButton(true);
+    editorModeStructs_LoveFactory.setTooltipText(resolveItemName(Structure_LoveFactory));
+    editorModeStructs_LoveFactory.setOnClick(std::bind(&MapEditorInterface::onStructButton, this, Structure_LoveFactory));
+    editorModeStructs_ChaosFactory.setToggleButton(true);
+    editorModeStructs_ChaosFactory.setTooltipText(resolveItemName(Structure_ChaosFactory));
+    editorModeStructs_ChaosFactory.setOnClick(std::bind(&MapEditorInterface::onStructButton, this, Structure_ChaosFactory));
 
     // DuneCity: expose SimCity-style buildings (R/C/I zones, Road, nuclear
     // plant) in the editor when the dune city mod is the active mod. Always
@@ -619,7 +631,18 @@ MapEditorInterface::MapEditorInterface(MapEditor* pMapEditor)
         editorModeStructs_VBox.addWidget(&editorModeStructs_HBoxTechCenter, 2*D2_TILESIZE + 4);
         editorModeStructs_HBoxTechCenter.addWidget(&editorModeStructs_TechCenter);
         editorModeStructs_HBoxTechCenter.addWidget(HSpacer::create(2));
-        editorModeStructs_HBoxTechCenter.addWidget(&editorModeStructs_Scoutpost);
+        editorModeStructs_HBoxTechCenter.addWidget(&editorModeStructs_ChaosFactory);
+
+        editorModeStructs_VBox.addWidget(&editorModeStructs_HBoxLoveFactory, 3*D2_TILESIZE + 4);
+        editorModeStructs_HBoxLoveFactory.addWidget(&editorModeStructs_LoveFactory);
+        editorModeStructs_HBoxLoveFactory.addWidget(Spacer::create());
+
+        // Keep the two compact post buttons at the end of the structure list.
+        editorModeStructs_VBox.addWidget(&editorModeStructs_HBoxScoutpost, D2_TILESIZE + 4);
+        editorModeStructs_HBoxScoutpost.addWidget(&editorModeStructs_Scoutpost);
+        editorModeStructs_HBoxScoutpost.addWidget(&editorModeStructs_Flamepost);
+        editorModeStructs_HBoxScoutpost.addWidget(&editorModeStructs_Chemipost);
+        editorModeStructs_HBoxScoutpost.addWidget(Spacer::create());
     }
 
     // setup units mode
@@ -716,6 +739,12 @@ MapEditorInterface::MapEditorInterface(MapEditor* pMapEditor)
     editorModeUnits_EliteSiegeTank.setToggleButton(true);
     editorModeUnits_EliteSiegeTank.setTooltipText(resolveItemName(Unit_EliteSiegeTank));
     editorModeUnits_EliteSiegeTank.setOnClick(std::bind(&MapEditorInterface::onUnitButton, this, Unit_EliteSiegeTank));
+    editorModeUnits_ChemicalSiegeTank.setToggleButton(true);
+    editorModeUnits_ChemicalSiegeTank.setTooltipText(resolveItemName(Unit_ChemicalSiegeTank));
+    editorModeUnits_ChemicalSiegeTank.setOnClick(std::bind(&MapEditorInterface::onUnitButton, this, Unit_ChemicalSiegeTank));
+    editorModeUnits_ChemicalCarryall.setToggleButton(true);
+    editorModeUnits_ChemicalCarryall.setTooltipText(resolveItemName(Unit_ChemicalCarryall));
+    editorModeUnits_ChemicalCarryall.setOnClick(std::bind(&MapEditorInterface::onUnitButton, this, Unit_ChemicalCarryall));
 
     editorModeUnits_VBox.addWidget(VSpacer::create(2));
 
@@ -821,6 +850,11 @@ MapEditorInterface::MapEditorInterface(MapEditor* pMapEditor)
         editorModeUnits_HBoxTornieElite.addWidget(&editorModeUnits_EliteLauncher);
         editorModeUnits_HBoxTornieElite.addWidget(HSpacer::create(2));
         editorModeUnits_HBoxTornieElite.addWidget(&editorModeUnits_EliteSiegeTank);
+        editorModeUnits_VBox.addWidget(&editorModeUnits_HBoxTornieChemical, 2*D2_TILESIZE);
+        editorModeUnits_HBoxTornieChemical.addWidget(&editorModeUnits_ChemicalSiegeTank);
+        editorModeUnits_HBoxTornieChemical.addWidget(HSpacer::create(2));
+        editorModeUnits_HBoxTornieChemical.addWidget(&editorModeUnits_ChemicalCarryall);
+        editorModeUnits_HBoxTornieChemical.addWidget(Spacer::create());
     }
 
     editorModeUnits_MainVBox.addWidget(Spacer::create());
@@ -1252,6 +1286,10 @@ void MapEditorInterface::onStructButton(int structType) {
     editorModeStructs_Palace.setToggleState( (structType == Structure_Palace) );
     editorModeStructs_TechCenter.setToggleState( (structType == Structure_TechCenter) );
     editorModeStructs_Scoutpost.setToggleState( (structType == Structure_Scoutpost) );
+    editorModeStructs_Flamepost.setToggleState( (structType == Structure_Flamepost) );
+    editorModeStructs_Chemipost.setToggleState( (structType == Structure_Chemipost) );
+    editorModeStructs_LoveFactory.setToggleState( (structType == Structure_LoveFactory) );
+    editorModeStructs_ChaosFactory.setToggleState( (structType == Structure_ChaosFactory) );
 
     editorModeStructs_ZoneResidential.setToggleState( (structType == Structure_ZoneResidential) );
     editorModeStructs_ZoneCommercial.setToggleState( (structType == Structure_ZoneCommercial) );
@@ -1281,6 +1319,8 @@ void MapEditorInterface::onUnitButton(int unitType) {
     editorModeUnits_FlameTank.setToggleState( (unitType == Unit_FlameTank) );
     editorModeUnits_EliteLauncher.setToggleState( (unitType == Unit_EliteLauncher) );
     editorModeUnits_EliteSiegeTank.setToggleState( (unitType == Unit_EliteSiegeTank) );
+    editorModeUnits_ChemicalSiegeTank.setToggleState( (unitType == Unit_ChemicalSiegeTank) );
+    editorModeUnits_ChemicalCarryall.setToggleState( (unitType == Unit_ChemicalCarryall) );
     editorModeUnits_Tank.setToggleState( (unitType == Unit_Tank) );
     editorModeUnits_SiegeTank.setToggleState( (unitType == Unit_SiegeTank) );
     editorModeUnits_Launcher.setToggleState( (unitType == Unit_Launcher) );
@@ -1516,6 +1556,14 @@ void MapEditorInterface::changeInterfaceColor(HOUSETYPE newHouse) {
     editorModeStructs_Palace.setSymbol(pGFXManager->getUIGraphicSurface(UI_MapEditor_Palace, newHouse));
     editorModeStructs_TechCenter.setSymbol(pGFXManager->getUIGraphicSurface(UI_MapEditor_TechCenter, newHouse));
     editorModeStructs_Scoutpost.setSymbol(pGFXManager->getUIGraphicSurface(UI_MapEditor_Scoutpost, newHouse));
+    editorModeStructs_Scoutpost.setTooltipText(resolveItemName(Structure_Scoutpost));
+    editorModeStructs_Flamepost.setSymbol(pGFXManager->getUIGraphicSurface(UI_MapEditor_Flamepost, newHouse));
+    editorModeStructs_Flamepost.setTooltipText(resolveItemName(Structure_Flamepost));
+    editorModeStructs_Chemipost.setSymbol(pGFXManager->getUIGraphicSurface(UI_MapEditor_Chemipost, newHouse));
+    editorModeStructs_Chemipost.setTooltipText(resolveItemName(Structure_Chemipost));
+    editorModeStructs_LoveFactory.setSymbol(pGFXManager->getUIGraphicSurface(UI_MapEditor_LoveFactory, newHouse));
+    editorModeStructs_ChaosFactory.setSymbol(pGFXManager->getUIGraphicSurface(UI_MapEditor_ChaosFactory, newHouse));
+    editorModeStructs_ChaosFactory.setTooltipText(resolveItemName(Structure_ChaosFactory));
 
     editorModeStructs_ZoneResidential.setSymbol(pGFXManager->getUIGraphicSurface(UI_MapEditor_ZoneResidential, newHouse));
     editorModeStructs_ZoneCommercial.setSymbol(pGFXManager->getUIGraphicSurface(UI_MapEditor_ZoneCommercial, newHouse));
@@ -1538,6 +1586,8 @@ void MapEditorInterface::changeInterfaceColor(HOUSETYPE newHouse) {
     editorModeUnits_FlameTank.setSymbol(pGFXManager->getUIGraphicSurface(UI_MapEditor_FlameTank, newHouse));
     editorModeUnits_EliteLauncher.setSymbol(pGFXManager->getUIGraphicSurface(UI_MapEditor_EliteLauncher, newHouse));
     editorModeUnits_EliteSiegeTank.setSymbol(pGFXManager->getUIGraphicSurface(UI_MapEditor_EliteSiegeTank, newHouse));
+    editorModeUnits_ChemicalSiegeTank.setSymbol(pGFXManager->getUIGraphicSurface(UI_MapEditor_ChemicalSiegeTank, newHouse));
+    editorModeUnits_ChemicalCarryall.setSymbol(pGFXManager->getUIGraphicSurface(UI_MapEditor_ChemicalCarryall, newHouse));
     editorModeUnits_Tank.setSymbol(pGFXManager->getUIGraphicSurface(UI_MapEditor_Tank, newHouse));
     editorModeUnits_SiegeTank.setSymbol(pGFXManager->getUIGraphicSurface(UI_MapEditor_SiegeTank, newHouse));
     editorModeUnits_Launcher.setSymbol(pGFXManager->getUIGraphicSurface(UI_MapEditor_Launcher, newHouse));

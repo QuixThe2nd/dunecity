@@ -32,6 +32,7 @@
 
 #include <structures/BuilderBase.h>
 #include <structures/StarPort.h>
+#include <structures/ChaosFactory.h>
 
 class BuilderInterface : public DefaultStructureInterface {
 public:
@@ -71,7 +72,8 @@ protected:
         mainHBox.addWidget(Spacer::create());
 
         StarPort* pStarport = dynamic_cast<StarPort*>(pObject);
-        if(pStarport != nullptr) {
+        ChaosFactory* pChaosFactory = dynamic_cast<ChaosFactory*>(pObject);
+        if(pStarport != nullptr || pChaosFactory != nullptr) {
             starportTimerLabel.setTextFontSize(28);
             starportTimerLabel.setTextColor(COLOR_WHITE, COLOR_TRANSPARENT);
             starportTimerLabel.setAlignment((Alignment_Enum) (Alignment_HCenter | Alignment_VCenter));
@@ -103,7 +105,11 @@ protected:
         BuilderBase* pBuilder = dynamic_cast<BuilderBase*>(pObject);
         if(pBuilder != nullptr) {
             StarPort* pStarport = dynamic_cast<StarPort*>(pBuilder);
-            if(pStarport != nullptr) {
+            ChaosFactory* pChaosFactory = dynamic_cast<ChaosFactory*>(pBuilder);
+            if(pChaosFactory != nullptr) {
+                const int seconds = pChaosFactory->getOfferSecondsRemaining();
+                starportTimerLabel.setText(std::to_string(seconds) + "s");
+            } else if(pStarport != nullptr) {
                 int arrivalTimer = pStarport->getArrivalTimer();
                 if(arrivalTimer > 0) {
                     int seconds = ((arrivalTimer*10)/(MILLI2CYCLES(30*1000))) + 1;

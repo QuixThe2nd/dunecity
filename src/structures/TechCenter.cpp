@@ -41,7 +41,7 @@
 namespace {
 
 bool isEnabledTechCenterVehicle(int itemID, int house) {
-    if(currentGame == nullptr || !isUnit(itemID) || isFlyingUnit(itemID) || isInfantryUnit(itemID) || isHarvesterLikeUnit(itemID)) {
+    if(currentGame == nullptr || !isSpecialVehicleSelectionCandidate(itemID)) {
         return false;
     }
 
@@ -146,25 +146,25 @@ bool TechCenter::houseHasIxUnlocked() const {
 }
 
 int TechCenter::spawnRandomVehicles(int count) {
-    // Keep Tech Center spawns aligned with Unit_Special scenario entries.
-    const bool tornieActive = ModManager::instance().isInitialized()
-        && ModManager::instance().getActiveModName() == "Tornie";
-    std::vector<int> objectDataIxCandidates;
-    if(originalHouseID == HOUSE_CUSTOM) {
-        objectDataIxCandidates = discoverCustomHouseSpecialVehicleCandidates([&](int candidate) {
-            const auto& data = currentGame->objectData.data[candidate][originalHouseID];
-            return CustomHouseSpecialVehicleCandidateData{
-                data.enabled,
-                data.builder,
-                data.prerequisiteStructuresSet[Structure_IX]
-            };
-        });
-    }
+    // Keep Tech Center, Unit_Special maps and factory unlocks on the same
+    // active-mod ObjectData table.
+    const bool modInitialized = ModManager::instance().isInitialized();
+    const bool tornieActive = modInitialized && ModManager::instance().isTornieContentActive();
+    const auto objectDataIxCandidates = discoverHouseSpecialVehicleCandidates([&](int candidate) {
+        const auto& data = currentGame->objectData.data[candidate][originalHouseID];
+        return HouseSpecialVehicleCandidateData{
+            data.enabled,
+            data.builder,
+            data.prerequisiteStructuresSet[Structure_IX]
+        };
+    });
 
     const auto specialVehiclePool = resolveSpecialVehiclePoolForHouse(
         originalHouseID, tornieActive, objectDataIxCandidates);
     const bool useGenericCustomFallback =
-        originalHouseID == HOUSE_CUSTOM && objectDataIxCandidates.empty();
+        (isHouseFaction(static_cast<HOUSETYPE>(originalHouseID), HOUSE_CUSTOM)
+         || isHouseFaction(static_cast<HOUSETYPE>(originalHouseID), HOUSE_THARPIQUE))
+        && objectDataIxCandidates.empty();
     std::vector<int> vehiclePool;
     for(const auto candidate : specialVehiclePool) {
         const bool candidateEnabled = useGenericCustomFallback
@@ -175,7 +175,11 @@ int TechCenter::spawnRandomVehicles(int count) {
         }
     }
 
-    if(vehiclePool.empty()) {
+    const HOUSETYPE factionIdentity = getHouseFactionIdentity(static_cast<HOUSETYPE>(originalHouseID));
+    const bool guestNamedHouse = factionIdentity == HOUSE_WILDSPADE
+        || factionIdentity == HOUSE_KLESHMERSH;
+
+    if(vehiclePool.empty() && !guestNamedHouse) {
         for(const auto fallback : { Unit_Trike, Unit_Quad }) {
             const auto& data = currentGame->objectData.data[fallback][originalHouseID];
             if(data.enabled && data.builder != ItemID_Invalid) {
@@ -203,7 +207,7 @@ int TechCenter::spawnRandomVehicles(int count) {
         Coord deployPos = currentGameMap->findDeploySpot(newUnit, getLocation(), currentGame->randomGen,
                                                          getLocation(), getStructureSize());
         if(deployPos.isInvalid()) {
-            delete newUnit;
+            newUnit->cancelDeployment();
             continue;
         }
 

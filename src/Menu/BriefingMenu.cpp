@@ -27,29 +27,6 @@
 #include <misc/draw_util.h>
 #include <mod/ModManager.h>
 
-namespace {
-
-std::unique_ptr<Animation> createTornieHouseAnimation(Animation* source, int house) {
-    if(source == nullptr) {
-        return nullptr;
-    }
-
-    const int destination = getHouseColorPaletteIndexFromSlot(house);
-    auto result = std::make_unique<Animation>();
-
-    for(const auto& frame : source->getFrames()) {
-        auto recolored = mapSurfaceColorRange(frame.get(), PALCOLOR_HARKONNEN, destination);
-        recolored = mapSurfaceColorRange(recolored.get(), PALCOLOR_ATREIDES, destination);
-        recolored = mapSurfaceColorRange(recolored.get(), PALCOLOR_ORDOS, destination);
-        result->addFrame(std::move(recolored));
-    }
-
-    result->setFrameDurationTime(source->getFrameDurationTime());
-    result->setNumLoops(source->getLoopsLeft());
-    return result;
-}
-
-}
 
 BriefingMenu::BriefingMenu(int newHouse,int mission,int type) : MentatMenu(newHouse) {
     this->mission = mission;
@@ -96,13 +73,6 @@ BriefingMenu::BriefingMenu(int newHouse,int mission,int type) : MentatMenu(newHo
         } break;
     }
 
-    if(ModManager::instance().isInitialized()
-            && ModManager::instance().getActiveModName() == "Tornie") {
-        tornieHouseAnimation = createTornieHouseAnimation(anim, house);
-        if(tornieHouseAnimation != nullptr) {
-            anim = tornieHouseAnimation.get();
-        }
-    }
 
     setText(text);
     animation.setAnimation(anim);
@@ -123,7 +93,7 @@ int BriefingMenu::showMenu()
     switch(type) {
         case DEBRIEFING_WIN:
         {
-            switch(house) {
+            switch(getHouseFallbackHouse(static_cast<HOUSETYPE>(house))) {
                 case HOUSE_HARKONNEN:
                 case HOUSE_SARDAUKAR:
                 case HOUSE_NEUTRAL: {
@@ -145,7 +115,7 @@ int BriefingMenu::showMenu()
 
         case DEBRIEFING_LOST:
         {
-            switch(house) {
+            switch(getHouseFallbackHouse(static_cast<HOUSETYPE>(house))) {
                 case HOUSE_HARKONNEN:
                 case HOUSE_SARDAUKAR:
                 case HOUSE_NEUTRAL: {
@@ -167,7 +137,7 @@ int BriefingMenu::showMenu()
 
         case BRIEFING:
         {
-            switch(house) {
+            switch(getHouseFallbackHouse(static_cast<HOUSETYPE>(house))) {
                 case HOUSE_HARKONNEN:
                 case HOUSE_SARDAUKAR:
                 case HOUSE_NEUTRAL: {

@@ -369,7 +369,10 @@ void CursorManager::setCursorMode(int mode) {
         case Game::CursorMode_Move:
             cursorToSet = moveCursor ? moveCursor : normalCursor;
             break;
-        case Game::CursorMode_Attack:
+                case Game::CursorMode_Heal:
+            cursorToSet = attackCursor ? attackCursor : normalCursor;
+            break;
+case Game::CursorMode_Attack:
             cursorToSet = attackCursor ? attackCursor : normalCursor;
             break;
         case Game::CursorMode_Capture:
@@ -406,7 +409,13 @@ bool CursorManager::canSetCursorMode(int mode, const std::vector<Uint32>& select
                     return true;
                 }
                 break;
-            case Game::CursorMode_Attack:
+                        case Game::CursorMode_Heal:
+                if (pObject->isAUnit() && (pObject->getOwner() == pLocalHouse)
+                        && pObject->isRespondable() && pObject->canHeal()) {
+                    return true;
+                }
+                break;
+case Game::CursorMode_Attack:
                 if (pObject->isAUnit() && (pObject->getOwner() == pLocalHouse) && pObject->isRespondable() && pObject->canAttack()) {
                     return true;
                 } else if ((pObject->getItemID() == Structure_Palace) && 

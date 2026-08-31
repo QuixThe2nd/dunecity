@@ -90,7 +90,7 @@ void RebelHarvester::init()
     graphicID = ObjPic_Harvester;
     graphic = pGFXManager->getObjPic(graphicID,getOwner()->getHouseID());
     const bool tornieActive = ModManager::instance().isInitialized()
-        && ModManager::instance().getActiveModName() == "Tornie";
+        && ModManager::instance().isTornieContentActive();
     gunGraphicID = tornieActive ? ObjPic_HarvestankGunTornie : -1;
     turretGraphic = tornieActive ? pGFXManager->getObjPic(gunGraphicID, getOwner()->getHouseID()) : zoomable_texture{};
 
@@ -552,8 +552,8 @@ void RebelHarvester::setReturned()
     awaitingPickup = false;
 
     if(!storedInside) {
-        // Worfinery unloads instantly, but the harvester must leave the
-        // occupied structure tiles before resuming its harvesting cycle.
+        // A non-storing drop-off must let the harvester leave the occupied
+        // structure tiles before resuming its harvesting cycle.
         Coord deployPos = currentGameMap->findDeploySpot(
             this, dropoff->getLocation(), currentGame->randomGen,
             getGuardPoint(), dropoff->getStructureSize());

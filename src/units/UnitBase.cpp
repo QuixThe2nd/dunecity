@@ -163,6 +163,7 @@ UnitBase::~UnitBase() {
     }
 
     currentGame->getObjectManager().removeObject(objectID);
+    unitList.remove(this);
 }
 
 
@@ -459,6 +460,19 @@ void UnitBase::deploy(const Coord& newLocation) {
             pLocalPlayer->onUnitDeployed(this);
         }
     }
+}
+
+void UnitBase::cancelDeployment() {
+    setTarget(nullptr);
+
+    if(currentGameMap != nullptr) {
+        currentGameMap->removeObjectFromMap(getObjectID());
+    }
+    currentGame->getObjectManager().removeObject(objectID);
+    currentGame->getHouse(originalHouseID)->cancelCreatedUnit(itemID);
+    unitList.remove(this);
+
+    delete this;
 }
 
 void UnitBase::destroy() {
@@ -948,6 +962,18 @@ void UnitBase::handleAttackClick(int xPos, int yPos) {
 
 }
 
+void UnitBase::handleHealClick(int xPos, int yPos) {
+    if(respondable && canHeal() && currentGameMap->tileExists(xPos, yPos)
+            && currentGameMap->getTile(xPos, yPos)->hasAnObject()) {
+        ObjectBase* tempTarget = currentGameMap->getTile(xPos, yPos)->getObject();
+        if(tempTarget->isAUnit()
+                && tempTarget->getOwner()->getTeamID() == getOwner()->getTeamID()
+                && tempTarget->getHealth() < tempTarget->getMaxHealth()) {
+            currentGame->getCommandManager().addCommand(
+                Command(pLocalPlayer->getPlayerID(), CMD_UNIT_HEAL, objectID, tempTarget->getObjectID()));
+        }
+    }
+}
 void UnitBase::handleMoveClick(int xPos, int yPos) {
     if(respondable) {
         if(currentGameMap->tileExists(xPos, yPos)) {
@@ -1909,7 +1935,7 @@ Coord UnitBase::resolvePathDestination() const {
     if(target && target.getObjPointer() != nullptr) {
         const ObjectBase* pTargetObject = target.getObjPointer();
 
-        if(itemID == Unit_Carryall && getHarvesterDropoff(pTargetObject) != nullptr) {
+        if(isCarryallUnit(itemID) && getHarvesterDropoff(pTargetObject) != nullptr) {
             const auto* dropoff = getHarvesterDropoff(pTargetObject);
             return pTargetObject->getLocation() + Coord(dropoff->getStructureSizeX() - 1, 0);
         } else if(itemID == Unit_Frigate && pTargetObject->getItemID() == Structure_StarPort) {

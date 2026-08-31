@@ -63,33 +63,48 @@ sdl2::surface_ptr Scaler::doubleSurfaceNN(SDL_Surface* src) {
         return nullptr;
     }
 
-    // create new picture surface
-    auto returnPic = sdl2::surface_ptr{ SDL_CreateRGBSurface(0, src->w * 2, src->h * 2, 8, 0, 0, 0, 0) };
-    if (returnPic == nullptr) {
+    // Preserve indexed and true-color formats. The original implementation
+    // assumed one byte per pixel and dereferenced a palette unconditionally.
+    auto returnPic = sdl2::surface_ptr{
+        SDL_CreateRGBSurfaceWithFormat(0, src->w * 2, src->h * 2,
+                                       src->format->BitsPerPixel, src->format->format)
+    };
+    if(returnPic == nullptr) {
         return nullptr;
     }
 
-    SDL_SetPaletteColors(returnPic->format->palette, src->format->palette->colors, 0, src->format->palette->ncolors);
+    if(src->format->palette != nullptr && returnPic->format->palette != nullptr) {
+        SDL_SetPaletteColors(returnPic->format->palette, src->format->palette->colors,
+                             0, src->format->palette->ncolors);
+    }
     Uint32 ckey;
-    bool has_ckey = !SDL_GetColorKey(src, &ckey);
-    if (has_ckey) {
+    const bool has_ckey = !SDL_GetColorKey(src, &ckey);
+    if(has_ckey) {
         SDL_SetColorKey(returnPic.get(), SDL_TRUE, ckey);
     }
-    if (src->flags & SDL_RLEACCEL) {
+    if(src->flags & SDL_RLEACCEL) {
         SDL_SetSurfaceRLE(returnPic.get(), SDL_TRUE);
     }
 
     sdl2::surface_lock return_lock{ returnPic.get() };
     sdl2::surface_lock src_lock{ src };
 
-    //Now we can copy pixel by pixel
-    for(int y = 0; y < src->h;y++) {
+    const int bytesPerPixel = src->format->BytesPerPixel;
+    for(int y = 0; y < src->h; y++) {
         for(int x = 0; x < src->w; x++) {
-            char val = *( ((char*) (src->pixels)) + y*src->pitch + x);
-            *( ((char*) (returnPic->pixels)) + 2*y*returnPic->pitch + 2*x) = val;
-            *( ((char*) (returnPic->pixels)) + 2*y*returnPic->pitch + 2*x+1) = val;
-            *( ((char*) (returnPic->pixels)) + (2*y+1)*returnPic->pitch + 2*x) = val;
-            *( ((char*) (returnPic->pixels)) + (2*y+1)*returnPic->pitch + 2*x+1) = val;
+            const auto* sourcePixel = static_cast<const Uint8*>(src->pixels)
+                + y * src->pitch + x * bytesPerPixel;
+            auto* destinationTop = static_cast<Uint8*>(returnPic->pixels)
+                + (2 * y) * returnPic->pitch + (2 * x) * bytesPerPixel;
+            auto* destinationBottom = static_cast<Uint8*>(returnPic->pixels)
+                + (2 * y + 1) * returnPic->pitch + (2 * x) * bytesPerPixel;
+
+            for(int byte = 0; byte < bytesPerPixel; byte++) {
+                destinationTop[byte] = sourcePixel[byte];
+                destinationTop[bytesPerPixel + byte] = sourcePixel[byte];
+                destinationBottom[byte] = sourcePixel[byte];
+                destinationBottom[bytesPerPixel + byte] = sourcePixel[byte];
+            }
         }
     }
 

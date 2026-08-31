@@ -25,8 +25,11 @@
 #include <FileClasses/TextManager.h>
 
 #include <House.h>
+#include <structures/Scoutpost.h>
+#include <mod/ModManager.h>
 
 #include <GUI/Label.h>
+#include <GUI/TextButton.h>
 #include <GUI/VBox.h>
 
 #include <misc/string_util.h>
@@ -52,6 +55,22 @@ protected:
         producedEnergyLabel.setTextColor(color);
         textVBox.addWidget(&producedEnergyLabel, (Sint32)18);
 
+        if(ModManager::instance().isTornieContentActive()) {
+            flamepostUpgradeButton.setText(_("Upgrade"));
+            flamepostUpgradeButton.setTextColor(color);
+            flamepostUpgradeButton.setTooltipText(_("Requires House IX"));
+            flamepostUpgradeButton.setVisible(false);
+            flamepostUpgradeButton.setOnClick(std::bind(&WindTrapInterface::onFlamepostUpgrade, this));
+            textVBox.addWidget(&flamepostUpgradeButton, (Sint32)26);
+
+            chemipostUpgradeButton.setText(_("Upgrade"));
+            chemipostUpgradeButton.setTextColor(color);
+            chemipostUpgradeButton.setTooltipText(_("Requires House IX and Tech Level 7"));
+            chemipostUpgradeButton.setVisible(false);
+            chemipostUpgradeButton.setOnClick(std::bind(&WindTrapInterface::onChemipostUpgrade, this));
+            textVBox.addWidget(&chemipostUpgradeButton, (Sint32)26);
+        }
+
         cityStats_.attachTo(textVBox, color);
 
         textVBox.addWidget(Spacer::create(),0.99);
@@ -74,16 +93,53 @@ protected:
         requiredEnergyLabel.setText(" " + _("Required") + ": " + std::to_string(pOwner->getPowerRequirement()));
         producedEnergyLabel.setText(" " + _("Produced") + ": " + std::to_string(pOwner->getProducedPower()));
 
+        Scoutpost* pScoutpost = dynamic_cast<Scoutpost*>(pObject);
+        const bool showFlamepostUpgrade = pScoutpost != nullptr
+            && pScoutpost->isFlamepostUpgradeEligible()
+            && pOwner->getNumItems(Structure_IX) > 0;
+        flamepostUpgradeButton.setVisible(showFlamepostUpgrade);
+        if(showFlamepostUpgrade) {
+            flamepostUpgradeButton.setText(_("Upgrade"));
+            flamepostUpgradeButton.setTooltipText(_("Upgrade this Scoutpost to a Flamepost"));
+        }
+
+        const bool showChemipostUpgrade = pScoutpost != nullptr
+            && pScoutpost->isChemipostUpgradeEligible()
+            && pOwner->getNumItems(Structure_IX) > 0;
+        chemipostUpgradeButton.setVisible(showChemipostUpgrade);
+        if(showChemipostUpgrade) {
+            chemipostUpgradeButton.setText(_("Upgrade"));
+            chemipostUpgradeButton.setTooltipText(_("Upgrade this Scoutpost to a healing Chemipost"));
+        }
+
         cityStats_.update(dynamic_cast<StructureBase*>(pObject));
 
         return DefaultStructureInterface::update();
     }
 
 private:
-    VBox    textVBox;
+    void onFlamepostUpgrade() {
+        ObjectBase* pObject = currentGame->getObjectManager().getObject(objectID);
+        Scoutpost* pScoutpost = dynamic_cast<Scoutpost*>(pObject);
+        if(pScoutpost != nullptr) {
+            pScoutpost->handleFlamepostUpgradeClick();
+        }
+    }
 
-    Label   requiredEnergyLabel;
-    Label   producedEnergyLabel;
+    void onChemipostUpgrade() {
+        ObjectBase* pObject = currentGame->getObjectManager().getObject(objectID);
+        Scoutpost* pScoutpost = dynamic_cast<Scoutpost*>(pObject);
+        if(pScoutpost != nullptr) {
+            pScoutpost->handleChemipostUpgradeClick();
+        }
+    }
+
+    VBox       textVBox;
+
+    Label      requiredEnergyLabel;
+    Label      producedEnergyLabel;
+    TextButton flamepostUpgradeButton;
+    TextButton chemipostUpgradeButton;
 
     CityStatsBox cityStats_;
 };

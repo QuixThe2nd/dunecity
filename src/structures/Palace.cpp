@@ -28,6 +28,7 @@
 #include <SoundPlayer.h>
 
 #include <players/HumanPlayer.h>
+#include <mod/ModManager.h>
 
 #include <units/InfantryBase.h>
 #include <units/UnitBase.h>
@@ -98,12 +99,135 @@ void Palace::handleDeathhandClick(int xPos, int yPos) {
     }
 }
 
+bool Palace::usesTornieMainRebelsCooldown() const {
+    return ModManager::instance().isTornieContentActive()
+        && getHouseFactionIdentity(static_cast<HOUSETYPE>(originalHouseID)) == HOUSE_REBELS;
+}
+
+bool Palace::usesTornieMainRebelsRandomSpecial() const {
+    return usesTornieMainRebelsCooldown();
+}
+
+Palace::TornieRebelsSpecialWeapon Palace::getTornieMainRebelsSpecialWeapon() const {
+    if(!usesTornieMainRebelsRandomSpecial() || specialWeaponTimer >= 0) {
+        return TornieRebelsSpecialWeapon::None;
+    }
+
+    const Sint32 encodedWeapon = -specialWeaponTimer;
+    if(encodedWeapon < static_cast<Sint32>(TornieRebelsSpecialWeapon::Missile)
+       || encodedWeapon > static_cast<Sint32>(TornieRebelsSpecialWeapon::Ornithopters)) {
+        return TornieRebelsSpecialWeapon::None;
+    }
+
+    return static_cast<TornieRebelsSpecialWeapon>(encodedWeapon);
+}
+
+bool Palace::usesTargetedSpecialWeapon() const {
+    if(usesTornieMainRebelsRandomSpecial()) {
+        return getTornieMainRebelsSpecialWeapon() == TornieRebelsSpecialWeapon::Missile;
+    }
+
+    const HOUSETYPE palaceHouse = getHouseFallbackHouse(static_cast<HOUSETYPE>(originalHouseID));
+    return palaceHouse == HOUSE_HARKONNEN || palaceHouse == HOUSE_SARDAUKAR;
+}
+
+void Palace::selectTornieMainRebelsSpecialWeapon() {
+    const Sint32 selectedWeapon = currentGame->randomGen.rand(
+        static_cast<Sint32>(TornieRebelsSpecialWeapon::Missile),
+        static_cast<Sint32>(TornieRebelsSpecialWeapon::Ornithopters));
+    specialWeaponTimer = -selectedWeapon;
+}
+
+bool Palace::usesGuestWildspadeOrnithopterStrike() const {
+    return ModManager::instance().isTornieContentActive()
+        && isHouseFaction(static_cast<HOUSETYPE>(originalHouseID), HOUSE_WILDSPADE);
+}
+
+bool Palace::usesGuestKleshmershFremenCall() const {
+    return ModManager::instance().isTornieContentActive()
+        && isHouseFaction(static_cast<HOUSETYPE>(originalHouseID), HOUSE_KLESHMERSH);
+}
+
+bool Palace::usesLightVehicleCall() const {
+    const HOUSETYPE originalHouse = static_cast<HOUSETYPE>(originalHouseID);
+
+    if(ModManager::instance().isTornieContentActive()
+       && isHouseFaction(originalHouse, HOUSE_THARPIQUE)) {
+        return true;
+    }
+    if(usesGuestKleshmershFremenCall()) {
+        return false;
+    }
+    if(usesGuestWildspadeOrnithopterStrike()) {
+        return false;
+    }
+
+    const HOUSETYPE fallbackHouse = getHouseFallbackHouse(originalHouse);
+    return fallbackHouse == HOUSE_NEUTRAL || fallbackHouse == HOUSE_REBELS;
+}
+
 void Palace::doSpecialWeapon() {
     if(!isSpecialWeaponReady()) {
         return;
     }
 
-    switch (getHouseFallbackHouse(static_cast<HOUSETYPE>(originalHouseID))) {
+    const HOUSETYPE originalHouse = static_cast<HOUSETYPE>(originalHouseID);
+    if(usesTornieMainRebelsRandomSpecial()) {
+        bool activated = false;
+        switch(getTornieMainRebelsSpecialWeapon()) {
+            case TornieRebelsSpecialWeapon::Missile:
+                // The missile is launched through doLaunchDeathhand after selecting a target.
+                return;
+
+            case TornieRebelsSpecialWeapon::Fremen:
+                activated = callFremen();
+                break;
+
+            case TornieRebelsSpecialWeapon::Saboteur:
+                activated = spawnSaboteur();
+                break;
+
+            case TornieRebelsSpecialWeapon::LightVehicles:
+                activated = callLightVehicles();
+                break;
+
+            case TornieRebelsSpecialWeapon::Ornithopters:
+                activated = callOrnithopterStrike();
+                break;
+
+            case TornieRebelsSpecialWeapon::None:
+            default:
+                return;
+        }
+
+        if(activated) {
+            specialWeaponTimer = getMaxSpecialWeaponTimer();
+        }
+        return;
+    }
+
+    if(usesGuestWildspadeOrnithopterStrike()) {
+        if(callOrnithopterStrike()) {
+            specialWeaponTimer = getMaxSpecialWeaponTimer();
+        }
+        return;
+    }
+
+    if(usesGuestKleshmershFremenCall()) {
+        if(callFremen()) {
+            specialWeaponTimer = getMaxSpecialWeaponTimer();
+        }
+        return;
+    }
+
+    if(usesLightVehicleCall()) {
+        if(callLightVehicles()) {
+            specialWeaponTimer = getMaxSpecialWeaponTimer();
+        }
+        return;
+    }
+
+    switch (getHouseFallbackHouse(originalHouse)) {
         case HOUSE_HARKONNEN:
         case HOUSE_SARDAUKAR: {
             // wrong house (see DoLaunchDeathhand)
@@ -143,9 +267,8 @@ void Palace::doLaunchDeathhand(int x, int y) {
         return;
     }
 
-    const HOUSETYPE palaceHouse = getHouseFallbackHouse(static_cast<HOUSETYPE>(originalHouseID));
-    if((palaceHouse != HOUSE_HARKONNEN) && (palaceHouse != HOUSE_SARDAUKAR)) {
-        // wrong house (see DoSpecialWeapon)
+    if(!usesTargetedSpecialWeapon()) {
+        // This command is valid for Harkonnen/Sardaukar or Tornie's revealed missile.
         return;
     }
 
@@ -179,35 +302,41 @@ void Palace::doLaunchDeathhand(int x, int y) {
 }
 
 void Palace::updateStructureSpecificStuff() {
+    bool becameReady = false;
+
     if(specialWeaponTimer > 0) {
         --specialWeaponTimer;
-        if(specialWeaponTimer <= 0) {
-            specialWeaponTimer = 0;
+        becameReady = specialWeaponTimer <= 0;
+    } else if(specialWeaponTimer == 0 && usesTornieMainRebelsRandomSpecial()) {
+        // Upgrade an already-ready Palace from an older save to the random Tornie ability.
+        becameReady = true;
+    }
 
-            if(getOwner() == pLocalHouse) {
-                currentGame->addToNewsTicker(_("Palace is ready"));
-            } else if(getOwner()->isAI()) {
+    if(!becameReady) {
+        return;
+    }
 
-                if((getHouseFallbackHouse(static_cast<HOUSETYPE>(originalHouseID)) == HOUSE_HARKONNEN) || (getHouseFallbackHouse(static_cast<HOUSETYPE>(originalHouseID)) == HOUSE_SARDAUKAR)) {
-                    // Harkonnen and Sardaukar
+    if(usesTornieMainRebelsRandomSpecial()) {
+        selectTornieMainRebelsSpecialWeapon();
+    } else {
+        specialWeaponTimer = 0;
+    }
 
-                    //old tergetting logic used by default AI
-                    /*
-                    const StructureBase* closestStructure = findClosestTargetStructure();
-                    if(closestStructure) {
-                        Coord temp = closestStructure->getClosestPoint(getLocation());
-                        doLaunchDeathhand(temp.x, temp.y);
-                    }*/
-                } else {
-                    // other houses
-                    doSpecialWeapon();
-                }
-            }
-        }
+    if(getOwner() == pLocalHouse) {
+        currentGame->addToNewsTicker(_("Palace is ready"));
+    } else if(getOwner()->isAI() && !usesTargetedSpecialWeapon()) {
+        doSpecialWeapon();
     }
 }
 
 bool Palace::callFremen() {
+    if(getOwner()->isUnitLimitReached(Unit_Trooper)) {
+        if(getOwner() == pLocalHouse) {
+            currentGame->addToNewsTicker(_("Unit limit reached"));
+        }
+        return false;
+    }
+
     int count = 0;
     int x;
     int y;
@@ -227,12 +356,20 @@ bool Palace::callFremen() {
 
     if(count < 1000) {
 
+        int spawned = 0;
         for(int numFremen = 0; numFremen < 15; numFremen++) {
             if(currentGame->randomGen.rand(0, 5) == 0) {
                 continue;
             }
 
+            if(getOwner()->isUnitLimitReached(Unit_Trooper)) {
+                break;
+            }
+
             Trooper *pFremen = static_cast<Trooper*>(getOwner()->createUnit(Unit_Trooper));
+            if(pFremen == nullptr) {
+                break;
+            }
 
             int i;
             int j;
@@ -245,6 +382,7 @@ bool Palace::callFremen() {
 
             pFremen->doSetAttackMode(HUNT);
             pFremen->setRespondable(false);
+            ++spawned;
 
             const StructureBase* closestStructure = pFremen->findClosestTargetStructure();
             if(closestStructure) {
@@ -260,7 +398,7 @@ bool Palace::callFremen() {
             }
         }
 
-        return true;
+        return spawned > 0;
     } else {
         if(getOwner() == pLocalHouse) {
             currentGame->addToNewsTicker(_("Unable to spawn Fremen"));
@@ -271,8 +409,26 @@ bool Palace::callFremen() {
 }
 
 bool Palace::spawnSaboteur() {
+    if(getOwner()->isUnitLimitReached(Unit_Saboteur)) {
+        if(getOwner() == pLocalHouse) {
+            currentGame->addToNewsTicker(_("Unit limit reached"));
+        }
+        return false;
+    }
+
     Saboteur* saboteur = static_cast<Saboteur*>(getOwner()->createUnit(Unit_Saboteur));
+    if(saboteur == nullptr) {
+        return false;
+    }
+
     Coord spot = currentGameMap->findDeploySpot(saboteur, getLocation(), currentGame->randomGen, getDestination(), getStructureSize());
+    if(spot.isInvalid() || !currentGameMap->tileExists(spot)) {
+        saboteur->cancelDeployment();
+        if(getOwner() == pLocalHouse) {
+            currentGame->addToNewsTicker(_("Unable to spawn Saboteur"));
+        }
+        return false;
+    }
 
     saboteur->deploy(spot);
 
@@ -315,8 +471,14 @@ bool Palace::callLightVehicles() {
     const int trikeCount = currentGame->randomGen.rand(1, 3);
     const int quadCount = currentGame->randomGen.rand(0, 2);
     int spawned = 0;
+    bool unitLimitReached = false;
 
     const auto spawnVehicle = [&](int itemID) {
+        if(getOwner()->isUnitLimitReached(itemID)) {
+            unitLimitReached = true;
+            return;
+        }
+
         UnitBase* newUnit = getOwner()->createUnit(itemID);
         if(newUnit == nullptr) {
             return;
@@ -341,7 +503,7 @@ bool Palace::callLightVehicles() {
             return;
         }
 
-        delete newUnit;
+        newUnit->cancelDeployment();
     };
 
     for(int i = 0; i < trikeCount; ++i) {
@@ -352,7 +514,47 @@ bool Palace::callLightVehicles() {
     }
 
     if(spawned <= 0 && getOwner() == pLocalHouse) {
-        currentGame->addToNewsTicker(_("Unable to spawn vehicles"));
+        currentGame->addToNewsTicker(unitLimitReached ? _("Unit limit reached") : _("Unable to spawn vehicles"));
+    }
+
+    return spawned > 0;
+}
+bool Palace::callOrnithopterStrike() {
+    int spawned = 0;
+    bool unitLimitReached = false;
+
+    for(int i = 0; i < 3; ++i) {
+        if(getOwner()->isUnitLimitReached(Unit_Ornithopter)) {
+            unitLimitReached = true;
+            break;
+        }
+
+        UnitBase* ornithopter = getOwner()->createUnit(Unit_Ornithopter);
+        if(ornithopter == nullptr) {
+            continue;
+        }
+
+        const Coord deployPos = currentGameMap->findDeploySpot(
+            ornithopter, getLocation(), currentGame->randomGen, getDestination(), getStructureSize());
+        if(!deployPos.isValid()) {
+            ornithopter->cancelDeployment();
+            continue;
+        }
+
+        ornithopter->deploy(deployPos);
+        ornithopter->setGuardPoint(deployPos);
+        ornithopter->doSetAttackMode(HUNT);
+        ++spawned;
+    }
+
+    if(getOwner() == pLocalHouse) {
+        if(spawned == 3) {
+            currentGame->addToNewsTicker(_("Three Ornithopters deployed in hunt mode"));
+        } else if(spawned == 0 && unitLimitReached) {
+            currentGame->addToNewsTicker(_("Unit limit reached"));
+        } else {
+            currentGame->addToNewsTicker(_("Unable to deploy all three Ornithopters"));
+        }
     }
 
     return spawned > 0;

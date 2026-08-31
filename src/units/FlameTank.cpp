@@ -48,7 +48,7 @@ void FlameTank::init() {
 
     graphicID = ObjPic_Tank_Base;
     const bool tornieActive = ModManager::instance().isInitialized()
-        && ModManager::instance().getActiveModName() == "Tornie";
+        && ModManager::instance().isTornieContentActive();
     gunGraphicID = tornieActive ? ObjPic_FlameTankGunTornie : ObjPic_Launcher_Gun;
     graphic = pGFXManager->getObjPic(graphicID, getOwner()->getHouseID());
     turretGraphic = pGFXManager->getObjPic(gunGraphicID, tornieActive ? HOUSE_HARKONNEN : getOwner()->getHouseID());
@@ -96,20 +96,22 @@ void FlameTank::blitToScreen() {
 void FlameTank::destroy() {
     if(currentGameMap->tileExists(location) && isVisible()) {
         Coord realPos(lround(realX), lround(realY));
-        Uint32 explosionID = currentGame->randomGen.getRandOf({Explosion_Medium1, Explosion_Medium2});
-        currentGame->getExplosionList().push_back(new Explosion(explosionID, realPos, owner->getHouseID()));
 
-        // Scatter flame explosions around the wreck
+        // Use the weapon-impact flames only. Explosion_Flames is the burning
+        // vehicle-wreck animation and produced three visible carcasses here.
         for(int i = 0; i < 3; i++) {
             Coord flamePos = realPos;
-            flamePos.x += currentGame->randomGen.rand(-TILESIZE/2, TILESIZE/2);
-            flamePos.y += currentGame->randomGen.rand(-TILESIZE/2, TILESIZE/2);
-            currentGame->getExplosionList().push_back(new Explosion(Explosion_Flames, flamePos, owner->getHouseID()));
+            if(i > 0) {
+                flamePos.x += currentGame->randomGen.rand(-TILESIZE/3, TILESIZE/3);
+                flamePos.y += currentGame->randomGen.rand(-TILESIZE/3, TILESIZE/3);
+            }
+            currentGame->getExplosionList().push_back(
+                new Explosion(Explosion_FlameImpact, flamePos, owner->getHouseID()));
         }
 
         if(isVisible(getOwner()->getTeamID())) {
-            screenborder->shakeScreen(12);
-            soundPlayer->playSoundAt(Sound_ExplosionMedium, location);
+            screenborder->shakeScreen(6);
+            soundPlayer->playSoundAt(Sound_ExplosionSmall, location);
         }
     }
 
