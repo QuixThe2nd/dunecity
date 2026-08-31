@@ -222,7 +222,7 @@ bool GroundUnit::requestCarryall() {
         doSetAttackMode(CARRYALLREQUESTED);
 
         for(UnitBase* pUnit : unitList) {
-            if ((pUnit->getOwner() == owner) && (pUnit->getItemID() == Unit_Carryall)) {
+            if ((pUnit->getOwner() == owner) && isCarryallUnit(pUnit->getItemID())) {
                 if(!static_cast<Carryall*>(pUnit)->isBooked()) {
                     carryall = static_cast<Carryall*>(pUnit);
                     carryall->setTarget(this);

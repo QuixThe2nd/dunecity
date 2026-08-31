@@ -156,7 +156,7 @@ private:
 
     bool                    bServer;
     bool                    bLANServer;
-    HouseInfo               houseInfo[NUM_HOUSES];
+    HouseInfo               houseInfo[MAX_CUSTOM_GAME_PLAYERS];
     int                     numHouses;
     std::list<HOUSETYPE>    boundHousesOnMap;
     Uint32                  startGameTime;
@@ -167,7 +167,7 @@ private:
     std::set<std::string>   clientsAckedMod;            ///< Clients that have acknowledged mod sync (host only)
     bool                    bWaitingForModAcks;         ///< Whether host is waiting for mod ACKs
     int                     brainEqHumanSlot;           ///< If we have an old map with Brain=Human and Brain=CPU, store index of Brain=Human here
-    int                     slotToTeam[NUM_HOUSES];     ///< Maps the slot number to a team number (both zero-based indices)
+    int                     slotToTeam[MAX_CUSTOM_GAME_PLAYERS];     ///< Maps the slot number to a team number (both zero-based indices)
 };
 
 #endif //CUSTOMGAMEPLAYERS_H

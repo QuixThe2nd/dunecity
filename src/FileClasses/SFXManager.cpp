@@ -93,10 +93,7 @@ void SFXManager::loadEnglishVoice() {
     lngVoice.resize(NUM_VOICE*NUM_HOUSES);
 
     const bool tornieVoiceFx = ModManager::instance().isInitialized()
-        && (ModManager::instance().getActiveModName() == "Tornie");
-
-    const CustomHouseInfo& customHouse = ModManager::instance().getActiveCustomHouseInfo();
-    const bool customHouseActive = ModManager::instance().isCustomHouseRegistered();
+        && ModManager::instance().isTornieContentActive();
 
     // now we can load
     for(auto house = 0; house < NUM_HOUSES; house++) {
@@ -104,9 +101,12 @@ void SFXManager::loadEnglishVoice() {
 
         std::string HouseString;
         const int VoiceNum = house;
+        const HOUSETYPE factionIdentity = getHouseFactionIdentity(static_cast<HOUSETYPE>(house));
         const HOUSETYPE contentHouse = getHouseFallbackHouse(static_cast<HOUSETYPE>(house));
+        const CustomHouseInfo& customHouse = ModManager::instance().getCustomHouseInfo(house);
+        const bool customHouseActive = ModManager::instance().isCustomHouseRegistered(house);
         auto loadConfiguredCustomHouseName = [&]() -> sdl2::mix_chunk_ptr {
-            if(house != HOUSE_CUSTOM || !customHouseActive || customHouse.houseNameVoiceAsset.empty()) {
+            if(!customHouseActive || customHouse.houseNameVoiceAsset.empty()) {
                 return nullptr;
             }
 
@@ -150,11 +150,32 @@ void SFXManager::loadEnglishVoice() {
                 break;
             case HOUSE_NEUTRAL:
                 HouseString = "A";
+                HouseNameChunk = getChunkFromFile("WILDSPADE.VOC", "ANEU.VOC");
+                break;
+            case HOUSE_REBELS:
+                HouseString = "H";
+                HouseNameChunk = getChunkFromFile("KLESHMERSH.VOC", "RREBELS.VOC");
+                break;
+            default:
+                break;
+        }
+
+        switch(factionIdentity) {
+            case HOUSE_NEUTRAL:
+                HouseString = "A";
                 HouseNameChunk = getChunkFromFile("ANEU.VOC", "AATRE.VOC");
                 break;
             case HOUSE_REBELS:
                 HouseString = "H";
                 HouseNameChunk = getChunkFromFile("RREBELS.VOC", "HHARK.VOC");
+                break;
+            case HOUSE_WILDSPADE:
+                HouseString = "A";
+                HouseNameChunk = getChunkFromFile("WILDSPADE.VOC", "ANEU.VOC");
+                break;
+            case HOUSE_KLESHMERSH:
+                HouseString = "H";
+                HouseNameChunk = getChunkFromFile("KLESHMERSH.VOC", "RREBELS.VOC");
                 break;
             default:
                 break;
@@ -265,7 +286,7 @@ void SFXManager::loadEnglishVoice() {
         // "House Ordos"
         lngVoice[HouseOrdos*NUM_HOUSES+VoiceNum] = getChunkFromFile("MORDOS.VOC");
 
-        switch(contentHouse) {
+        switch(factionIdentity) {
             case HOUSE_FREMEN:
                 lngVoice[HouseAtreides*NUM_HOUSES+VoiceNum] = getChunkFromFile("AFREMEN.VOC", "MATRE.VOC");
                 break;
@@ -280,6 +301,12 @@ void SFXManager::loadEnglishVoice() {
                 break;
             case HOUSE_REBELS:
                 lngVoice[HouseHarkonnen*NUM_HOUSES+VoiceNum] = getChunkFromFile("RREBELS.VOC", "MHARK.VOC");
+                break;
+            case HOUSE_WILDSPADE:
+                lngVoice[HouseAtreides*NUM_HOUSES+VoiceNum] = getChunkFromFile("WILDSPADE.VOC", "ANEU.VOC");
+                break;
+            case HOUSE_KLESHMERSH:
+                lngVoice[HouseHarkonnen*NUM_HOUSES+VoiceNum] = getChunkFromFile("KLESHMERSH.VOC", "RREBELS.VOC");
                 break;
             default:
                 break;
@@ -307,9 +334,14 @@ void SFXManager::loadEnglishVoice() {
         double playbackRate = 1.0;
         double gain = 1.0;
         bool applyVoiceEffect = false;
-        if(tornieVoiceFx && (house == HOUSE_SARDAUKAR || house == HOUSE_REBELS || house == HOUSE_NEUTRAL)) {
-            playbackRate = (house == HOUSE_SARDAUKAR) ? 0.86 : (house == HOUSE_REBELS ? 0.90 : 1.07);
-            gain = (house == HOUSE_SARDAUKAR) ? 1.08 : (house == HOUSE_REBELS ? 1.05 : 0.98);
+        const bool sardaukarVoice = factionIdentity == HOUSE_SARDAUKAR;
+        const bool harkonnenCustomVoice = factionIdentity == HOUSE_REBELS
+                                       || factionIdentity == HOUSE_KLESHMERSH;
+        const bool feminineCustomVoice = factionIdentity == HOUSE_NEUTRAL
+                                      || factionIdentity == HOUSE_WILDSPADE;
+        if(tornieVoiceFx && (sardaukarVoice || harkonnenCustomVoice || feminineCustomVoice)) {
+            playbackRate = sardaukarVoice ? 0.86 : (harkonnenCustomVoice ? 0.90 : 1.07);
+            gain = sardaukarVoice ? 1.08 : (harkonnenCustomVoice ? 1.05 : 0.98);
             applyVoiceEffect = true;
         }
         if(house == HOUSE_CUSTOM && customHouseActive) {

@@ -51,9 +51,9 @@ public:
     inline int getTeamID() const { return teamID; }
 
     inline bool isAI() const { return ai; }
-    inline bool isAlive() const { return (teamID == 0) || !(((numStructures - numItem[Structure_Wall]) <= 0) && (((numUnits - numItem[Unit_Carryall] - numItem[Unit_Harvester] - numItem[Unit_RebelHarvester] - numItem[Unit_Frigate] - numItem[Unit_Sandworm] - numItem[Unit_AmbientAirplane] - numItem[Unit_AmbientHelicopter]) <= 0))); }
+    inline bool isAlive() const { return (teamID == 0) || !(((numStructures - numItem[Structure_Wall]) <= 0) && (((numUnits - numItem[Unit_Carryall] - numItem[Unit_ChemicalCarryall] - numItem[Unit_Harvester] - numItem[Unit_RebelHarvester] - numItem[Unit_Frigate] - numItem[Unit_Sandworm] - numItem[Unit_AmbientAirplane] - numItem[Unit_AmbientHelicopter]) <= 0))); }
 
-    inline bool hasCarryalls() const { return (numItem[Unit_Carryall] > 0); }
+    inline bool hasCarryalls() const { return (numItem[Unit_Carryall] + numItem[Unit_ChemicalCarryall] > 0); }
     inline bool hasBarracks() const { return (numItem[Structure_Barracks] > 0); }
     inline bool hasIX() const { return (numItem[Structure_IX] > 0); }
     inline bool hasLightFactory() const { return (numItem[Structure_LightFactory] > 0); }
@@ -61,6 +61,7 @@ public:
     inline bool hasRefinery() const { return (numItem[Structure_Refinery] + numItem[Structure_Worfinery] > 0); }
     inline bool hasRepairYard() const { return (numItem[Structure_RepairYard] > 0); }
     inline bool hasStarPort() const { return (numItem[Structure_StarPort] > 0); }
+    inline bool hasLoveFactory() const { return (numItem[Structure_LoveFactory] > 0); }
     inline bool hasWindTrap() const { return (numItem[Structure_WindTrap] > 0); }
     inline bool hasSandworm() const { return (numItem[Unit_Sandworm] > 0); }
     inline bool hasRadar() const { return (numItem[Structure_Radar] > 0); }
@@ -131,7 +132,7 @@ public:
     */
     inline bool isGroundUnitLimitReached() const {
         if (maxUnits == 0) return false;  // 0 = unlimited units
-        int numGroundUnit = numUnits - numItem[Unit_Soldier] - numItem[Unit_Trooper] - numItem[Unit_Carryall] - numItem[Unit_Ornithopter];
+        int numGroundUnit = numUnits - numItem[Unit_Soldier] - numItem[Unit_Trooper] - numItem[Unit_Carryall] - numItem[Unit_ChemicalCarryall] - numItem[Unit_Ornithopter];
         return (numGroundUnit + (numItem[Unit_Soldier]+2)/3 + (numItem[Unit_Trooper]+2)/3  >= maxUnits);
     };
 
@@ -141,7 +142,7 @@ public:
     */
     inline bool isInfantryUnitLimitReached() const {
         if (maxUnits == 0) return false;  // 0 = unlimited units
-        int numGroundUnit = numUnits - numItem[Unit_Soldier] - numItem[Unit_Trooper] - numItem[Unit_Carryall] - numItem[Unit_Ornithopter];
+        int numGroundUnit = numUnits - numItem[Unit_Soldier] - numItem[Unit_Trooper] - numItem[Unit_Carryall] - numItem[Unit_ChemicalCarryall] - numItem[Unit_Ornithopter];
         return (numGroundUnit + numItem[Unit_Soldier]/3 + numItem[Unit_Trooper]/3  >= maxUnits);
     };
 
@@ -151,8 +152,14 @@ public:
     */
     inline bool isAirUnitLimitReached() const {
         if (maxUnits == 0) return false;  // 0 = unlimited units
-        return (numItem[Unit_Carryall] + numItem[Unit_Ornithopter] >= 11*std::max(maxUnits,25)/25);
+        return (numItem[Unit_Carryall] + numItem[Unit_ChemicalCarryall] + numItem[Unit_Ornithopter] >= 11*std::max(maxUnits,25)/25);
     }
+
+    /**
+        Check the appropriate house limit for a specific unit type.
+        \return true if creating itemID would exceed its unit category limit
+    */
+    bool isUnitLimitReached(int itemID) const;
 
     /**
         This function checks if the limit for harvesters is already reached.
@@ -185,8 +192,10 @@ public:
 
     void incrementUnits(int itemID);
     void decrementUnits(int itemID);
+    void cancelCreatedUnit(int itemID);
     void incrementStructures(int itemID);
     void decrementStructures(int itemID, const Coord& location);
+    void transformStructure(int oldItemID, int newItemID);
 
     /**
         An object was hit by something or damaged somehow else.

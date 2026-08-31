@@ -44,7 +44,7 @@ void EliteLauncher::init() {
 
     graphicID = ObjPic_Tank_Base;
     const bool tornieActive = ModManager::instance().isInitialized()
-        && ModManager::instance().getActiveModName() == "Tornie";
+        && ModManager::instance().isTornieContentActive();
     gunGraphicID = tornieActive ? ObjPic_EliteLauncherGunTornie : ObjPic_Launcher_Gun;
     graphic = pGFXManager->getObjPic(graphicID, getOwner()->getHouseID());
     turretGraphic = pGFXManager->getObjPic(gunGraphicID, tornieActive ? HOUSE_HARKONNEN : getOwner()->getHouseID());

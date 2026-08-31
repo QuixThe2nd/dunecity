@@ -39,8 +39,17 @@
 
 
 
-StarPort::StarPort(House* newOwner) : BuilderBase(newOwner) {
-    StarPort::init();
+StarPort::StarPort(House* newOwner)
+    : StarPort(newOwner, Structure_StarPort, ObjPic_Starport, Coord(3,3)) {
+}
+
+StarPort::StarPort(InputStream& stream)
+    : StarPort(stream, Structure_StarPort, ObjPic_Starport, Coord(3,3)) {
+}
+
+StarPort::StarPort(House* newOwner, Uint32 structureItemID, Uint32 structureGraphicID, Coord newStructureSize)
+    : BuilderBase(newOwner) {
+    initDeliveryBuilding(structureItemID, structureGraphicID, newStructureSize);
 
     setHealth(getMaxHealth());
 
@@ -48,8 +57,9 @@ StarPort::StarPort(House* newOwner) : BuilderBase(newOwner) {
     deploying = false;
 }
 
-StarPort::StarPort(InputStream& stream) : BuilderBase(stream) {
-    StarPort::init();
+StarPort::StarPort(InputStream& stream, Uint32 structureItemID, Uint32 structureGraphicID, Coord newStructureSize)
+    : BuilderBase(stream) {
+    initDeliveryBuilding(structureItemID, structureGraphicID, newStructureSize);
 
     arrivalTimer = stream.readSint32();
     if(stream.readBool() == true) {
@@ -58,14 +68,18 @@ StarPort::StarPort(InputStream& stream) : BuilderBase(stream) {
         deploying = false;
     }
 }
+
 void StarPort::init() {
-    itemID = Structure_StarPort;
+    initDeliveryBuilding(Structure_StarPort, ObjPic_Starport, Coord(3,3));
+}
+
+void StarPort::initDeliveryBuilding(Uint32 structureItemID, Uint32 structureGraphicID, Coord newStructureSize) {
+    itemID = structureItemID;
     owner->incrementStructures(itemID);
 
-    structureSize.x = 3;
-    structureSize.y = 3;
+    structureSize = newStructureSize;
 
-    graphicID = ObjPic_Starport;
+    graphicID = structureGraphicID;
     graphic = pGFXManager->getObjPic(graphicID,getOwner()->getHouseID());
     numImagesX = 10;
     numImagesY = 1;
@@ -87,7 +101,7 @@ void StarPort::doBuildRandom() {
 
         do {
             item2Produce = std::next(buildList.begin(), currentGame->randomGen.rand(0, static_cast<Sint32>(buildList.size())-1))->itemID;
-        } while((item2Produce == Unit_Harvester) || (item2Produce == Unit_MCV) || (item2Produce == Unit_Carryall));
+        } while((item2Produce == Unit_Harvester) || (item2Produce == Unit_MCV) || isCarryallUnit(item2Produce));
 
         doProduceItem(item2Produce);
     }
@@ -224,11 +238,75 @@ void StarPort::updateBuildList() {
         // Exclude ornithopters from starport in campaign games (can still build from factory)
         bool isOrnithopterInCampaign = (itemOrder[i] == Unit_Ornithopter && currentGame->gameType == GameType::Campaign);
 
-        if(objData.enabled && (choam.getNumAvailable(itemOrder[i]) != INVALID) && !isOrnithopterInCampaign) {
+        if(itemOrder[i] != Unit_ChemicalCarryall && objData.enabled && (choam.getNumAvailable(itemOrder[i]) != INVALID) && !isOrnithopterInCampaign) {
             insertItem(buildList, iter, itemOrder[i], choam.getPrice(itemOrder[i]));
         } else {
             removeItem(buildList, iter, itemOrder[i]);
         }
+    }
+}
+
+bool StarPort::deploySingleUnit(Uint32 unitItemID, bool announce) {
+    UnitBase* newUnit = getOwner()->createUnit(unitItemID);
+    if(newUnit == nullptr) {
+        return false;
+    }
+
+    Coord unitDestination;
+    if(getOwner()->isAI()
+       && (isCarryallUnit(newUnit->getItemID())
+           || isHarvesterLikeUnit(newUnit->getItemID())
+           || newUnit->getItemID() == Unit_MCV)) {
+        unitDestination = location;
+    } else {
+        unitDestination = destination;
+    }
+
+    const Coord spot = newUnit->isAFlyingUnit()
+        ? location + Coord(structureSize.x / 2, structureSize.y / 2)
+        : currentGameMap->findDeploySpot(newUnit, location, currentGame->randomGen,
+                                         unitDestination, structureSize);
+    if(spot.isInvalid() || !currentGameMap->tileExists(spot.x, spot.y)) {
+        newUnit->cancelDeployment();
+        return false;
+    }
+
+    newUnit->deploy(spot);
+
+    if(unitDestination.isValid()) {
+        newUnit->setGuardPoint(unitDestination);
+        newUnit->setDestination(unitDestination);
+        newUnit->setAngle(destinationDrawnAngle(newUnit->getLocation(), newUnit->getDestination()));
+    }
+
+    if(announce && getOwner() == pLocalHouse) {
+        if(isFlyingUnit(unitItemID)) {
+            soundPlayer->playVoice(UnitLaunched, getOwner()->getHouseID());
+        } else if(isHarvesterLikeUnit(unitItemID)) {
+            soundPlayer->playVoice(HarvesterDeployed, getOwner()->getHouseID());
+        } else {
+            soundPlayer->playVoice(UnitDeployed, getOwner()->getHouseID());
+        }
+    }
+
+    newUnit->getOwner()->informWasBuilt(newUnit);
+    return true;
+}
+
+void StarPort::deployOrderedItem(Uint32 orderedItemID) {
+    Uint32 unitItemID = orderedItemID;
+    int count = 1;
+
+    if(unitItemID == Unit_Infantry) {
+        unitItemID = Unit_Soldier;
+        count = 3;
+    } else if(unitItemID == Unit_Troopers) {
+        unitItemID = Unit_Trooper;
+        count = 3;
+    }
+
+    for(int i = 0; i < count; i++) {
+        deploySingleUnit(unitItemID, true);
     }
 }
 
@@ -273,57 +351,8 @@ void StarPort::updateStructureSpecificStuff() {
         if(deployTimer == 0) {
 
             if(currentProductionQueue.empty() == false) {
-                Uint32 newUnitItemID = currentProductionQueue.front().itemID;
-
-                int num2Place = 1;
-
-                if(newUnitItemID == Unit_Infantry) {
-                    // make three
-                    newUnitItemID = Unit_Soldier;
-                    num2Place = 3;
-                } else if(newUnitItemID == Unit_Troopers) {
-                    // make three
-                    newUnitItemID = Unit_Trooper;
-                    num2Place = 3;
-                }
-
-                for(int i = 0; i < num2Place; i++) {
-                    UnitBase* newUnit = getOwner()->createUnit(newUnitItemID);
-                    if (newUnit != nullptr) {
-                        Coord unitDestination;
-                        if( getOwner()->isAI()
-                            && ((newUnit->getItemID() == Unit_Carryall)
-                                || isHarvesterLikeUnit(newUnit->getItemID())
-                                || (newUnit->getItemID() == Unit_MCV))) {
-                            // Don't want harvesters going to the rally point
-                            unitDestination = location;
-                        } else {
-                            unitDestination = destination;
-                        }
-
-                        Coord spot = newUnit->isAFlyingUnit() ? location + Coord(1,1) : currentGameMap->findDeploySpot(newUnit, location, currentGame->randomGen, unitDestination, structureSize);
-                        newUnit->deploy(spot);
-
-                        if(unitDestination.isValid()) {
-                            newUnit->setGuardPoint(unitDestination);
-                            newUnit->setDestination(unitDestination);
-                            newUnit->setAngle(destinationDrawnAngle(newUnit->getLocation(), newUnit->getDestination()));
-                        }
-
-                        if(getOwner() == pLocalHouse) {
-                            if(isFlyingUnit(newUnitItemID)) {
-                                soundPlayer->playVoice(UnitLaunched, getOwner()->getHouseID());
-                            } else if(isHarvesterLikeUnit(newUnitItemID)) {
-                                soundPlayer->playVoice(HarvesterDeployed, getOwner()->getHouseID());
-                            } else {
-                                soundPlayer->playVoice(UnitDeployed, getOwner()->getHouseID());
-                            }
-                        }
-
-                        // inform owner of its new unit
-                        newUnit->getOwner()->informWasBuilt(newUnit);
-                    }
-                }
+                const Uint32 orderedItemID = currentProductionQueue.front().itemID;
+                deployOrderedItem(orderedItemID);
 
                 auto currentProducedBuildItem = std::find_if(   buildList.begin(),
                                                                 buildList.end(),

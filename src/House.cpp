@@ -420,7 +420,7 @@ void House::incrementUnits(int itemID) {
 
     if(itemID != Unit_Saboteur
        && itemID != Unit_Frigate
-       && itemID != Unit_Carryall
+       && !isCarryallUnit(itemID)
        && itemID != Unit_MCV
        && itemID != Unit_Harvester
        && itemID != Unit_RebelHarvester
@@ -430,6 +430,24 @@ void House::incrementUnits(int itemID) {
             militaryValue += currentGame->objectData.data[itemID][houseID].price;
     }
 
+}
+
+
+bool House::isUnitLimitReached(int itemID) const {
+    if(!isUnit(itemID)) {
+        return false;
+    }
+
+    if(itemID == Unit_Harvester || itemID == Unit_RebelHarvester) {
+        return isHarvesterLimitReached();
+    }
+    if(isInfantryUnit(itemID)) {
+        return isInfantryUnitLimitReached();
+    }
+    if(isFlyingUnit(itemID)) {
+        return isAirUnitLimitReached();
+    }
+    return isGroundUnitLimitReached();
 }
 
 
@@ -450,7 +468,7 @@ void House::decrementUnits(int itemID) {
 
     if(itemID != Unit_Saboteur
        && itemID != Unit_Frigate
-       && itemID != Unit_Carryall
+       && !isCarryallUnit(itemID)
        && itemID != Unit_MCV
        && itemID != Unit_Harvester
        && itemID != Unit_RebelHarvester
@@ -464,6 +482,29 @@ void House::decrementUnits(int itemID) {
         lose();
 
 
+}
+
+
+void House::cancelCreatedUnit(int itemID) {
+    if(itemID < 0 || itemID >= Num_ItemID || numUnits <= 0 || numItem[itemID] <= 0) {
+        SDL_Log("House::cancelCreatedUnit(): ignored inconsistent unit %d for house %d", itemID, houseID);
+        return;
+    }
+
+    --numUnits;
+    --numItem[itemID];
+
+    if(itemID != Unit_Saboteur
+       && itemID != Unit_Frigate
+       && !isCarryallUnit(itemID)
+       && itemID != Unit_MCV
+       && itemID != Unit_Harvester
+       && itemID != Unit_RebelHarvester
+       && itemID != Unit_Sandworm
+       && !isAmbientUnit(itemID)) {
+
+        militaryValue = std::max(0, militaryValue - currentGame->objectData.data[itemID][houseID].price);
+    }
 }
 
 
@@ -521,6 +562,33 @@ void House::decrementStructures(int itemID, const Coord& location) {
 
 
 
+void House::transformStructure(int oldItemID, int newItemID) {
+    if(oldItemID == newItemID || !isStructure(oldItemID) || !isStructure(newItemID)
+       || numItem[oldItemID] <= 0) {
+        return;
+    }
+
+    const auto& oldData = currentGame->objectData.data[oldItemID][houseID];
+    const auto& newData = currentGame->objectData.data[newItemID][houseID];
+
+    numItem[oldItemID]--;
+    numItem[newItemID]++;
+
+    if(oldData.power >= 0) {
+        powerRequirement -= oldData.power;
+    }
+    if(newData.power >= 0) {
+        powerRequirement += newData.power;
+    }
+    capacity += newData.capacity - oldData.capacity;
+
+    if(currentGame->gameState != GameState::Loading) {
+        updateBuildLists();
+    }
+}
+
+
+
 void House::noteDamageLocation(ObjectBase* pObject, int damage, Uint32 damagerID) {
     for(auto& pPlayer : players) {
         pPlayer->onDamage(pObject, damage, damagerID);
@@ -564,7 +632,7 @@ void House::informHasKilled(Uint32 itemID) {
 
         if(itemID != Unit_Saboteur
            && itemID != Unit_Frigate
-           && itemID != Unit_Carryall
+           && !isCarryallUnit(itemID)
            && itemID != Unit_MCV
            && itemID != Unit_Harvester
            && itemID != Unit_Sandworm
@@ -710,6 +778,13 @@ StructureBase* House::placeStructure(Uint32 builderID, int itemID, int xPos, int
         return nullptr;
     }
 
+    const Coord requestedStructureSize = getStructureSize(itemID);
+    if(requestedStructureSize.x <= 0 || requestedStructureSize.y <= 0
+       || xPos + requestedStructureSize.x > currentGameMap->getSizeX()
+       || yPos + requestedStructureSize.y > currentGameMap->getSizeY()) {
+        return nullptr;
+    }
+
     BuilderBase* pBuilder = (builderID == NONE_ID) ? nullptr : dynamic_cast<BuilderBase*>(currentGame->getObjectManager().getObject(builderID));
 
     if(currentGame->getGameInitSettings().getGameOptions().onlyOnePalace && pBuilder != nullptr && itemID == Structure_Palace && getNumItems(Structure_Palace) > 0) {
@@ -808,6 +883,14 @@ StructureBase* House::placeStructure(Uint32 builderID, int itemID, int xPos, int
             if(newStructure == nullptr) {
                 delete newObject;
                 THROW(std::runtime_error, "Cannot create structure with itemID %d!", itemID);
+            }
+
+            const int actualSizeX = newStructure->getStructureSizeX();
+            const int actualSizeY = newStructure->getStructureSizeY();
+            if(actualSizeX <= 0 || actualSizeY <= 0
+               || !currentGameMap->tileExists(xPos + actualSizeX - 1, yPos + actualSizeY - 1)) {
+                delete newObject;
+                return nullptr;
             }
 
             if(bForcePlacing == false) {

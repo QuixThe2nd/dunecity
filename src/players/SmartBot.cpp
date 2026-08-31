@@ -392,7 +392,10 @@ void SmartBot::build() {
         if(pStructure->getOwner() == getHouse() && pStructure->isABuilder()) {
             const BuilderBase* pBuilder = static_cast<const BuilderBase*>(pStructure);
             if(pBuilder->getBuildListSize() > 0){
-                buildQueue[pBuilder->getCurrentProducedItem()]++;
+                const int currentProducedItem = pBuilder->getCurrentProducedItem();
+                if(currentProducedItem >= 0 && currentProducedItem < Num_ItemID) {
+                    buildQueue[currentProducedItem]++;
+                }
             }
         }
     }
@@ -408,6 +411,15 @@ void SmartBot::build() {
 
             if(pStructure->isABuilder()) {
                 const BuilderBase* pBuilder = static_cast<const BuilderBase*>(pStructure);
+
+                if(!pBuilder->isUpgrading() && pBuilder->getProductionQueueSize() < 1
+                   && getHouse()->getCredits() > 1500) {
+                    const int customItem = chooseLowPriorityCustomUnit(pBuilder);
+                    if(customItem != ItemID_Invalid) {
+                        doProduceItem(pBuilder, customItem);
+                        continue;
+                    }
+                }
 
                 switch (pBuilder->getItemID()) {
 

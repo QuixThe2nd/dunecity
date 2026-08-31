@@ -2226,6 +2226,18 @@ void QuantBot::build(int militaryValue) {
 					continue;
 				}
 				
+				if (!pBuilder->isUpgrading() && pBuilder->getProductionQueueSize() < 1
+					&& money > 1500) {
+					const int customItem = chooseLowPriorityCustomUnit(pBuilder);
+					if (customItem != ItemID_Invalid) {
+						produceItemWithLogging(customItem);
+						itemCount[customItem]++;
+						money -= data[customItem][houseID].price;
+						militaryValue += data[customItem][houseID].price;
+						continue;
+					}
+				}
+
 				switch (pStructure->getItemID()) {
 
 			case Structure_LightFactory: {

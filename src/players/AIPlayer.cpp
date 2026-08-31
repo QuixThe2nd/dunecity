@@ -399,6 +399,16 @@ void AIPlayer::build() {
                     continue;
                 }
 
+                if(isAllowedToArm() && !pBuilder->isUpgrading()
+                   && pBuilder->getProductionQueueSize() < 1
+                   && getHouse()->getCredits() > 1500) {
+                    const int customItem = chooseLowPriorityCustomUnit(pBuilder);
+                    if(customItem != ItemID_Invalid) {
+                        doProduceItem(pBuilder, customItem);
+                        continue;
+                    }
+                }
+
                 switch (pStructure->getItemID()) {
 
                     case Structure_Barracks: {

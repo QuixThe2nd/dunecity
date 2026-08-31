@@ -31,6 +31,8 @@
 #include <GUI/dune/DigitsTextBox.h>
 #include <misc/SDL2pp.h>
 
+#include <vector>
+
 // forward declaration
 class MapEditor;
 
@@ -80,7 +82,8 @@ private:
         DigitsTextBox   TextBox_Unit2;
     };
 
-    ChoamRow   choamRows[10];
+    ChoamRow   choamRows[11];
+    std::vector<ItemID_enum> choamUnits_;
 
     HBox        buttonHBox;
 

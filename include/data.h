@@ -32,7 +32,8 @@ typedef enum {
     Bullet_Sonic = 9,
     Bullet_Sandworm = 10,
     Bullet_Flame = 11,            ///< Tornie: launcher-like fire missile with flame area damage
-    Bullet_SonicTrike = 12        ///< Tornie: shorter and weaker Sonic Trike wave
+    Bullet_SonicTrike = 12,        ///< Tornie: shorter and weaker Sonic Trike wave
+    Bullet_Heal = 13              ///< Tornie: Deviator-style healing missile with direct flight
 } BulletID_enum;
 
 typedef enum {
@@ -143,8 +144,18 @@ typedef enum {
 
     // Appended after every 1.0.517 object ID to preserve save compatibility.
     Unit_SonicTrike = 63,               ///< Tornie: Rebels-only light sonic vehicle
+    Unit_ChemicalSiegeTank = 64,        ///< Tornie: custom-house chemical Siege Tank
+    Structure_LoveFactory = 65,         ///< Tornie: animated 2x3 Love Factory
+    Unit_ChemicalCarryall = 66,         ///< Tornie: Wildspade healing transport
+    Delivery_Small = 67,               ///< Love Factory small reinforcement delivery
+    Delivery_Medium = 68,              ///< Love Factory medium reinforcement delivery
+    Delivery_Heavy = 69,               ///< Love Factory heavy reinforcement delivery
+    Delivery_Support = 70,             ///< Love Factory support reinforcement delivery
+    Structure_Flamepost = 71,          ///< Tornie: flame variant of the Scoutpost
+    Structure_ChaosFactory = 72,       ///< Tornie: two random global unit offers
+    Structure_Chemipost = 73,          ///< Tornie: healing variant of the Scoutpost
 
-    ItemID_LastID = 63,
+    ItemID_LastID = 73,
 
     Num_ItemID
 } ItemID_enum;
@@ -191,14 +202,14 @@ typedef enum {
     \param itemID   the ID of the item (e.g. Unit_Harvester)
     \return true if it is an unit, false otherwise
 */
-inline bool isUnit(int itemID) { return (itemID >= Unit_FirstID && itemID <= Unit_LastID) || (itemID >= Unit_AmbientAirplane && itemID <= Unit_ExtLastID) || itemID == Unit_RebelHarvester || itemID == Unit_SonicTrike; }
+inline bool isUnit(int itemID) { return (itemID >= Unit_FirstID && itemID <= Unit_LastID) || (itemID >= Unit_AmbientAirplane && itemID <= Unit_ExtLastID) || itemID == Unit_RebelHarvester || itemID == Unit_SonicTrike || itemID == Unit_ChemicalSiegeTank || itemID == Unit_ChemicalCarryall; }
 
 /**
     This function determines if the specified itemID is a structure or not.
     \param itemID   the ID of the item (e.g. Structure_ConstructionYard)
     \return true if it is a structure, false otherwise
 */
-inline bool isStructure(int itemID) { return (itemID >= Structure_FirstID && itemID <= Structure_LastID) || (itemID >= Structure_Stadium && itemID <= Structure_ExtLastID) || (itemID >= Structure_AdvancedWindTrap && itemID <= Structure_AdvancedWindTrapMK2) || itemID == Structure_TechCenter || itemID == Structure_AdvancedWindTrapMK3 || itemID == Structure_Scoutpost; }
+inline bool isStructure(int itemID) { return (itemID >= Structure_FirstID && itemID <= Structure_LastID) || (itemID >= Structure_Stadium && itemID <= Structure_ExtLastID) || (itemID >= Structure_AdvancedWindTrap && itemID <= Structure_AdvancedWindTrapMK2) || itemID == Structure_TechCenter || itemID == Structure_AdvancedWindTrapMK3 || itemID == Structure_Scoutpost || itemID == Structure_LoveFactory || itemID == Structure_Flamepost || itemID == Structure_ChaosFactory || itemID == Structure_Chemipost; }
 
 /**
     This function determines if the specified itemID is a DuneCity zone structure.
@@ -207,13 +218,46 @@ inline bool isStructure(int itemID) { return (itemID >= Structure_FirstID && ite
 */
 inline bool isZoneStructure(int itemID) { return (itemID == Structure_ZoneResidential || itemID == Structure_ZoneCommercial || itemID == Structure_ZoneIndustrial); }
 
+inline bool isTornieExclusiveItem(int itemID) {
+    switch(itemID) {
+        case Unit_RocketTrike:
+        case Unit_FlameTank:
+        case Unit_EliteLauncher:
+        case Unit_EliteSiegeTank:
+        case Structure_AdvancedWindTrap:
+        case Structure_Worfinery:
+        case Structure_AdvancedWindTrapMK2:
+        case Unit_RebelHarvester:
+        case Structure_TechCenter:
+        case Structure_AdvancedWindTrapMK3:
+        case Structure_Scoutpost:
+        case Unit_SonicTrike:
+        case Unit_ChemicalSiegeTank:
+        case Structure_LoveFactory:
+        case Unit_ChemicalCarryall:
+        case Delivery_Small:
+        case Delivery_Medium:
+        case Delivery_Heavy:
+        case Delivery_Support:
+        case Structure_Flamepost:
+        case Structure_ChaosFactory:
+        case Structure_Chemipost:
+            return true;
+        default:
+            return false;
+    }
+}
+
 
 /**
     This function determines if the specified itemID is a flying unit or not.
     \param itemID   the ID of the item (e.g. Unit_Carryall)
     \return true if it is a flying unit, false otherwise
 */
-inline bool isFlyingUnit(int itemID) { return (itemID == Unit_Carryall) || (itemID == Unit_Ornithopter) || (itemID == Unit_Frigate) || (itemID == Unit_AmbientAirplane) || (itemID == Unit_AmbientHelicopter); }
+inline bool isFlyingUnit(int itemID) { return (itemID == Unit_Carryall) || (itemID == Unit_ChemicalCarryall) || (itemID == Unit_Ornithopter) || (itemID == Unit_Frigate) || (itemID == Unit_AmbientAirplane) || (itemID == Unit_AmbientHelicopter); }
+inline bool isCarryallUnit(int itemID) {
+    return (itemID == Unit_Carryall) || (itemID == Unit_ChemicalCarryall);
+}
 
 /**
     This function determines if the specified itemID is an ambient city aircraft.

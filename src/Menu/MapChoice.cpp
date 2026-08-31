@@ -209,16 +209,16 @@ void MapChoice::drawSpecificStuff() {
 
         case MAPCHOICESTATE_BLENDING: {
             if(curBlendBlitter == nullptr) {
-                while(  (curHouse2Blit < NUM_HOUSES) &&
-                        (curRegion2Blit >= group[lastScenario].newRegion[(curHouse2Blit + house) % NUM_HOUSES].size())) {
+                while(  (curHouse2Blit < NUM_CAMPAIGN_HOUSES) &&
+                        (curRegion2Blit >= group[lastScenario].newRegion[(curHouse2Blit + house) % NUM_CAMPAIGN_HOUSES].size())) {
                         curRegion2Blit = 0;
                         curHouse2Blit++;
                 }
 
-                if((curHouse2Blit < NUM_HOUSES)&&(curRegion2Blit < group[lastScenario].newRegion[(curHouse2Blit + house) % NUM_HOUSES].size())) {
+                if((curHouse2Blit < NUM_CAMPAIGN_HOUSES)&&(curRegion2Blit < group[lastScenario].newRegion[(curHouse2Blit + house) % NUM_CAMPAIGN_HOUSES].size())) {
                     // there is still some region to blend in
-                    const int pieceNum = (group[lastScenario].newRegion[(curHouse2Blit + house) % NUM_HOUSES])[curRegion2Blit];
-                    sdl2::surface_ptr pPieceSurface = convertSurfaceToDisplayFormat(pGFXManager->getMapChoicePieceSurface(pieceNum,(curHouse2Blit + house) % NUM_HOUSES));
+                    const int pieceNum = (group[lastScenario].newRegion[(curHouse2Blit + house) % NUM_CAMPAIGN_HOUSES])[curRegion2Blit];
+                    sdl2::surface_ptr pPieceSurface = convertSurfaceToDisplayFormat(pGFXManager->getMapChoicePieceSurface(pieceNum,(curHouse2Blit + house) % NUM_CAMPAIGN_HOUSES));
                     SDL_Rect dest = calcDrawingRect(pPieceSurface.get(), piecePosition[pieceNum].x, piecePosition[pieceNum].y);
                     curBlendBlitter = std::make_unique<BlendBlitter>(std::move(pPieceSurface), mapSurface.get(), dest);
                     curRegion2Blit++;
@@ -396,7 +396,7 @@ void MapChoice::loadINI() {
         std::string strSection = "GROUP" + std::to_string(i);
 
         // read new regions
-        for(int h = 0; h < NUM_HOUSES; h++) {
+        for(int h = 0; h < NUM_CAMPAIGN_HOUSES; h++) {
             std::string key;
             switch(h) {
                 case HOUSE_HARKONNEN:   key = "HAR"; break;

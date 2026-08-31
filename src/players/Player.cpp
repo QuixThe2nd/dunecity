@@ -35,6 +35,7 @@
 #include <units/MCV.h>
 
 #include <misc/Random.h>
+#include <mod/ModManager.h>
 
 #include <sand.h>
 #include <globals.h>
@@ -181,6 +182,56 @@ void Player::doBuildRandom(const BuilderBase* pBuilder) const {
     } else {
         logWarn("The player '%s' tries to randomly build some item in a structure he doesn't own or that is inactive!\n", playername.c_str());
     }
+}
+
+int Player::chooseLowPriorityCustomUnit(const BuilderBase* pBuilder, int chanceDenominator) const {
+    if(!ModManager::instance().isTornieContentActive()
+       || pBuilder == nullptr || pBuilder->getOwner() != getHouse() || !pBuilder->isActive()) {
+        return ItemID_Invalid;
+    }
+
+    static const Uint32 customUnits[] = {
+        Unit_RaiderTrike,
+        Unit_RocketTrike,
+        Unit_SonicTrike,
+        Unit_FlameTank,
+        Unit_EliteLauncher,
+        Unit_EliteSiegeTank,
+        Unit_ChemicalSiegeTank,
+        Unit_ChemicalCarryall,
+        Unit_RebelHarvester
+    };
+    Uint32 availableUnits[sizeof(customUnits) / sizeof(customUnits[0])] = {};
+    int numAvailable = 0;
+
+    for(const Uint32 itemID : customUnits) {
+        if(!pBuilder->isAvailableToBuild(itemID)) {
+            continue;
+        }
+        if(itemID == Unit_ChemicalCarryall) {
+            if(getHouse()->isAirUnitLimitReached() || getHouse()->getNumItems(itemID) >= 1) {
+                continue;
+            }
+        } else {
+            if(getHouse()->isGroundUnitLimitReached()) {
+                continue;
+            }
+            if(itemID == Unit_RebelHarvester && getHouse()->getNumItems(itemID) >= 3) {
+                continue;
+            }
+        }
+
+        availableUnits[numAvailable++] = itemID;
+    }
+
+    if(numAvailable == 0) {
+        return ItemID_Invalid;
+    }
+    if(chanceDenominator > 1 && getRandomGen().rand(0, chanceDenominator - 1) != 0) {
+        return ItemID_Invalid;
+    }
+
+    return static_cast<int>(availableUnits[getRandomGen().rand(0, numAvailable - 1)]);
 }
 
 void Player::doPlaceOrder(const StarPort* pStarport) const {

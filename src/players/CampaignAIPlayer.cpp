@@ -333,8 +333,7 @@ void CampaignAIPlayer::updateStructures() {
         if(pStructure->getItemID() == Structure_Palace) {
             const Palace* pPalace = static_cast<const Palace*>(pStructure);
             if(pPalace->isSpecialWeaponReady()) {
-                const HOUSETYPE palaceHouse = getHouseFallbackHouse(static_cast<HOUSETYPE>(getHouse()->getHouseID()));
-                if(palaceHouse != HOUSE_HARKONNEN && palaceHouse != HOUSE_SARDAUKAR) {
+                if(!pPalace->usesTargetedSpecialWeapon()) {
                     doSpecialWeapon(pPalace);
                 } else {
                     // Death Hand - target house with most structures
@@ -449,6 +448,11 @@ Uint32 CampaignAIPlayer::pickNextToBuild(const BuilderBase* pBuilder) {
     // Get buildable items from builder's build list
     const std::list<BuildItem>& buildList = pBuilder->getBuildList();
     if(buildList.empty()) return ItemID_Invalid;
+
+    const int customItem = chooseLowPriorityCustomUnit(pBuilder);
+    if(customItem != ItemID_Invalid) {
+        return static_cast<Uint32>(customItem);
+    }
     
     // Build filtered candidate list (Original AI filters)
     std::vector<Uint32> candidates;

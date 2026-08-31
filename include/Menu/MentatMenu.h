@@ -82,6 +82,7 @@ protected:
     int currentMentatTextIndex;
     Uint32 nextMentatTextSwitch;
     int house;
+    int mentatPresentationHouse;
 
     StaticContainer windowWidget;
     AnimationLabel  eyesAnim;

@@ -312,18 +312,27 @@ typedef enum
     HOUSE_NEUTRAL   =  6,
     HOUSE_REBELS    =  7,
     HOUSE_CUSTOM     = 8,
+    HOUSE_WILDSPADE  = 9,
+    HOUSE_KLESHMERSH = 10,
+    HOUSE_THARPIQUE  = 11,
     NUM_HOUSES
 } HOUSETYPE;
 
 constexpr int NUM_LEGACY_HOUSES = 8;
+constexpr int NUM_CAMPAIGN_HOUSES = HOUSE_CUSTOM + 1;
+constexpr int MAX_CUSTOM_GAME_PLAYERS = 9;
+constexpr int NUM_BASE_HOUSE_COLOR_SLOTS = NUM_CAMPAIGN_HOUSES;
 
-constexpr int HOUSECOLOR_CUSTOM_DARK_VIOLET   = NUM_HOUSES;
-constexpr int HOUSECOLOR_CUSTOM_FUCHSIA       = NUM_HOUSES + 1;
-constexpr int HOUSECOLOR_CUSTOM_TEAL          = NUM_HOUSES + 2;
-constexpr int HOUSECOLOR_CUSTOM_BRIGHT_YELLOW = NUM_HOUSES + 3;
-constexpr int HOUSECOLOR_CUSTOM_APPLE_GREEN   = NUM_HOUSES + 4;
-constexpr int HOUSECOLOR_CUSTOM_LIGHT_PINK    = NUM_HOUSES + 5;
+constexpr int HOUSECOLOR_CUSTOM_DARK_VIOLET   = NUM_BASE_HOUSE_COLOR_SLOTS;
+constexpr int HOUSECOLOR_CUSTOM_FUCHSIA       = NUM_BASE_HOUSE_COLOR_SLOTS + 1;
+constexpr int HOUSECOLOR_CUSTOM_TEAL          = NUM_BASE_HOUSE_COLOR_SLOTS + 2;
+constexpr int HOUSECOLOR_CUSTOM_BRIGHT_YELLOW = NUM_BASE_HOUSE_COLOR_SLOTS + 3;
+constexpr int HOUSECOLOR_CUSTOM_APPLE_GREEN   = NUM_BASE_HOUSE_COLOR_SLOTS + 4;
+constexpr int HOUSECOLOR_CUSTOM_LIGHT_PINK    = NUM_BASE_HOUSE_COLOR_SLOTS + 5;
 constexpr int NUM_CUSTOM_HOUSE_COLORS         = 6;
+constexpr int HOUSECOLOR_GUEST_1               = NUM_BASE_HOUSE_COLOR_SLOTS + NUM_CUSTOM_HOUSE_COLORS;
+constexpr int HOUSECOLOR_GUEST_2               = HOUSECOLOR_GUEST_1 + 1;
+constexpr int HOUSECOLOR_GUEST_3               = HOUSECOLOR_GUEST_1 + 2;
 
 constexpr int migrateLegacyHouseColorSlot(int colorSlot) noexcept {
     return (colorSlot >= NUM_LEGACY_HOUSES
@@ -331,7 +340,7 @@ constexpr int migrateLegacyHouseColorSlot(int colorSlot) noexcept {
         ? colorSlot + 1
         : colorSlot;
 }
-constexpr int NUM_HOUSE_COLOR_SLOTS           = NUM_HOUSES + NUM_CUSTOM_HOUSE_COLORS;
+constexpr int NUM_HOUSE_COLOR_SLOTS           = HOUSECOLOR_GUEST_3 + 1;
 
 typedef enum {
     RIGHT,

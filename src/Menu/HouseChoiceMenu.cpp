@@ -16,6 +16,7 @@
  */
 
 #include <Menu/HouseChoiceMenu.h>
+#include <mod/ModManager.h>
 
 #include <globals.h>
 
@@ -192,17 +193,27 @@ void HouseChoiceMenu::onEnemyAISelectionChanged(bool /*interactive*/) {
 void HouseChoiceMenu::onHouseButton(int button) {
     int selectedHouse = houseOrder[currentHouseChoiceScrollPos+button];
 
-    switch(selectedHouse) {
-        case HOUSE_HARKONNEN:   soundPlayer->playVoice(HouseHarkonnen, selectedHouse);     break;
-        case HOUSE_ATREIDES:    soundPlayer->playVoice(HouseAtreides, selectedHouse);      break;
-        case HOUSE_ORDOS:       soundPlayer->playVoice(HouseOrdos, selectedHouse);         break;
-        case HOUSE_FREMEN:      soundPlayer->playVoice(HouseAtreides, selectedHouse);      break;
-        case HOUSE_SARDAUKAR:   soundPlayer->playVoice(HouseHarkonnen, selectedHouse);     break;
-        case HOUSE_MERCENARY:   soundPlayer->playVoice(HouseOrdos, selectedHouse);         break;
-        case HOUSE_NEUTRAL:     soundPlayer->playVoice(HouseAtreides, selectedHouse);      break;
-        case HOUSE_REBELS:      soundPlayer->playVoice(HouseHarkonnen, selectedHouse);     break;
-        case HOUSE_CUSTOM: {
-            const HOUSETYPE fallbackHouse = getHouseFallbackHouse(HOUSE_CUSTOM);
+    const HOUSETYPE selectedIdentity =
+        getHouseFactionIdentity(static_cast<HOUSETYPE>(selectedHouse));
+    switch(selectedIdentity) {
+        case HOUSE_HARKONNEN:   soundPlayer->playVoice(HouseHarkonnen, selectedHouse); break;
+        case HOUSE_ATREIDES:    soundPlayer->playVoice(HouseAtreides, selectedHouse);  break;
+        case HOUSE_ORDOS:       soundPlayer->playVoice(HouseOrdos, selectedHouse);     break;
+        case HOUSE_FREMEN:      soundPlayer->playVoice(HouseAtreides, selectedHouse);  break;
+        case HOUSE_SARDAUKAR:   soundPlayer->playVoice(HouseHarkonnen, selectedHouse); break;
+        case HOUSE_MERCENARY:   soundPlayer->playVoice(HouseOrdos, selectedHouse);     break;
+        case HOUSE_NEUTRAL:
+        case HOUSE_WILDSPADE:
+            soundPlayer->playVoice(HouseAtreides, selectedHouse);
+            break;
+        case HOUSE_REBELS:
+        case HOUSE_KLESHMERSH:
+            soundPlayer->playVoice(HouseHarkonnen, selectedHouse);
+            break;
+        case HOUSE_CUSTOM:
+        case HOUSE_THARPIQUE: {
+            const HOUSETYPE fallbackHouse =
+                getHouseFallbackHouse(static_cast<HOUSETYPE>(selectedHouse));
             switch(fallbackHouse) {
                 case HOUSE_ATREIDES:
                 case HOUSE_FREMEN:
@@ -218,8 +229,8 @@ void HouseChoiceMenu::onHouseButton(int button) {
                     break;
             }
         } break;
-        default:                /* no sounds for the other houses avail.*/  break;
-
+        default:
+            break;
     }
 
     int ret = HouseChoiceInfoMenu(selectedHouse).showMenu();

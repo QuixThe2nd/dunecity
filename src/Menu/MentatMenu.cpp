@@ -36,13 +36,19 @@ MentatMenu::MentatMenu(int newHouse)
 
     disableQuiting(true);
     house = newHouse;
+    const int mentatAssetHouse = newHouse >= HOUSE_WILDSPADE && newHouse <= HOUSE_THARPIQUE
+        ? HOUSE_NEUTRAL + (newHouse - HOUSE_WILDSPADE)
+        : newHouse;
+    mentatPresentationHouse = mentatAssetHouse == HOUSE_INVALID
+        ? HOUSE_INVALID
+        : ModManager::instance().getEffectiveMentatIdentity(mentatAssetHouse);
 
     // set up window
     SDL_Texture *pBackground;
     if(house == HOUSE_INVALID) {
         pBackground = pGFXManager->getUIGraphic(UI_MentatBackgroundBene);
     } else {
-        pBackground = pGFXManager->getUIGraphic(UI_MentatBackground,house);
+        pBackground = pGFXManager->getUIGraphic(UI_MentatBackground,mentatAssetHouse);
     }
 
     setBackground(pBackground);
@@ -61,8 +67,8 @@ MentatMenu::MentatMenu(int newHouse)
         windowWidget.addWidget(&mouthAnim, Point(112,192), mouthAnim.getMinimumSize());
     } else {
         ModManager& modManager = ModManager::instance();
-        const ModMentatInfo& info = modManager.getActiveMentatInfo(house);
-        const int identity = modManager.getEffectiveMentatIdentity(house);
+        const ModMentatInfo& info = modManager.getActiveMentatInfo(mentatAssetHouse);
+        const int identity = modManager.getEffectiveMentatIdentity(mentatAssetHouse);
 
         Point eyesPosition;
         Point mouthPosition;
@@ -89,9 +95,9 @@ MentatMenu::MentatMenu(int newHouse)
             if(info.mouthY >= 0) mouthPosition.y = info.mouthY;
         }
 
-        eyesAnim.setAnimation(pGFXManager->getMentatEyesAnimation(house));
+        eyesAnim.setAnimation(pGFXManager->getMentatEyesAnimation(mentatAssetHouse));
         windowWidget.addWidget(&eyesAnim, eyesPosition, eyesAnim.getMinimumSize());
-        mouthAnim.setAnimation(pGFXManager->getMentatMouthAnimation(house));
+        mouthAnim.setAnimation(pGFXManager->getMentatMouthAnimation(mentatAssetHouse));
         windowWidget.addWidget(&mouthAnim, mouthPosition, mouthAnim.getMinimumSize());
 
         const bool useBaseExtras = !info.enabled || info.useBaseExtras;
@@ -262,7 +268,15 @@ void MentatMenu::drawSpecificStuff() {
         } break;
     }
 
-    shoulderAnim.draw(shoulderPos);
+    SDL_Texture* foreground = pGFXManager->getMentatForeground(mentatPresentationHouse);
+    if(foreground != nullptr) {
+        SDL_Rect destination{ getPosition().x, getPosition().y, 0, 0 };
+        if(SDL_QueryTexture(foreground, nullptr, nullptr, &destination.w, &destination.h) == 0) {
+            SDL_RenderCopy(renderer, foreground, nullptr, &destination);
+        }
+    } else {
+        shoulderAnim.draw(shoulderPos);
+    }
     textLabel.draw(Point(10,5) + getPosition());
 }
 

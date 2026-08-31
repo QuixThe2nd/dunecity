@@ -11,8 +11,14 @@
 #include <Network/NetworkManager.h>
 #include <Network/ENetPacketOStream.h>
 #include <Network/ENetPacketIStream.h>
+#include <mod/Dune2RAssetManager.h>
+#include <mod/ModPayloadIntegrity.h>
+#include <mod/ModTransferValidation.h>
 
 #include <enet/enet.h>
+
+#include <chrono>
+#include <fstream>
 
 // Packet type constants (copied from NetworkManager.h for testing)
 // These are validated to ensure they don't change accidentally
@@ -54,6 +60,126 @@ TEST_CASE("NetworkManager: mismatched protocol handshake dispatches rejection ca
     REQUIRE(rejected);
     REQUIRE(disconnectCalled);
     REQUIRE(disconnectCause == NETWORKDISCONNECT_PROTOCOL_MISMATCH);
+}
+
+TEST_CASE("Mod transfer accepts portable nested payload paths", "[network][mod-transfer][security]") {
+    std::filesystem::path normalized;
+    REQUIRE(ModTransferValidation::isValidModName("Tornie 1.0"));
+    REQUIRE(ModTransferValidation::normalizeRelativeFilePath(
+        "campaign/scena001.ini", normalized));
+    REQUIRE(normalized.generic_string() == "campaign/scena001.ini");
+    REQUIRE(ModTransferValidation::normalizeRelativeFilePath(
+        "data\\units\\ChemicalSiegeTank.png", normalized));
+    REQUIRE(normalized.generic_string() == "data/units/ChemicalSiegeTank.png");
+    const std::string lowercaseKey = ModTransferValidation::portablePathKey(normalized);
+    REQUIRE(lowercaseKey == "data/units/chemicalsiegetank.png");
+    REQUIRE(lowercaseKey == ModTransferValidation::portablePathKey(
+        std::filesystem::path("DATA/Units/ChemicalSiegeTank.PNG")));
+}
+
+TEST_CASE("Mod transfer rejects traversal and non-portable names", "[network][mod-transfer][security]") {
+    std::filesystem::path normalized;
+    REQUIRE_FALSE(ModTransferValidation::isValidModName("../Tornie"));
+    REQUIRE_FALSE(ModTransferValidation::isValidModName("Tornie/Next"));
+    REQUIRE_FALSE(ModTransferValidation::isValidModName("CON"));
+    REQUIRE_FALSE(ModTransferValidation::isValidModName("LPT1.assets"));
+    REQUIRE_FALSE(ModTransferValidation::isValidModName("Tornie."));
+    REQUIRE_FALSE(ModTransferValidation::normalizeRelativeFilePath(
+        "campaign/../mod.ini", normalized));
+    REQUIRE_FALSE(ModTransferValidation::normalizeRelativeFilePath(
+        "../outside.ini", normalized));
+    REQUIRE_FALSE(ModTransferValidation::normalizeRelativeFilePath(
+        "data//asset.png", normalized));
+    REQUIRE_FALSE(ModTransferValidation::normalizeRelativeFilePath(
+        "data/NUL.png", normalized));
+    REQUIRE_FALSE(ModTransferValidation::normalizeRelativeFilePath(
+        "C:/outside.ini", normalized));
+}
+
+namespace {
+
+class TemporaryModPayload {
+public:
+    TemporaryModPayload() {
+        const auto uniqueValue = std::chrono::high_resolution_clock::now()
+                                     .time_since_epoch().count();
+        root_ = std::filesystem::temp_directory_path()
+              / ("dunecity-mod-integrity-" + std::to_string(uniqueValue));
+        std::filesystem::create_directories(root_ / "data");
+    }
+
+    ~TemporaryModPayload() {
+        std::error_code error;
+        std::filesystem::remove_all(root_, error);
+    }
+
+    const std::filesystem::path& root() const { return root_; }
+
+    void write(const std::filesystem::path& relativePath, const std::string& contents) const {
+        const std::filesystem::path path = root_ / relativePath;
+        std::filesystem::create_directories(path.parent_path());
+        std::ofstream file(path, std::ios::binary);
+        file << contents;
+    }
+
+    void writeChecksums(const std::vector<std::filesystem::path>& files) const {
+        std::ofstream checksumFile(root_ / "checksums.sha256", std::ios::binary);
+        for(const auto& relativePath : files) {
+            checksumFile << Dune2RAssetManager::sha256File((root_ / relativePath).string())
+                         << "  " << relativePath.generic_string() << "\n";
+        }
+    }
+
+private:
+    std::filesystem::path root_;
+};
+
+} // namespace
+
+TEST_CASE("Checksummed mod payload rejects drift before activation",
+          "[network][mod-transfer][integrity]") {
+    TemporaryModPayload payload;
+    payload.write("mod.ini", "[Mod]\nName=Tornie\n");
+    payload.write("data/unit.dat", "authoritative asset");
+    payload.writeChecksums({"mod.ini", "data/unit.dat"});
+
+    std::string error;
+    REQUIRE(ModPayloadIntegrity::verifyChecksummedPayload(payload.root(), error));
+    REQUIRE(error.empty());
+
+    SECTION("changed file") {
+        payload.write("data/unit.dat", "altered asset");
+        REQUIRE_FALSE(ModPayloadIntegrity::verifyChecksummedPayload(payload.root(), error));
+        REQUIRE(error.find("checksum mismatch") != std::string::npos);
+    }
+
+    SECTION("missing file") {
+        std::filesystem::remove(payload.root() / "data/unit.dat");
+        REQUIRE_FALSE(ModPayloadIntegrity::verifyChecksummedPayload(payload.root(), error));
+        REQUIRE(error.find("missing or unsafe") != std::string::npos);
+    }
+
+    SECTION("unlisted extra file") {
+        payload.write("data/unlisted.dat", "not in the manifest");
+        REQUIRE_FALSE(ModPayloadIntegrity::verifyChecksummedPayload(payload.root(), error));
+        REQUIRE(error.find("absent from checksums") != std::string::npos);
+    }
+
+    SECTION("managed installation stamp") {
+        payload.write(".dunecity-managed", "bundle fingerprint");
+        REQUIRE(ModPayloadIntegrity::verifyChecksummedPayload(payload.root(), error));
+    }
+
+    SECTION("duplicate manifest path") {
+        std::ofstream checksumFile(payload.root() / "checksums.sha256",
+                                   std::ios::binary | std::ios::app);
+        checksumFile << Dune2RAssetManager::sha256File(
+                            (payload.root() / "data/unit.dat").string())
+                     << "  DATA/UNIT.DAT\n";
+        checksumFile.close();
+        REQUIRE_FALSE(ModPayloadIntegrity::verifyChecksummedPayload(payload.root(), error));
+        REQUIRE(error.find("duplicate or case-colliding") != std::string::npos);
+    }
 }
 
 // ENet initialization fixture

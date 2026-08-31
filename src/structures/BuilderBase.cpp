@@ -26,6 +26,7 @@
 #include <House.h>
 #include <Game.h>
 #include <dunecity/CitySimulation.h>
+#include <mod/ModManager.h>
 #include <units/UnitBase.h>
 #include <units/HarvesterHelpers.h>
 
@@ -35,9 +36,10 @@
 
 #include <algorithm>
 
-const int BuilderBase::itemOrder[] = {    Structure_Slab4, Structure_Slab1, Structure_Road, Structure_IX, Structure_StarPort,
+const int BuilderBase::itemOrder[] = {    Unit_ChemicalCarryall,
+                                           Structure_Slab4, Structure_Slab1, Structure_Road, Structure_IX, Structure_StarPort,
                                            Structure_HighTechFactory, Structure_HeavyFactory, Structure_RocketTurret,
-                                           Structure_Scoutpost,
+                                           Structure_Scoutpost, Structure_Flamepost, Structure_Chemipost, Structure_LoveFactory, Structure_ChaosFactory,
                                            Structure_RepairYard, Structure_GunTurret, Structure_TechCenter, Structure_WOR,
                                            Structure_Worfinery,
                                            Structure_Barracks, Structure_Wall, Structure_LightFactory,
@@ -47,7 +49,7 @@ const int BuilderBase::itemOrder[] = {    Structure_Slab4, Structure_Slab1, Stru
                                            Structure_Stadium, Structure_Airport,
                                            Structure_ZoneResidential, Structure_ZoneCommercial, Structure_ZoneIndustrial,
                                            Unit_SonicTank, Unit_Devastator, Unit_Deviator, Unit_Special,
-                                           Unit_EliteLauncher, Unit_EliteSiegeTank, Unit_FlameTank,
+                                           Unit_EliteLauncher, Unit_EliteSiegeTank, Unit_ChemicalSiegeTank, Unit_FlameTank,
                                            Unit_Launcher, Unit_SiegeTank, Unit_Tank, Unit_MCV,
                                            Unit_RebelHarvester, Unit_Harvester,
                                            Unit_Ornithopter, Unit_Carryall, Unit_Quad, Unit_RocketTrike, Unit_SonicTrike, Unit_RaiderTrike,
@@ -258,18 +260,7 @@ bool BuilderBase::isUnitLimitReached(Uint32 itemID) const {
         return false;
     }
 
-    // Check harvester-specific limit first
-    if(isHarvesterLikeUnit(itemID)) {
-        return getOwner()->isHarvesterLimitReached();
-    }
-
-    if(isInfantryUnit(itemID)) {
-        return getOwner()->isInfantryUnitLimitReached();
-    } else if(isFlyingUnit(itemID)) {
-        return getOwner()->isAirUnitLimitReached();
-    } else {
-        return getOwner()->isGroundUnitLimitReached();
-    }
+    return getOwner()->isUnitLimitReached(itemID);
 }
 
 
@@ -347,13 +338,20 @@ int BuilderBase::getMaxUpgradeLevel() const {
     int upgradeLevel = 0;
 
     for(int i = ItemID_FirstID; i <= ItemID_LastID; i++) {
-        const ObjectData::ObjectDataStruct& objData = currentGame->objectData.data[i][originalHouseID];
+        const int dataHouseID = (i == Unit_ChemicalCarryall) ? owner->getHouseID() : originalHouseID;
+        const ObjectData::ObjectDataStruct& objData = currentGame->objectData.data[i][dataHouseID];
 
         if(objData.enabled && (objData.builder == (int) itemID) && (objData.techLevel <= currentGame->techLevel)) {
             upgradeLevel = std::max(upgradeLevel, (int) objData.upgradeLevel);
         }
     }
 
+    if(itemID == Structure_HighTechFactory && owner != nullptr
+       && ModManager::instance().isTornieContentActive()
+       && getHouseScenarioLetter(static_cast<HOUSETYPE>(owner->getHouseID())) == 'W'
+       && currentGame->techLevel >= 7) {
+        upgradeLevel = std::max(upgradeLevel, 2);
+    }
     return upgradeLevel;
 }
 
@@ -392,10 +390,29 @@ void BuilderBase::updateBuildList()
             }
         }
 
-        const ObjectData::ObjectDataStruct& objData = currentGame->objectData.data[itemID2Add][originalHouseID];
+        const bool tornieActive = ModManager::instance().isTornieContentActive();
+        const bool specialChemicalCarryall = itemID2Add == Unit_ChemicalCarryall
+            && itemID == Structure_HighTechFactory
+            && owner != nullptr
+            && tornieActive
+            && (isHouseFaction(static_cast<HOUSETYPE>(owner->getHouseID()), HOUSE_WILDSPADE)
+                || owner->getHouseID() == HOUSE_ATREIDES);
+        if(itemID2Add == Unit_ChemicalCarryall && !specialChemicalCarryall) {
+            removeItem(buildList, iter, itemID2Add);
+            continue;
+        }
+        const int dataHouseID = (itemID2Add == Unit_ChemicalCarryall) ? owner->getHouseID() : originalHouseID;
+        const ObjectData::ObjectDataStruct& objData = currentGame->objectData.data[itemID2Add][dataHouseID];
 
+        const bool itemEnabled = objData.enabled || specialChemicalCarryall;
+        const int requiredUpgrade = specialChemicalCarryall ? 2 : objData.upgradeLevel;
+        const int configuredTechLevel = specialChemicalCarryall ? 1 : objData.techLevel;
+        const int requiredTechLevel = itemID2Add == Structure_ChaosFactory
+            ? std::max(9, configuredTechLevel)
+            : configuredTechLevel;
         const bool producedHere = objData.builder == static_cast<int>(itemID)
-                               || isAlternateTornieBuilder(itemID, itemID2Add);
+                               || isAlternateTornieBuilder(itemID, itemID2Add)
+                               || specialChemicalCarryall;
         const bool directWorfineryProduct = itemID == Structure_Worfinery
                                           && isWorfineryDirectProduct(itemID2Add);
         const bool traceTechCenter = (itemID2Add == Structure_TechCenter)
@@ -403,9 +420,9 @@ void BuilderBase::updateBuildList()
 
         // Trooper, Troopers and the normal Harvester are always available in
         // the Worfinery: no tech-center, upgrade or structure prerequisite.
-        if(!objData.enabled || !producedHere
-           || (!directWorfineryProduct && (objData.upgradeLevel > curUpgradeLev))
-           || (!directWorfineryProduct && (objData.techLevel > currentGame->techLevel))) {
+        if(!itemEnabled || !producedHere
+           || (!directWorfineryProduct && (requiredUpgrade > curUpgradeLev))
+           || (!directWorfineryProduct && (requiredTechLevel > currentGame->techLevel))) {
             // first simple checks have rejected this item as being available for built in this builder
             if(traceTechCenter) {
                 const char* reason = "available";
@@ -443,12 +460,36 @@ void BuilderBase::updateBuildList()
                 }
             }
 
+            if(specialChemicalCarryall && owner->getNumItems(Structure_IX) <= 0) {
+                bPrerequisitesMet = false;
+                missingPrerequisite = Structure_IX;
+            }
+
+            if(itemID2Add == Structure_ChaosFactory) {
+                const int chaosPrerequisites[] = {
+                    Structure_WindTrap,
+                    Structure_LightFactory,
+                    Structure_Radar,
+                    Structure_HeavyFactory,
+                    Structure_HighTechFactory
+                };
+                for(const int prerequisite : chaosPrerequisites) {
+                    if(owner->getNumItems(prerequisite) <= 0) {
+                        bPrerequisitesMet = false;
+                        missingPrerequisite = prerequisite;
+                        break;
+                    }
+                }
+            }
+
             if(bPrerequisitesMet) {
                 if(traceTechCenter) {
                     logTechCenterBuildGate(this, owner, objData, producedHere, true, ItemID_Invalid, "available", true);
                 }
-                const int worfineryPrice = directWorfineryProduct && itemID2Add == Unit_Harvester ? 425 : -1;
-                insertItem(buildList, iter, itemID2Add, worfineryPrice);
+                const int buildListPrice = specialChemicalCarryall
+                    ? 950
+                    : (directWorfineryProduct && itemID2Add == Unit_Harvester ? 425 : -1);
+                insertItem(buildList, iter, itemID2Add, buildListPrice);
             } else {
                 if(traceTechCenter) {
                     logTechCenterBuildGate(this, owner, objData, producedHere, false, missingPrerequisite, "missing-prerequisite", false);
@@ -526,7 +567,7 @@ bool BuilderBase::update() {
                 if(newUnit != nullptr) {
                     Coord unitDestination;
                     if( getOwner()->isAI()
-                        && ((newUnit->getItemID() == Unit_Carryall)
+                        && ((isCarryallUnit(newUnit->getItemID()))
                             || isHarvesterLikeUnit(newUnit->getItemID())
                             || (newUnit->getItemID() == Unit_MCV))) {
                         // Don't want harvesters going to the rally point

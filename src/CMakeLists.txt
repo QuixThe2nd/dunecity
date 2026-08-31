@@ -263,6 +263,8 @@ target_sources(dunecity
         structures/Worfinery.cpp
         structures/TechCenter.cpp
         structures/Scoutpost.cpp
+        structures/LoveFactory.cpp
+        structures/ChaosFactory.cpp
         structures/WOR.cpp
         structures/NuclearPlant.cpp
         structures/PoliceStation.cpp
@@ -278,6 +280,7 @@ target_sources(dunecity
         units/TrackedUnit.cpp
         units/TankBase.cpp
         units/Carryall.cpp
+    units/ChemicalCarryall.cpp
         units/Devastator.cpp
         units/Deviator.cpp
         units/Frigate.cpp
@@ -303,6 +306,7 @@ target_sources(dunecity
         units/FlameTank.cpp
         units/EliteLauncher.cpp
         units/EliteSiegeTank.cpp
+        units/ChemicalSiegeTank.cpp
 
         # CutScenes
         CutScenes/CutScene.cpp
@@ -636,8 +640,31 @@ if(WIN32)
         FILES "${DATA_DIR}/Dune2-Versions.txt"
         DESTINATION .
     )
+
+    # Neutral's herald is a loose runtime graphic rather than a PAK entry.
+    install(
+        FILES "${DATA_DIR}/HeraldNeu.png"
+        DESTINATION data
+    )
     
-    # Install config files from config directory to root installation directory
+    # Vanilla-specific loose overrides are loaded from the runtime data
+    # directory. Development builds already copy them there, but CPack used
+    # to omit them and silently fall back to the original PAK resources.
+    install(
+        FILES
+            "${DATA_DIR}/ANEU.VOC"
+            "${DATA_DIR}/RREBELS.voc"
+            "${DATA_DIR}/HeraldNeuMask.png"
+            "${DATA_DIR}/HeraldRebels.png"
+            "${DATA_DIR}/HeraldRebelsMask.png"
+            "${DATA_DIR}/ChaniMentat.png"
+            "${DATA_DIR}/ChaniMentatEyes.png"
+            "${DATA_DIR}/ChaniMentatMouth.png"
+            "${DATA_DIR}/PalaceRebelsIcon.png"
+            "${DATA_DIR}/Custom_IBM.pal"
+        DESTINATION data
+    )
+        # Install config files from config directory to root installation directory
     install(
         DIRECTORY ${CMAKE_SOURCE_DIR}/config
         DESTINATION .

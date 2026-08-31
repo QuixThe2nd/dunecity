@@ -38,6 +38,7 @@
 #include <units/Harvester.h>
 #include <units/HarvesterHelpers.h>
 #include <units/Devastator.h>
+#include <mod/ModManager.h>
 
 class MultiUnitInterface : public ObjectInterface {
 public:
@@ -118,6 +119,14 @@ protected:
         destructButton.setTooltipText(_("Self-destruct this unit"));
         destructButton.setOnClick(std::bind(&MultiUnitInterface::onDestruct, this));
         commandHBox.addWidget(&destructButton);
+        if(ModManager::instance().isTornieContentActive()) {
+            commandHBox.addWidget(HSpacer::create(2));
+            healButton.setSymbol(pGFXManager->getUIGraphicSurface(UI_CursorHeal_Zoomlevel0));
+            healButton.setTooltipText(_("Heal an allied unit"));
+            healButton.setToggleButton(true);
+            healButton.setOnClick(std::bind(&MultiUnitInterface::onHeal, this));
+            commandHBox.addWidget(&healButton);
+        }
 
         commandHBox.addWidget(HSpacer::create(2));
 
@@ -198,6 +207,9 @@ protected:
 
     void onAttack() {
         currentGame->setCursorMode(Game::CursorMode_Attack);
+    }
+    void onHeal() {
+        currentGame->setCursorMode(Game::CursorMode_Heal);
     }
 
     void onCapture() {
@@ -303,6 +315,7 @@ protected:
 
         moveButton.setToggleState(currentGame->currentCursorMode == Game::CursorMode_Move);
         attackButton.setToggleState(currentGame->currentCursorMode == Game::CursorMode_Attack);
+        healButton.setToggleState(currentGame->currentCursorMode == Game::CursorMode_Heal);
         captureButton.setToggleState(currentGame->currentCursorMode == Game::CursorMode_Capture);
 
         bool bGuard = true;
@@ -313,6 +326,7 @@ protected:
         bool bRetreat = true;
 
         bool bShowAttack = false;
+        bool bShowHeal = false;
         bool bShowCapture = false;
         bool bShowReturn = false;
         bool bShowDeploy = false;
@@ -331,6 +345,10 @@ protected:
                 bAmbush = bAmbush && (attackMode == AMBUSH);
                 bHunt = bHunt && (attackMode == HUNT);
                 bRetreat = bRetreat && (attackMode == RETREAT);
+
+                if(pUnit->canHeal()) {
+                    bShowHeal = true;
+                }
 
                 if(pUnit->canAttack()) {
                     bShowAttack = true;
@@ -370,6 +388,7 @@ protected:
         }
 
         attackButton.setVisible(bShowAttack);
+        healButton.setVisible(bShowHeal);
         captureButton.setVisible(bShowCapture);
         returnButton.setVisible(bShowReturn);
         deployButton.setVisible(bShowDeploy);
@@ -402,6 +421,7 @@ protected:
     SymbolButton    returnButton;
     SymbolButton    deployButton;
     SymbolButton    destructButton;
+    SymbolButton    healButton;
     SymbolButton    sendToRepairButton;
     SymbolButton    carryallDropButton;
 

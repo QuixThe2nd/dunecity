@@ -55,6 +55,7 @@ public:
 
     virtual void checkPos() = 0;
     virtual void deploy(const Coord& newLocation);
+    void cancelDeployment();
 
     void destroy() override;
     void deviate(House* newOwner);
@@ -75,6 +76,7 @@ public:
         \param  yPos    the y position on the map
     */
     virtual void handleAttackClick(int xPos, int yPos);
+    virtual void handleHealClick(int xPos, int yPos);
 
     /**
         This method is called when an unit is ordered to move

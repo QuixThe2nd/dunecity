@@ -31,6 +31,7 @@
 
 #include <structures/BuilderBase.h>
 #include <structures/StarPort.h>
+#include <structures/ChaosFactory.h>
 
 #include <sstream>
 
@@ -197,6 +198,7 @@ void BuilderList::draw(Point position) {
     BuilderBase* pBuilder = dynamic_cast<BuilderBase*>(currentGame->getObjectManager().getObject(builderObjectID));
     if(pBuilder != nullptr) {
         StarPort* pStarport = dynamic_cast<StarPort*>(pBuilder);
+        ChaosFactory* pChaosFactory = dynamic_cast<ChaosFactory*>(pBuilder);
 
         if(pStarport != nullptr) {
             orderButton.setVisible(true);
@@ -229,7 +231,8 @@ void BuilderList::draw(Point position) {
         for(const BuildItem& buildItem : pBuilder->getBuildList()) {
 
             if((i >= currentListPos) && (i < currentListPos+getNumButtons(getSize().y) )) {
-                SDL_Texture* pTexture = resolveItemPicture(buildItem.itemID);
+                SDL_Texture* pTexture = resolveItemPicture(
+                    buildItem.itemID, static_cast<HOUSETYPE>(pBuilder->getOriginalHouseID()));
 
                 const SDL_Rect dest = calcDrawingRect(pTexture, position.x + getButtonPosition(i - currentListPos).x, position.y + getButtonPosition(i - currentListPos).y);
 
@@ -267,6 +270,18 @@ void BuilderList::draw(Point position) {
                         SDL_RenderCopy(renderer, pSoldOutTextTexture.get(), nullptr, &drawLocationSoldOut);
                     }
 
+                } else if(pChaosFactory != nullptr
+                          && pChaosFactory->getRemainingStock(buildItem.itemID) <= 0) {
+                    SDL_Rect soldOutOverlay = {
+                        dest.x, dest.y, BUILDERBTN_WIDTH, BUILDERBTN_HEIGHT
+                    };
+                    renderFillRect(renderer, &soldOutOverlay, COLOR_HALF_TRANSPARENT);
+                    SDL_Rect soldOutText = calcDrawingRect(
+                        pSoldOutTextTexture.get(),
+                        dest.x + BUILDERBTN_WIDTH/2,
+                        dest.y + BUILDERBTN_HEIGHT/2,
+                        HAlign::Center, VAlign::Center);
+                    SDL_RenderCopy(renderer, pSoldOutTextTexture.get(), nullptr, &soldOutText);
                 } else if(currentGame->getGameInitSettings().getGameOptions().onlyOnePalace && buildItem.itemID == Structure_Palace && pBuilder->getOwner()->getNumItems(Structure_Palace) > 0) {
 
                     SDL_Rect progressBar = { dest.x, dest.y, BUILDERBTN_WIDTH, BUILDERBTN_HEIGHT };

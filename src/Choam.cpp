@@ -14,6 +14,16 @@
 // change amount of available units every 30s
 #define CHOAM_CHANGE_AMOUNT     (MILLI2CYCLES(30*1000))
 
+#define LOVE_FACTORY_CHANGE_AMOUNT (MILLI2CYCLES(120*1000))
+#define LOVE_FACTORY_MAX_AMOUNT    5
+
+namespace {
+bool isLoveFactoryDeliveryItem(const Uint32 itemID) {
+    return itemID == Delivery_Small || itemID == Delivery_Medium
+        || itemID == Delivery_Heavy || itemID == Delivery_Support;
+}
+} // namespace
+
 Choam::Choam(House* pHouse) : house(pHouse) {
 }
 
@@ -85,10 +95,37 @@ void Choam::update() {
     }
 
     if((currentGame->getGameCycleCount() % CHOAM_CHANGE_AMOUNT) == 0) {
-        int index = currentGame->randomGen.rand((Uint32) 0, availableItems.size() - 1);
-        availableItems[index].num = std::min(availableItems[index].num + 1, (Uint32) 10);
+        std::vector<int> starportItems;
+        for(int i = 0; i < static_cast<int>(availableItems.size()); ++i) {
+            if(!isLoveFactoryDeliveryItem(availableItems[i].itemID)) {
+                starportItems.push_back(i);
+            }
+        }
+
+        if(!starportItems.empty()) {
+            const int randomIndex = currentGame->randomGen.rand(
+                (Uint32) 0, static_cast<Uint32>(starportItems.size() - 1));
+            const int itemIndex = starportItems[randomIndex];
+            availableItems[itemIndex].num = std::min(availableItems[itemIndex].num + 1, (Uint32) 10);
+        }
     }
 
+    if(currentGame->getGameCycleCount() > 0
+       && (currentGame->getGameCycleCount() % LOVE_FACTORY_CHANGE_AMOUNT) == 0) {
+        std::vector<int> restockableDeliveries;
+        for(int i = 0; i < static_cast<int>(availableItems.size()); ++i) {
+            if(isLoveFactoryDeliveryItem(availableItems[i].itemID)
+               && availableItems[i].num < LOVE_FACTORY_MAX_AMOUNT) {
+                restockableDeliveries.push_back(i);
+            }
+        }
+
+        if(!restockableDeliveries.empty()) {
+            const int randomIndex = currentGame->randomGen.rand(
+                (Uint32) 0, static_cast<Uint32>(restockableDeliveries.size() - 1));
+            ++availableItems[restockableDeliveries[randomIndex]].num;
+        }
+    }
 
     if((currentGame->getGameCycleCount() % CHOAM_CHANGE_PRICETIME) == 0) {
         for(BuildItem& buildItem : availableItems) {

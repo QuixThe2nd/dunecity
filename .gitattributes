@@ -1,1 +1,5 @@
 *.pbxproj -crlf -diff
+mods/Tornie/**/*.ini text eol=lf
+mods/Tornie/**/*.json text eol=lf
+mods/Tornie/**/*.md text eol=lf
+mods/Tornie/**/*.sha256 text eol=lf

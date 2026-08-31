@@ -36,16 +36,16 @@ TEST_CASE("Save compat: current Num_ItemID >= legacy",
 
 TEST_CASE("Save compat: SAVEGAMEVERSION is 9811 or higher",
           "[save-compat][regression]") {
-    REQUIRE(SAVEGAMEVERSION == 9821);
+    REQUIRE(SAVEGAMEVERSION == 9823);
     REQUIRE(SAVEGAMEVERSION >= 9818);
 }
 
-TEST_CASE("Save compat: ninth house extends rather than reorders legacy IDs",
+TEST_CASE("Save compat: extended houses preserve legacy IDs",
           "[save-compat][regression]") {
     REQUIRE(NUM_LEGACY_HOUSES == 8);
     REQUIRE(HOUSE_REBELS == 7);
     REQUIRE(HOUSE_CUSTOM == 8);
-    REQUIRE(NUM_HOUSES == 9);
+    REQUIRE(NUM_HOUSES == 12);
     REQUIRE(NUM_TEAM_SLOTS == 10);
 }
 

@@ -22,12 +22,12 @@
 
 #include <list>
 
-class Carryall final : public AirUnit
+class Carryall : public AirUnit
 {
 public:
-    explicit Carryall(House* newOwner);
-    explicit Carryall(InputStream& stream);
-    void init();
+    explicit Carryall(House* newOwner, int unitItemID = Unit_Carryall);
+    explicit Carryall(InputStream& stream, int unitItemID = Unit_Carryall);
+    void init(int unitItemID);
     virtual ~Carryall();
 
     void checkPos() override;

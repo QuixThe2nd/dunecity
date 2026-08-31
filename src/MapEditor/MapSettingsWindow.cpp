@@ -30,6 +30,7 @@
 
 #include <FileClasses/GFXManager.h>
 #include <FileClasses/TextManager.h>
+#include <mod/ModManager.h>
 
 MapSettingsWindow::MapSettingsWindow(MapEditor* pMapEditor, HOUSETYPE currentHouse)
  : Window(0,0,0,0), pMapEditor(pMapEditor), house(currentHouse) {
@@ -232,8 +233,11 @@ MapSettingsWindow::MapSettingsWindow(MapEditor* pMapEditor, HOUSETYPE currentHou
     techLevelDropDownBox.addEntry(_("Level 6:  Starport, Rocket Turret, Siege Tank, Advanced Windtrap"),6);
     techLevelDropDownBox.addEntry(_("Level 7:  House IX, Sonic Tank/Deviator/Devastator, Ornithopter"),7);
     techLevelDropDownBox.addEntry(_("Level 8:  Palace, Fremen, Saboteur"),8);
-    // Tornie: Level 9 unlocks Tech Center (Palace-equivalent that spawns vehicles).
-    techLevelDropDownBox.addEntry(_("Level 9:  Tech Center"),9);
+    if(ModManager::instance().isTornieContentActive()) {
+        techLevelDropDownBox.addEntry(_("Level 9:  Tech Center, Love Factory, Chaos Factory"),9);
+    } else {
+        techLevelDropDownBox.addEntry(_("Level 9:  Tech Center"),9);
+    }
     techLevelDropDownBox.setSelectedItem(mapInfo.techLevel > 0 ? mapInfo.techLevel-1 : 7);
     techLevelDropDownBox.setVisible( (pMapEditor->getMapVersion() >= 2) );
     techLevelHBox.addWidget(&techLevelDropDownBox);

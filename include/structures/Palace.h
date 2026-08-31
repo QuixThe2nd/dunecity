@@ -55,14 +55,35 @@ public:
     */
     bool canBeCaptured() const override { return false; }
 
+    enum class TornieRebelsSpecialWeapon : Sint32 {
+        None = 0,
+        Missile = 1,
+        Fremen = 2,
+        Saboteur = 3,
+        LightVehicles = 4,
+        Ornithopters = 5
+    };
+
     int getPercentComplete() const {
-        return specialWeaponTimer*100/getMaxSpecialWeaponTimer();
+        return specialWeaponTimer > 0 ? specialWeaponTimer*100/getMaxSpecialWeaponTimer() : 0;
     }
 
-    inline bool isSpecialWeaponReady() const { return (specialWeaponTimer == 0); }
+    inline bool isSpecialWeaponReady() const { return (specialWeaponTimer <= 0); }
     inline int getSpecialWeaponTimer() const { return specialWeaponTimer; }
+    bool usesGuestWildspadeOrnithopterStrike() const;
+    bool usesGuestKleshmershFremenCall() const;
+    bool usesLightVehicleCall() const;
+    bool usesTornieMainRebelsCooldown() const;
+    bool usesTornieMainRebelsRandomSpecial() const;
+    TornieRebelsSpecialWeapon getTornieMainRebelsSpecialWeapon() const;
+    bool usesTargetedSpecialWeapon() const;
     inline int getMaxSpecialWeaponTimer() const {
-        if(originalHouseID == HOUSE_HARKONNEN || originalHouseID == HOUSE_SARDAUKAR) {
+        if(usesTornieMainRebelsCooldown()) {
+            // Midpoint between the 5-minute saboteur and 10-minute missile cooldowns.
+            return MILLI2CYCLES(7*60*1000 + 30*1000);
+        }
+        if(originalHouseID == HOUSE_HARKONNEN || originalHouseID == HOUSE_SARDAUKAR
+           || usesGuestWildspadeOrnithopterStrike()) {
             // 10 min
             return MILLI2CYCLES(10*60*1000);
         } else {
@@ -70,10 +91,10 @@ public:
             return MILLI2CYCLES(5*60*1000);
         }
     }
-
 protected:
     bool callFremen();
     bool callLightVehicles();
+    bool callOrnithopterStrike();
     bool spawnSaboteur();
 
     /**
@@ -83,7 +104,9 @@ protected:
     void updateStructureSpecificStuff() override;
 
 private:
-    Sint32  specialWeaponTimer;       ///< When is the special weapon ready?
+    void selectTornieMainRebelsSpecialWeapon();
+
+    Sint32  specialWeaponTimer;       ///< Positive while charging; negative stores Tornie's revealed random weapon.
 };
 
 #endif // PALACE_H

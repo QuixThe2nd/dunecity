@@ -10,6 +10,7 @@ struct ModMentatInfo {
     bool enabled = false;
     int identityHouse = -1;
     std::string backgroundAsset;
+    std::string foregroundAsset;
     std::string eyesAsset;
     std::string mouthAsset;
     int eyesFrames = 5;
@@ -98,6 +99,7 @@ inline bool isValid(const ModMentatInfo& info) {
 
     return info.identityHouse >= -1 && info.identityHouse < 8
         && isSafeAssetPath(info.backgroundAsset)
+        && isSafeAssetPath(info.foregroundAsset)
         && isSafeAssetPath(info.eyesAsset)
         && isSafeAssetPath(info.mouthAsset)
         && info.eyesFrames >= 1 && info.eyesFrames <= 64

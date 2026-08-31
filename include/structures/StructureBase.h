@@ -117,8 +117,8 @@ public:
     */
     virtual bool canBeCaptured() const { return true; }
 
-    // Harvester drop-off interface. Refinery stores/extracts normally;
-    // Worfinery accepts a harvester and unloads it immediately.
+    // Harvester drop-off interface. Refinery and Worfinery may both
+    // store a harvester while extracting its spice progressively.
     virtual bool acceptsHarvesterDropoff() const { return false; }
     virtual bool isHarvesterDropoffFree() const { return false; }
     virtual int getHarvesterDropoffBookings() const { return 0; }

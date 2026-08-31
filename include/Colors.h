@@ -79,7 +79,7 @@
 // campaign system. Bonus color values are loaded from
 // Custom_IBM.PAL at runtime; Rebels uses a fixed dark grey ramp.
 #define PALCOLOR_NEUTRAL 128  // slot 128 in IBM.PAL (vanilla grey)
-#define PALCOLOR_REBELS  52   // runtime dark grey ramp for Rebels
+#define PALCOLOR_REBELS  52   // Custom_IBM.PAL source slot only; never overwrite IBM.PAL
 #define PALCOLOR_MOUNTAIN 47
 
 #define PALCOLOR_HARKONNEN 144

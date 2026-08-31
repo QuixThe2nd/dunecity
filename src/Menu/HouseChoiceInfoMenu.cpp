@@ -43,15 +43,16 @@ HouseChoiceInfoMenu::HouseChoiceInfoMenu(int newHouse) : MentatMenu(HOUSE_INVALI
         case HOUSE_FREMEN:      anim = pGFXManager->getAnimation(Anim_FremenPlanet);    break;
         case HOUSE_SARDAUKAR:   anim = pGFXManager->getAnimation(Anim_SardaukarPlanet); break;
         case HOUSE_MERCENARY:   anim = pGFXManager->getAnimation(Anim_MercenaryPlanet); break;
-        case HOUSE_NEUTRAL:     anim = pGFXManager->getAnimation(Anim_NeutralPlanet);   break;
-        case HOUSE_REBELS:      anim = pGFXManager->getAnimation(Anim_RebelsPlanet);    break;
+        case HOUSE_NEUTRAL:     anim = pGFXManager->getAnimation(Anim_HarkonnenPlanet);   break;
+        case HOUSE_REBELS:      anim = pGFXManager->getAnimation(Anim_AtreidesPlanet);    break;
         default: {
             THROW(std::invalid_argument, "HouseChoiceInfoMenu::HouseChoiceInfoMenu(): Invalid house id '%d'.", newHouse);
         } break;
     }
 
-    if(newHouse == HOUSE_CUSTOM && anim != nullptr) {
-        SDL_Surface* registeredHerald = pGFXManager->getUIGraphicSurface(UI_Herald_ColoredLarge, HOUSE_CUSTOM);
+    if((newHouse == HOUSE_CUSTOM || displayHouse == HOUSE_NEUTRAL || displayHouse == HOUSE_REBELS)
+       && anim != nullptr) {
+        SDL_Surface* registeredHerald = pGFXManager->getUIGraphicSurface(UI_Herald_ColoredLarge, static_cast<HOUSETYPE>(newHouse));
         auto opaqueHerald = copySurface(registeredHerald);
         if(opaqueHerald != nullptr) {
             SDL_SetColorKey(opaqueHerald.get(), SDL_FALSE, 0);

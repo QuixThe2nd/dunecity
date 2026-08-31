@@ -34,7 +34,7 @@ MentatHelp::MentatHelp(int newHouse, int techLevel, int mission) : MentatMenu(ne
 
     mentatEntries = pTextManager->getAllMentatEntries(newHouse, techLevel);
 
-    Uint32 color = SDL2RGB(palette[getHousePaletteIndex(static_cast<HOUSETYPE>(newHouse))+3]);
+    Uint32 color = getHouseColorRGB(getHouseVisualHouse(newHouse), 3);
 
     if(mission == 0) {
         std::vector<MentatTextFile::MentatEntry>::iterator iter = mentatEntries.begin();

@@ -41,7 +41,7 @@ TEST_CASE("NeutralHouse: HOUSE_NEUTRAL exists in the house enum",
           "[neutral][enum]") {
     REQUIRE(HOUSE_NEUTRAL == 6);
     // NUM_HOUSES must include Neutral + Rebels (0..7 → 8 total as of v1.0.228)
-    REQUIRE(NUM_HOUSES == 9);
+    REQUIRE(NUM_HOUSES == 12);
 }
 
 TEST_CASE("NeutralHouse: HOUSE_NEUTRAL is after HOUSE_MERCENARY",
@@ -52,7 +52,7 @@ TEST_CASE("NeutralHouse: HOUSE_NEUTRAL is after HOUSE_MERCENARY",
 TEST_CASE("NeutralHouse: savegame version includes HOUSE_NEUTRAL",
           "[neutral][savegame]") {
     // SAVEGAMEVERSION 9818 persists all kMaxCityHouses houseState[] slots (9817 added House::cityCredits, 9816 added Unit_EliteSiegeTank=55, 9813 added HOUSE_NEUTRAL).
-    REQUIRE(SAVEGAMEVERSION == 9821);
+    REQUIRE(SAVEGAMEVERSION == 9823);
 }
 
 // =============================================================================
@@ -73,7 +73,7 @@ TEST_CASE("NeutralHouse: houseToPaletteIndex maps HOUSE_NEUTRAL to PALCOLOR_NEUT
 // Mentat animation enum registration
 // =============================================================================
 
-TEST_CASE("NeutralHouse: legacy house IDs remain stable with generic ninth-house capacity",
+TEST_CASE("NeutralHouse: legacy house IDs remain stable with extended identity capacity",
           "[neutral][enum][compat]") {
     REQUIRE(HOUSE_HARKONNEN == 0);
     REQUIRE(HOUSE_ATREIDES == 1);
@@ -85,7 +85,7 @@ TEST_CASE("NeutralHouse: legacy house IDs remain stable with generic ninth-house
     REQUIRE(HOUSE_REBELS == 7);
     REQUIRE(NUM_LEGACY_HOUSES == 8);
     REQUIRE(HOUSE_CUSTOM == NUM_LEGACY_HOUSES);
-    REQUIRE(NUM_HOUSES == NUM_LEGACY_HOUSES + 1);
+    REQUIRE(NUM_HOUSES == NUM_LEGACY_HOUSES + 4);
 }
 // =============================================================================
 // Voice file mapping (source scan)

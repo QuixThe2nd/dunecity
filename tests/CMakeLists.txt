@@ -25,6 +25,7 @@ target_sources(dunelegacy_tests
         CityStructuresTestCase/CityStructuresTestCase.cpp
         ConstructionYardResolverTestCase/ConstructionYardResolverTestCase.cpp
         UnitMovementPolicyTestCase/UnitMovementPolicyTestCase.cpp
+        PalaceUnitLimitRegressionTestCase/PalaceUnitLimitRegressionTestCase.cpp
         ZonePowerTestCase/ZonePowerTestCase.cpp
         CityEffectsTestCase/CityEffectsTestCase.cpp
         ValueModelTestCase/ValueModelTestCase.cpp

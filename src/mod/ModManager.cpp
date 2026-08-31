@@ -16,6 +16,9 @@
  */
 
 #include <mod/ModManager.h>
+#include <mod/ModPayloadIntegrity.h>
+#include <mod/ModTransferValidation.h>
+#include <mod/Dune2RAssetManager.h>
 #include <mod/CustomHouseConfig.h>
 #include <mod/ModMentatConfig.h>
 #include <FileClasses/GFXManager.h>
@@ -38,6 +41,8 @@
 #include <cstdio>
 #include <climits>
 #include <list>
+#include <map>
+#include <set>
 
 // File names
 static const char* ACTIVE_MOD_FILE = "active_mod.txt";
@@ -50,6 +55,7 @@ static const char* DUNECITY_MOD_NAME = "dunecity";
 static const char* TORNIE_MOD_NAME = "Tornie";
 static const char* DUNE2R_MOD_NAME = "Dune2R";
 static const char* MANAGED_MOD_STAMP = ".dunecity-managed";
+static const char* TORNIE_ENGINE_COMPATIBILITY = "dunecity-tornie-engine/1";
 
 // Install config file names (with .default suffix)
 static const char* OBJECT_DATA_DEFAULT = "ObjectData.ini.default";
@@ -145,6 +151,16 @@ bool refreshManagedMod(const std::string& modName,
         return false;
     }
 
+    if(modName == TORNIE_MOD_NAME) {
+        std::string integrityError;
+        if(!ModPayloadIntegrity::verifyChecksummedPayload(source, integrityError,
+                                                          MANAGED_MOD_STAMP)) {
+            SDL_Log("ModManager: Warning - bundled Tornie payload failed integrity verification: %s",
+                    integrityError.c_str());
+            return false;
+        }
+    }
+
     const std::filesystem::path staged = destination.string() + ".update";
     const std::filesystem::path backup = destination.string() + ".previous";
     try {
@@ -206,6 +222,25 @@ bool refreshManagedMod(const std::string& modName,
                 modName.c_str(), e.what());
         return false;
     }
+}
+
+CustomHouseInfo makeTornieGuestCustomHouse(const std::string& activeModName) {
+    CustomHouseInfo info;
+    if(activeModName != TORNIE_MOD_NAME) {
+        return info;
+    }
+
+    info.enabled = true;
+    info.displayName = "Tharpique";
+    info.scenarioLetter = 'T';
+    info.regionPrefix = "THA";
+    info.paletteIndex = 136;
+    info.fallbackHouse = HOUSE_MERCENARY;
+    info.heraldAsset = "HeraldTharpique.png";
+    info.houseNameVoiceAsset = "OTHARP.VOC";
+    info.voicePlaybackRate = 1.06;
+    info.voiceGain = 1.15;
+    return info;
 }
 
 } // namespace
@@ -288,12 +323,14 @@ void ModManager::initialize() {
     try {
         const ModInfo activeInfo = readModIni(getModPath(activeMod));
         activeCustomHouse = activeInfo.customHouse;
+        activeGuestCustomHouse = makeTornieGuestCustomHouse(activeMod);
         activeMentats = activeInfo.mentats;
     } catch(const std::exception& e) {
         SDL_Log("ModManager: Active mod '%s' metadata is invalid, falling back to vanilla: %s",
                 activeMod.c_str(), e.what());
         activeMod = VANILLA_MOD_NAME;
         activeCustomHouse = {};
+        activeGuestCustomHouse = {};
         activeMentats.clear();
         saveActiveMod();
     }
@@ -309,12 +346,30 @@ const CustomHouseInfo& ModManager::getActiveCustomHouseInfo() const {
     return activeCustomHouse;
 }
 
+const CustomHouseInfo& ModManager::getCustomHouseInfo(int house) const {
+    static const CustomHouseInfo noHouse;
+    if(house == HOUSE_CUSTOM) {
+        return activeCustomHouse;
+    }
+    if(isTornieContentActive() && house == HOUSE_THARPIQUE) {
+        return activeGuestCustomHouse;
+    }
+    return noHouse;
+}
+
 bool ModManager::isCustomHouseRegistered() const {
     return initialized && activeCustomHouse.enabled;
 }
 
+bool ModManager::isCustomHouseRegistered(int house) const {
+    return initialized && getCustomHouseInfo(house).enabled;
+}
+
 const ModMentatInfo& ModManager::getActiveMentatInfo(int house) const {
     static const ModMentatInfo noOverride;
+    if(isTornieContentActive() && house >= HOUSE_WILDSPADE && house <= HOUSE_THARPIQUE) {
+        house = HOUSE_NEUTRAL + (house - HOUSE_WILDSPADE);
+    }
     if(!initialized || house < 0 || static_cast<std::size_t>(house) >= activeMentats.size()) {
         return noOverride;
     }
@@ -328,7 +383,18 @@ int ModManager::getEffectiveMentatIdentity(int house) const {
         : house;
 
     if(identity == HOUSE_CUSTOM) {
-        identity = activeCustomHouse.enabled ? activeCustomHouse.fallbackHouse : HOUSE_HARKONNEN;
+        const CustomHouseInfo& info = getCustomHouseInfo(house);
+        identity = info.enabled ? info.fallbackHouse : HOUSE_HARKONNEN;
+    } else if(isTornieContentActive()
+              && identity >= HOUSE_WILDSPADE && identity <= HOUSE_THARPIQUE) {
+        const int localIdentity = HOUSE_NEUTRAL + (identity - HOUSE_WILDSPADE);
+        if(localIdentity == HOUSE_CUSTOM) {
+            identity = activeGuestCustomHouse.enabled
+                ? activeGuestCustomHouse.fallbackHouse
+                : HOUSE_HARKONNEN;
+        } else {
+            identity = localIdentity;
+        }
     }
 
     switch(identity) {
@@ -363,23 +429,37 @@ bool ModManager::setActiveMod(const std::string& name) {
         SDL_Log("ModManager: Cannot activate mod '%s' - does not exist", name.c_str());
         return false;
     }
+    if(name == TORNIE_MOD_NAME) {
+        std::string integrityError;
+        if(!ModPayloadIntegrity::verifyChecksummedPayload(getModPath(name), integrityError,
+                                                          MANAGED_MOD_STAMP)) {
+            SDL_Log("ModManager: Cannot activate Tornie - integrity verification failed: %s",
+                    integrityError.c_str());
+            return false;
+        }
+    }
     
     const std::string previousMod = activeMod;
     const CustomHouseInfo previousCustomHouse = activeCustomHouse;
+    const CustomHouseInfo previousGuestCustomHouse = activeGuestCustomHouse;
     const std::vector<ModMentatInfo> previousMentats = activeMentats;
 
     try {
         activeMod = name;
         const ModInfo activeInfo = readModIni(getModPath(activeMod));
         activeCustomHouse = activeInfo.customHouse;
+        activeGuestCustomHouse = makeTornieGuestCustomHouse(activeMod);
         activeMentats = activeInfo.mentats;
         checksumsDirty = true;
+        resetHouseVisualHouseMapping();
+        loadCustomPalette();
+        applyCustomPaletteRuntimeHouseRamps();
         if(pTextManager != nullptr) {
             pTextManager->loadData();
         }
         if(pGFXManager != nullptr) {
             pGFXManager->invalidateAllSpriteTextures();
-            pGFXManager->reloadModDependentUiGraphics();
+            pGFXManager->reloadAllObjectGraphicsForActiveMod();
         }
         if(pSFXManager != nullptr) {
             pSFXManager->reloadVoices();
@@ -390,8 +470,12 @@ bool ModManager::setActiveMod(const std::string& name) {
                 name.c_str(), previousMod.c_str(), e.what());
         activeMod = previousMod;
         activeCustomHouse = previousCustomHouse;
+        activeGuestCustomHouse = previousGuestCustomHouse;
         activeMentats = previousMentats;
         checksumsDirty = true;
+        resetHouseVisualHouseMapping();
+        loadCustomPalette();
+        applyCustomPaletteRuntimeHouseRamps();
         saveActiveMod();
 
         try {
@@ -400,7 +484,7 @@ bool ModManager::setActiveMod(const std::string& name) {
             }
             if(pGFXManager != nullptr) {
                 pGFXManager->invalidateAllSpriteTextures();
-                pGFXManager->reloadModDependentUiGraphics();
+                pGFXManager->reloadAllObjectGraphicsForActiveMod();
             }
             if(pSFXManager != nullptr) {
                 pSFXManager->reloadVoices();
@@ -417,9 +501,16 @@ bool ModManager::setActiveMod(const std::string& name) {
 }
 
 bool ModManager::modExists(const std::string& name) const {
+    if(!isValidModName(name)) {
+        return false;
+    }
     std::string modPath = getModPath(name);
     // Just check if mod.json exists - if file exists, directory must exist
     return existsFile(modPath + "/" + MOD_INI_FILE);
+}
+
+bool ModManager::isValidModName(const std::string& name) const {
+    return ModTransferValidation::isValidModName(name);
 }
 
 std::vector<ModInfo> ModManager::listMods() const {
@@ -718,9 +809,25 @@ void ModManager::updateChecksums() {
         ? hashFileCanonical(customHousePath)
         : std::string();
 
-    // Appending an empty optional hash preserves the exact legacy checksum.
+    std::string engineCompatibility;
+    if(isTornieContentActive()) {
+        const std::string manifestPath = getModPath(activeMod) + "/manifest.json";
+        const std::string checksumsPath = getModPath(activeMod) + "/checksums.sha256";
+        engineCompatibility = TORNIE_ENGINE_COMPATIBILITY;
+        engineCompatibility += ':';
+        engineCompatibility += existsFile(manifestPath)
+            ? hashFileCanonical(manifestPath)
+            : "MANIFEST_NOT_FOUND";
+        engineCompatibility += ':';
+        engineCompatibility += existsFile(checksumsPath)
+            ? Dune2RAssetManager::sha256File(checksumsPath)
+            : "CHECKSUMS_NOT_FOUND";
+    }
+
+    // The compatibility suffix is empty outside Tornie, preserving every
+    // existing mod checksum while rejecting incompatible Tornie engines.
     std::string combined = cachedChecksums.objectData + cachedChecksums.quantBotConfig
-        + cachedChecksums.gameOptions + cachedChecksums.customHouse;
+        + cachedChecksums.gameOptions + cachedChecksums.customHouse + engineCompatibility;
     uint64_t hash = 14695981039346656037ULL;
     const uint64_t prime = 1099511628211ULL;
     for (char c : combined) {
@@ -761,7 +868,7 @@ void ModManager::setChecksums(const std::string& objectDataHash,
 }
 
 bool ModManager::createMod(const std::string& name, const std::string& baseMod) {
-    if (name.empty() || name == VANILLA_MOD_NAME) {
+    if (!isValidModName(name) || name == VANILLA_MOD_NAME) {
         SDL_Log("ModManager: Invalid mod name '%s'", name.c_str());
         return false;
     }
@@ -827,7 +934,7 @@ bool ModManager::createMod(const std::string& name, const std::string& baseMod) 
 }
 
 bool ModManager::deleteMod(const std::string& name) {
-    if (name == VANILLA_MOD_NAME) {
+    if (!isValidModName(name) || name == VANILLA_MOD_NAME) {
         SDL_Log("ModManager: Cannot delete vanilla mod");
         return false;
     }
@@ -867,110 +974,155 @@ bool ModManager::deleteMod(const std::string& name) {
 }
 
 bool ModManager::saveReceivedMod(const std::string& modName, const std::string& packagedData) {
-    if (modName.empty() || modName == VANILLA_MOD_NAME) {
+    if (!isValidModName(modName) || modName == VANILLA_MOD_NAME) {
         SDL_Log("ModManager: Invalid mod name for save: '%s'", modName.c_str());
         return false;
     }
-    
+
+    constexpr std::size_t MAX_RECEIVED_MOD_SIZE = 10U * 1024U * 1024U;
+    constexpr uint32_t MAX_RECEIVED_MOD_FILES = 4096;
+    constexpr uint32_t MAX_RECEIVED_PATH_LENGTH = 512;
+    if(packagedData.size() > MAX_RECEIVED_MOD_SIZE) {
+        SDL_Log("ModManager: Received mod exceeds the size limit");
+        return false;
+    }
+
     SDL_Log("ModManager: Saving received mod '%s' (%zu bytes)", modName.c_str(), packagedData.size());
-    
-    // Create mod directory (createDir handles "already exists" gracefully)
-    std::string modPath = getModPath(modName);
-    createDir(modPath);
-    
+
+    const std::filesystem::path modPath = getModPath(modName);
+    const std::filesystem::path stagedPath = modPath.string() + ".incoming";
+    const std::filesystem::path backupPath = modPath.string() + ".previous";
+    std::error_code ignored;
+    std::filesystem::remove_all(stagedPath, ignored);
+    std::filesystem::remove_all(backupPath, ignored);
+
+    auto fail = [&](const char* message) {
+        SDL_Log("ModManager: %s", message);
+        std::error_code cleanupError;
+        std::filesystem::remove_all(stagedPath, cleanupError);
+        return false;
+    };
+
+    try {
+        std::filesystem::create_directories(stagedPath);
+    } catch(const std::exception& e) {
+        SDL_Log("ModManager: Could not create received-mod staging directory: %s", e.what());
+        return false;
+    }
+
     // Unpack the packaged data
     // Format: numFiles (4 bytes) + [nameLen (4 bytes) + name + dataLen (4 bytes) + data] * numFiles
     if (packagedData.size() < sizeof(uint32_t)) {
-        SDL_Log("ModManager: Packaged data too small");
-        return false;
+        return fail("Packaged data too small");
     }
-    
+
     size_t offset = 0;
-    
-    // Read number of files
     uint32_t numFiles;
     memcpy(&numFiles, packagedData.data() + offset, sizeof(numFiles));
     offset += sizeof(numFiles);
-    
+    if(numFiles == 0 || numFiles > MAX_RECEIVED_MOD_FILES) {
+        return fail("Received mod has an invalid file count");
+    }
+
     SDL_Log("ModManager: Unpacking %u files", numFiles);
-    
+
+    std::set<std::string> receivedPathKeys;
+
     for (uint32_t i = 0; i < numFiles; i++) {
         if (offset + sizeof(uint32_t) > packagedData.size()) {
-            SDL_Log("ModManager: Unexpected end of data at file %u (name length)", i);
-            return false;
+            return fail("Unexpected end of received mod while reading a path length");
         }
-        
-        // Read file name length
+
         uint32_t nameLen;
         memcpy(&nameLen, packagedData.data() + offset, sizeof(nameLen));
         offset += sizeof(nameLen);
-        
-        if (offset + nameLen > packagedData.size()) {
-            SDL_Log("ModManager: Unexpected end of data at file %u (name)", i);
-            return false;
+
+        if (nameLen == 0 || nameLen > MAX_RECEIVED_PATH_LENGTH
+            || offset + nameLen > packagedData.size()) {
+            return fail("Received mod contains an invalid path length");
         }
-        
-        // Read file name
+
         std::string fileName(packagedData.data() + offset, nameLen);
         offset += nameLen;
-        
-        if (offset + sizeof(uint32_t) > packagedData.size()) {
-            SDL_Log("ModManager: Unexpected end of data at file %u (data length)", i);
-            return false;
+
+        std::filesystem::path relativePath;
+        if(!ModTransferValidation::normalizeRelativeFilePath(fileName, relativePath)) {
+            return fail("Received mod contains an invalid or non-portable path");
         }
-        
-        // Read file data length
+        if(relativePath.generic_string() == MANAGED_MOD_STAMP) {
+            return fail("Received mod contains reserved local metadata");
+        }
+        if(!receivedPathKeys.insert(ModTransferValidation::portablePathKey(relativePath)).second) {
+            return fail("Received mod contains duplicate or case-colliding paths");
+        }
+
+        if (offset + sizeof(uint32_t) > packagedData.size()) {
+            return fail("Unexpected end of received mod while reading a file length");
+        }
+
         uint32_t dataLen;
         memcpy(&dataLen, packagedData.data() + offset, sizeof(dataLen));
         offset += sizeof(dataLen);
-        
+
         if (offset + dataLen > packagedData.size()) {
-            SDL_Log("ModManager: Unexpected end of data at file %u (data)", i);
-            return false;
+            return fail("Unexpected end of received mod while reading file data");
         }
-        
-        // Read file data
-        std::string fileData(packagedData.data() + offset, dataLen);
-        offset += dataLen;
-        
-        // Validate filename (prevent path traversal)
-        if (fileName.find('/') != std::string::npos || 
-            fileName.find('\\') != std::string::npos ||
-            fileName.find("..") != std::string::npos) {
-            SDL_Log("ModManager: Invalid filename: '%s'", fileName.c_str());
-            continue;
+
+        const std::filesystem::path filePath = stagedPath / relativePath;
+        try {
+            std::filesystem::create_directories(filePath.parent_path());
+        } catch(const std::exception&) {
+            return fail("Could not create a received-mod subdirectory");
         }
-        
-        // Write file
-        std::string filePath = modPath + "/" + fileName;
-        std::ofstream file(filePath, std::ios::binary);
+        std::ofstream file(filePath, std::ios::binary | std::ios::trunc);
         if (!file.is_open()) {
-            SDL_Log("ModManager: Failed to create file: %s", filePath.c_str());
-            continue;
+            return fail("Could not create a received-mod file");
         }
-        
-        file.write(fileData.data(), fileData.size());
+
+        file.write(packagedData.data() + offset, dataLen);
         file.close();
-        
-        SDL_Log("ModManager: Saved file '%s' (%u bytes)", fileName.c_str(), dataLen);
+        if(!file) {
+            return fail("Could not finish writing a received-mod file");
+        }
+        offset += dataLen;
     }
-    
+
+    if(offset != packagedData.size()) {
+        return fail("Received mod contains trailing data");
+    }
+    if(!std::filesystem::is_regular_file(stagedPath / MOD_INI_FILE)) {
+        return fail("Received mod does not contain mod.ini");
+    }
+    if(modName == TORNIE_MOD_NAME) {
+        std::string integrityError;
+        if(!ModPayloadIntegrity::verifyChecksummedPayload(stagedPath, integrityError,
+                                                          MANAGED_MOD_STAMP)) {
+            SDL_Log("ModManager: Received Tornie payload failed integrity verification: %s",
+                    integrityError.c_str());
+            return fail("Received Tornie payload failed integrity verification");
+        }
+    }
+
+    try {
+        if(std::filesystem::exists(modPath)) {
+            std::filesystem::rename(modPath, backupPath);
+        }
+        try {
+            std::filesystem::rename(stagedPath, modPath);
+        } catch(...) {
+            if(std::filesystem::exists(backupPath) && !std::filesystem::exists(modPath)) {
+                std::filesystem::rename(backupPath, modPath);
+            }
+            throw;
+        }
+        std::filesystem::remove_all(backupPath);
+    } catch(const std::exception& e) {
+        SDL_Log("ModManager: Could not install received mod atomically: %s", e.what());
+        std::filesystem::remove_all(stagedPath, ignored);
+        return false;
+    }
+
     SDL_Log("ModManager: Mod '%s' saved successfully", modName.c_str());
-    
-    // Ensure mod.ini exists - create a basic one if missing
-    std::string modIniPath = modPath + "/" + MOD_INI_FILE;
-    if (!existsFile(modIniPath)) {
-        SDL_Log("ModManager: Creating default mod.ini for received mod '%s'", modName.c_str());
-        ModInfo defaultInfo;
-        defaultInfo.name = modName;
-        defaultInfo.displayName = modName;
-        defaultInfo.author = "Downloaded from host";
-        defaultInfo.description = "Mod received from multiplayer host";
-        defaultInfo.gameVersion = VERSION;
-        defaultInfo.version = "";
-        writeModInfo(modPath, defaultInfo);
-    }
-    
     checksumsDirty = true;  // Checksums need recalculation
     return true;
 }
@@ -1249,6 +1401,14 @@ bool ModManager::tornieNeedsReseed() const {
     if(existsFile(bundledChecksums)
        && hashFileCanonical(checksumsPath) != hashFileCanonical(bundledChecksums)) {
         SDL_Log("ModManager: Tornie bundled checksum manifest changed, needs reseed");
+        return true;
+    }
+
+    std::string integrityError;
+    if(!ModPayloadIntegrity::verifyChecksummedPayload(torniePath, integrityError,
+                                                      MANAGED_MOD_STAMP)) {
+        SDL_Log("ModManager: Tornie payload integrity check failed (%s), needs reseed",
+                integrityError.c_str());
         return true;
     }
 

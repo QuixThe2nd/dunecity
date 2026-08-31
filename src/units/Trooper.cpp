@@ -21,6 +21,7 @@
 
 #include <FileClasses/GFXManager.h>
 #include <House.h>
+#include <mod/ModManager.h>
 #include <SoundPlayer.h>
 
 Trooper::Trooper(House* newOwner) : InfantryBase(newOwner) {
@@ -38,7 +39,9 @@ void Trooper::init() {
     owner->incrementUnits(itemID);
 
     numWeapons = 1;
-    bulletType = Bullet_SmallRocket;
+    const bool kleshmershTrooper = ModManager::instance().isTornieContentActive()
+        && isHouseFaction(static_cast<HOUSETYPE>(owner->getHouseID()), HOUSE_KLESHMERSH);
+    bulletType = kleshmershTrooper ? Bullet_Flame : Bullet_SmallRocket;
 
     graphicID = ObjPic_Trooper;
     graphic = pGFXManager->getObjPic(graphicID,getOwner()->getHouseID());

@@ -54,11 +54,26 @@
 #define PLAYER_CLOSED       -2
 
 namespace {
-Uint32 getMenuColorForHouse(int house) {
-    if(house == HOUSE_REBELS) {
-        return COLOR_RGB(58, 58, 62);
-    }
 
+int getCustomGameHouseCount() {
+    return getNumCustomGameHouses();
+}
+
+bool isBonusColorSlot(int colorSlot) {
+    switch(colorSlot) {
+        case HOUSECOLOR_CUSTOM_TEAL:
+        case HOUSECOLOR_CUSTOM_FUCHSIA:
+        case HOUSECOLOR_CUSTOM_LIGHT_PINK:
+        case HOUSECOLOR_CUSTOM_APPLE_GREEN:
+        case HOUSECOLOR_CUSTOM_DARK_VIOLET:
+        case HOUSECOLOR_CUSTOM_BRIGHT_YELLOW:
+            return true;
+        default:
+            return false;
+    }
+}
+
+Uint32 getMenuColorForHouse(int house) {
     if(isValidHouseColorSlot(house)) {
         return getHouseColorRGB(house, 3);
     }
@@ -67,14 +82,15 @@ Uint32 getMenuColorForHouse(int house) {
 }
 
 const char* getCustomColorName(int colorSlot) {
+    const bool tornieActive = ModManager::instance().isTornieContentActive();
     switch(colorSlot) {
-        case HOUSECOLOR_CUSTOM_DARK_VIOLET:   return "Dark Violet";
-        case HOUSECOLOR_CUSTOM_FUCHSIA:       return "Fuchsia";
-        case HOUSECOLOR_CUSTOM_TEAL:          return "Teal";
-        case HOUSECOLOR_CUSTOM_BRIGHT_YELLOW: return "Bright Yellow";
-        case HOUSECOLOR_CUSTOM_APPLE_GREEN:   return "Dark Green";
-        case HOUSECOLOR_CUSTOM_LIGHT_PINK:    return "Light Pink";
-        default:                              return "Custom";
+        case HOUSECOLOR_CUSTOM_DARK_VIOLET: return "Dark Violet";
+        case HOUSECOLOR_CUSTOM_FUCHSIA:     return "Fuchsia";
+        case HOUSECOLOR_CUSTOM_TEAL:        return "Teal";
+        case HOUSECOLOR_CUSTOM_APPLE_GREEN: return tornieActive ? "Dark Grey" : "Dark Green";
+        case HOUSECOLOR_CUSTOM_LIGHT_PINK:  return tornieActive ? "Pink" : "Light Pink";
+        case HOUSECOLOR_CUSTOM_BRIGHT_YELLOW: return tornieActive ? "Brown" : "Bright Yellow";
+        default:                            return "Custom";
     }
 }
 
@@ -83,12 +99,29 @@ void addColorDropDownEntries(DropDownBox& colorDropDown, int selectedColor, bool
     colorDropDown.addEntry(_("Original"), HOUSE_INVALID);
 
     if(bonusColors) {
-        for(int h = NUM_HOUSES; h < NUM_HOUSE_COLOR_SLOTS; h++) {
-            colorDropDown.addEntry(getCustomColorName(h), h);
+        if(ModManager::instance().isTornieContentActive()) {
+            constexpr int tornieBonusColorSlots[] = {
+                HOUSECOLOR_CUSTOM_TEAL,
+                HOUSECOLOR_CUSTOM_FUCHSIA,
+                HOUSECOLOR_CUSTOM_LIGHT_PINK,
+                HOUSECOLOR_CUSTOM_APPLE_GREEN,
+                HOUSECOLOR_CUSTOM_DARK_VIOLET,
+                HOUSECOLOR_CUSTOM_BRIGHT_YELLOW
+            };
+            for(const int colorSlot : tornieBonusColorSlots) {
+                colorDropDown.addEntry(getCustomColorName(colorSlot), colorSlot);
+            }
+        } else {
+            for(int colorSlot = HOUSECOLOR_CUSTOM_DARK_VIOLET;
+                colorSlot < HOUSECOLOR_GUEST_1; ++colorSlot) {
+                colorDropDown.addEntry(getCustomColorName(colorSlot), colorSlot);
+            }
         }
     } else {
-        for(int h = 0; h < getNumAvailableHouses(); h++) {
-            colorDropDown.addEntry(getHouseNameByNumber(static_cast<HOUSETYPE>(h)), h);
+        for(int h = 0; h < getCustomGameHouseCount(); ++h) {
+            colorDropDown.addEntry(
+                getHouseNameByNumber(static_cast<HOUSETYPE>(h)),
+                getDefaultHouseColorSlot(static_cast<HOUSETYPE>(h)));
         }
     }
 
@@ -103,8 +136,11 @@ void addColorDropDownEntries(DropDownBox& colorDropDown, int selectedColor, bool
 }
 
 int resolveSelectedColorSlot(int selectedColor, int selectedHouse) {
-    if(!isValidHouseColorSlot(selectedColor)) {
-        selectedColor = selectedHouse;
+    if(!isValidHouseColorSlot(selectedColor)
+       && selectedHouse >= 0
+       && selectedHouse < NUM_HOUSES
+       && isCustomGameHouseAvailable(static_cast<HOUSETYPE>(selectedHouse))) {
+        selectedColor = getDefaultHouseColorSlot(static_cast<HOUSETYPE>(selectedHouse));
     }
 
     if(isValidHouseColorSlot(selectedColor)) {
@@ -255,7 +291,7 @@ CustomGamePlayers::CustomGamePlayers(const GameInitSettings& newGameInitSettings
 
     bool bLoadMultiplayer = (gameInitSettings.getGameType() == GameType::LoadMultiplayer);
     const bool bBonusHouseColorsAvailable = bLoadMultiplayer
-        || ModManager::instance().getActiveModName() == "Tornie";
+        || ModManager::instance().isTornieContentActive();
 
     buttonHBox.addWidget(Spacer::create(), 0.0625);
 
@@ -318,7 +354,7 @@ CustomGamePlayers::CustomGamePlayers(const GameInitSettings& newGameInitSettings
             curHouseInfo.teamDropDown.setEnabled(false);
             curHouseInfo.teamDropDown.setOnClickEnabled(false);
         } else {
-            for(int team = 0 ; team < getNumAvailableHouses() ; team++) {
+            for(int team = 0 ; team < MAX_CUSTOM_GAME_PLAYERS ; team++) {
                 curHouseInfo.teamDropDown.addEntry(_("Team") + " " + std::to_string(team+1), team+1);
             }
             curHouseInfo.teamDropDown.setSelectedItem(slotToTeam[i]);
@@ -334,7 +370,7 @@ CustomGamePlayers::CustomGamePlayers(const GameInitSettings& newGameInitSettings
                 selectedColor = houseInfoListSetup.at(i).colorOfHouse;
             }
             curHouseInfo.bonusColorCheckbox.setText(_("Bonus"));
-            curHouseInfo.bonusColorCheckbox.setChecked(isCustomHouseColorSlot(selectedColor));
+            curHouseInfo.bonusColorCheckbox.setChecked(isBonusColorSlot(selectedColor));
             addColorDropDownEntries(curHouseInfo.colorDropDown, selectedColor, curHouseInfo.bonusColorCheckbox.isChecked());
             curHouseInfo.bonusColorCheckbox.setEnabled(false);
             curHouseInfo.colorDropDown.setEnabled(false);
@@ -875,7 +911,7 @@ void CustomGamePlayers::onReceiveModInfo(const std::string& modName, const std::
     
     SDL_Log("CLIENT: Local mod='%s', checksum=%s", localModName.c_str(), localChecksum.c_str());
     
-    if(modChecksum == localChecksum) {
+    if(modName == localModName && modChecksum == localChecksum) {
         SDL_Log("CLIENT: Mod checksums match!");
         addInfoMessage("Mod verified: " + modName);
         
@@ -1004,12 +1040,21 @@ void CustomGamePlayers::onModDownloadComplete(bool success, const std::string& d
             ModInfo activeModInfo = ModManager::instance().getModInfo(hostModName);
             mapPropertyMod.setText(activeModInfo.displayName);
             
-            addInfoMessage("Mod '" + hostModName + "' synced successfully!");
             SDL_Log("CLIENT: Switched to mod '%s', new checksum: %s", hostModName.c_str(), newChecksum.c_str());
-            
-            // Send ACK to host - mod synced, ready to start
-            if(pNetworkManager != nullptr) {
-                pNetworkManager->sendModAck(true, newChecksum);
+
+            if(newChecksum == hostModChecksum) {
+                addInfoMessage("Mod '" + hostModName + "' synced successfully!");
+                if(pNetworkManager != nullptr) {
+                    pNetworkManager->sendModAck(true, newChecksum);
+                }
+            } else {
+                SDL_Log("CLIENT: Downloaded mod checksum mismatch (host=%s, local=%s)",
+                        hostModChecksum.c_str(), newChecksum.c_str());
+                addInfoMessage("Downloaded mod failed integrity verification: " + hostModName);
+                bConfigMismatchDetected = true;
+                if(pNetworkManager != nullptr) {
+                    pNetworkManager->sendModAck(false, newChecksum);
+                }
             }
         } else {
             SDL_Log("CLIENT: Failed to switch to mod '%s'", hostModName.c_str());
@@ -1223,7 +1268,7 @@ void CustomGamePlayers::onNext()
             }
 
             const int selectedHouse = curHouseInfo.houseDropDown.getSelectedEntryIntData();
-            if(selectedHouse >= 0 && isHouseAvailable(static_cast<HOUSETYPE>(selectedHouse))) {
+            if(selectedHouse >= 0 && isCustomGameHouseAvailable(static_cast<HOUSETYPE>(selectedHouse))) {
                 if(houseAlreadyUsed[selectedHouse]) {
                     bDuplicateHouse = true;
                 } else {
@@ -1481,7 +1526,7 @@ void CustomGamePlayers::extractMapInfo(INIFile* pMap)
 
 
     boundHousesOnMap.clear();
-    for(int h = 0; h < getNumAvailableHouses(); h++) {
+    for(int h = 0; h < getCustomGameHouseCount(); h++) {
         const HOUSETYPE house = static_cast<HOUSETYPE>(h);
         if(pMap->hasSection(getHouseNameByNumber(house))) {
             boundHousesOnMap.push_back(house);
@@ -1490,11 +1535,11 @@ void CustomGamePlayers::extractMapInfo(INIFile* pMap)
 
     const int boundHouseCount = static_cast<int>(boundHousesOnMap.size());
     const int numberedPlayerCount = MapPlayerSectionUtils::countNumberedPlayerSections(
-        getNumAvailableHouses(),
+        getCustomGameHouseCount(),
         [&pMap](int playerNumber) {
             return pMap->hasSection("Player" + std::to_string(playerNumber));
         });
-    numHouses = boundHouseCount + numberedPlayerCount;
+    numHouses = std::min(boundHouseCount + numberedPlayerCount, MAX_CUSTOM_GAME_PLAYERS);
 
     mapPropertyPlayers.setText(std::to_string(numHouses));
 
@@ -1563,11 +1608,19 @@ void CustomGamePlayers::extractMapInfo(INIFile* pMap)
 }
 
 void CustomGamePlayers::onChangeHousesDropDownBoxes(bool bInteractive, int houseInfoNum) {
+    if(bInteractive && houseInfoNum >= 0 && houseInfoNum < numHouses) {
+        HouseInfo& changedHouseInfo = houseInfo[houseInfoNum];
+        addColorDropDownEntries(changedHouseInfo.colorDropDown, HOUSE_INVALID,
+                                changedHouseInfo.bonusColorCheckbox.isChecked());
+    }
+
     if(bInteractive && houseInfoNum >= 0 && pNetworkManager != nullptr) {
         int selectedHouseID = houseInfo[houseInfoNum].houseDropDown.getSelectedEntryIntData();
 
         ChangeEventList changeEventList;
         changeEventList.changeEventList.emplace_back(ChangeEventList::ChangeEvent::EventType::ChangeHouse, houseInfoNum, selectedHouseID);
+        changeEventList.changeEventList.emplace_back(ChangeEventList::ChangeEvent::EventType::ChangeColor, houseInfoNum,
+                                                     HOUSE_INVALID);
 
         pNetworkManager->sendChangeEventList(changeEventList);
     }
@@ -1621,7 +1674,7 @@ void CustomGamePlayers::onChangeHousesDropDownBoxes(bool bInteractive, int house
 
         addToHouseDropDown(curHouseInfo.houseDropDown, HOUSE_INVALID);
 
-        for(int h=0;h<getNumAvailableHouses();h++) {
+        for(int h=0;h<getCustomGameHouseCount();h++) {
             bool bAddHouse;
 
             bool bCheck;
@@ -2000,7 +2053,7 @@ void CustomGamePlayers::addToHouseDropDown(DropDownBox& houseDropDownBox, int ho
 
             int currentItemIndex = (houseDropDownBox.getEntryIntData(0) == HOUSE_INVALID) ? 1 : 0;
 
-            for(int h = 0; h < getNumAvailableHouses(); h++) {
+            for(int h = 0; h < getCustomGameHouseCount(); h++) {
                 if(currentItemIndex < houseDropDownBox.getNumEntries() && houseDropDownBox.getEntryIntData(currentItemIndex) == h) {
                     if(h == house) {
                         if(bSelect) {

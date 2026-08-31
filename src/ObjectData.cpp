@@ -487,7 +487,7 @@ std::string ObjectData::getEffectiveHash() const {
     
     // Hash all unit/structure data for all houses
     for (int itemID = 0; itemID < Num_ItemID; itemID++) {
-        for (int houseID = 0; houseID < getNumAvailableHouses(); houseID++) {
+        for (int houseID = 0; houseID < NUM_HOUSES; houseID++) {
             const ObjectDataStruct& obj = data[itemID][houseID];
             
             // Add all gameplay-affecting fields
