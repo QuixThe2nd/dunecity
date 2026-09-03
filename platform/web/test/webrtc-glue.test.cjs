@@ -21,6 +21,8 @@ const {
   DUNECITY_WEBRTC_STATE_FAILED,
 } = require('../webrtc_glue.js');
 
+const DUNECITY_WEBRTC_CONTROL_LOW_WATER = 128 * 1024;
+
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 // ---- mock WebRTC -----------------------------------------------------------
@@ -34,6 +36,7 @@ class MockDataChannel {
     this.bufferedAmount = 0;
     this.bufferedAmountLowThreshold = 0;
     this.sent = [];
+    this._peer = null;
     this.onopen = null;
     this.onclose = null;
     this.onerror = null;
@@ -41,26 +44,34 @@ class MockDataChannel {
     this.onbufferedamountlow = null;
   }
 
+  linkPeer(other) {
+    this._peer = other;
+    other._peer = this;
+  }
+
   send(data) {
-    this.sent.push(data instanceof Uint8Array ? data : new Uint8Array(data));
-    this.bufferedAmount += this.sent[this.sent.length - 1].length;
+    const bytes = data instanceof Uint8Array ? data : new Uint8Array(data);
+    this.sent.push(bytes);
+    this.bufferedAmount += bytes.length;
+    if (this._peer?.onmessage) {
+      const payload = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
+      this._peer.onmessage({ data: payload, type: 'message', target: this._peer });
+    }
   }
 
   open() {
     if (this.readyState === 'open') return;
     this.readyState = 'open';
     this.onopen?.({ type: 'open', target: this });
+    if (this._peer && this._peer.readyState !== 'open') {
+      this._peer.open();
+    }
   }
 
   close() {
     if (this.readyState === 'closed') return;
     this.readyState = 'closed';
     this.onclose?.({ type: 'close', target: this });
-  }
-
-  deliver(bytes) {
-    const payload = bytes instanceof Uint8Array ? bytes.buffer : bytes;
-    this.onmessage?.({ data: payload, type: 'message', target: this });
   }
 
   setBufferedAmount(amount) {
@@ -79,26 +90,59 @@ class MockPeerConnection {
     this.remoteDescription = null;
     this.onicecandidate = null;
     this.onconnectionstatechange = null;
-    this.ondatachannel = null;
+    this._ondatachannelHandler = null;
     this._channels = [];
+    this._outboundRemoteChannels = [];
+    this._incomingChannels = [];
     this._remote = null;
     this._candidates = [];
+  }
+
+  get ondatachannel() {
+    return this._ondatachannelHandler;
+  }
+
+  set ondatachannel(handler) {
+    this._ondatachannelHandler = handler;
+    this._scheduleDeliverIncoming();
   }
 
   linkTo(other) {
     this._remote = other;
     other._remote = this;
+    for (const remote of this._outboundRemoteChannels) {
+      other._enqueueIncomingChannel(remote);
+    }
+    for (const remote of other._outboundRemoteChannels) {
+      this._enqueueIncomingChannel(remote);
+    }
+  }
+
+  _enqueueIncomingChannel(channel) {
+    this._incomingChannels.push(channel);
+    this._scheduleDeliverIncoming();
+  }
+
+  _scheduleDeliverIncoming() {
+    queueMicrotask(() => {
+      if (!this._ondatachannelHandler || this._incomingChannels.length === 0) return;
+      while (this._incomingChannels.length > 0) {
+        const channel = this._incomingChannels.shift();
+        this._ondatachannelHandler({ channel, type: 'datachannel', target: this });
+      }
+    });
   }
 
   createDataChannel(label, options) {
-    const channel = new MockDataChannel(label, options);
-    this._channels.push(channel);
-    queueMicrotask(() => {
-      if (this._remote?.ondatachannel) {
-        this._remote.ondatachannel({ channel, type: 'datachannel', target: this._remote });
-      }
-    });
-    return channel;
+    const local = new MockDataChannel(label, options);
+    const remote = new MockDataChannel(label, options);
+    local.linkPeer(remote);
+    this._channels.push(local);
+    this._outboundRemoteChannels.push(remote);
+    if (this._remote) {
+      this._remote._enqueueIncomingChannel(remote);
+    }
+    return local;
   }
 
   async createOffer() {
@@ -116,11 +160,6 @@ class MockPeerConnection {
 
   async setRemoteDescription(desc) {
     this.remoteDescription = desc;
-    if (this._remote) {
-      for (const ch of this._remote._channels) {
-        if (this.ondatachannel) this.ondatachannel({ channel: ch, type: 'datachannel', target: this });
-      }
-    }
   }
 
   async addIceCandidate(candidate) {
@@ -138,7 +177,6 @@ class MockPeerConnection {
 
   openAllChannels() {
     for (const ch of this._channels) ch.open();
-    for (const ch of this._remote?._channels ?? []) ch.open();
     this.connectionState = 'connected';
     this.onconnectionstatechange?.({ type: 'connectionstatechange', target: this });
     if (this._remote) {
@@ -226,7 +264,7 @@ function collectEvents(onEvent) {
 }
 
 async function startSignalingServer() {
-  const { createSignalingServer } = await import('../../../tools/webrtc-signaling/server.js');
+  const { createSignalingServer } = await import('dunecity-webrtc-signaling/server.js');
   const ctx = createSignalingServer();
   await new Promise((resolve, reject) => {
     ctx.httpServer.once('error', reject);
@@ -409,7 +447,9 @@ test('send delivers binary payloads on the control channel', async () => {
   const payload = new Uint8Array([0x01, 0x00, 0x00, 0x00, 0x42]);
   assert.equal(host.send(0, payload), true);
 
-  hostPc._channels[0].deliver(payload);
+  await waitFor(() => hostPc._channels[0].sent.length === 1);
+  assert.deepEqual(Array.from(hostPc._channels[0].sent[0]), Array.from(payload));
+
   await waitFor(() => events.some((e) => e.type === DUNECITY_WEBRTC_EVENT_MESSAGE && e.channel === 0));
   const msg = events.find((e) => e.type === DUNECITY_WEBRTC_EVENT_MESSAGE && e.channel === 0);
   assert.deepEqual(msg.bytes, Array.from(payload));
@@ -425,9 +465,8 @@ test('control channel backpressure queues and flushes on bufferedamountlow', asy
   assert.equal(host.getStats().channels[0].queued, 1);
   assert.equal(control.sent.length, 0);
 
-  control.setBufferedAmount(DUNECITY_WEBRTC_CONTROL_HIGH_WATER - 1);
-  host._flushControlOutboxForTest();
-  assert.equal(control.sent.length, 1);
+  control.setBufferedAmount(DUNECITY_WEBRTC_CONTROL_LOW_WATER);
+  await waitFor(() => control.sent.length === 1, 3000, 'queued control flush');
   assert.deepEqual(Array.from(control.sent[0]), Array.from(bytes));
 });
 
@@ -496,8 +535,16 @@ test('integration: host and client connect through real signaling server', async
 
     const ping = new Uint8Array([0x04, 0x00, 0x00, 0x00, 0x7]);
     assert.equal(host.send(0, ping), true);
-    hostPc._channels[0].deliver(ping);
-    await waitFor(() => events.some((e) => e.type === DUNECITY_WEBRTC_EVENT_MESSAGE), 3000, 'MESSAGE event');
+
+    await waitFor(
+      () => events.some((e) => e.type === DUNECITY_WEBRTC_EVENT_MESSAGE && e.channel === 0),
+      3000,
+      'MESSAGE event',
+    );
+    const msg = events.find((e) => e.type === DUNECITY_WEBRTC_EVENT_MESSAGE && e.channel === 0);
+    assert.deepEqual(msg.bytes, Array.from(ping));
+    assert.equal(hostPc._channels[0].sent.length, 1);
+    assert.deepEqual(Array.from(hostPc._channels[0].sent[0]), Array.from(ping));
   } finally {
     host.disconnect();
     client.disconnect();
