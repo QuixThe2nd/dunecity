@@ -485,13 +485,18 @@ if (typeof module !== 'undefined' && module.exports) {
  */
 if (typeof mergeInto === 'function' && typeof LibraryManager !== 'undefined') {
     mergeInto(LibraryManager.library, {
-        webrtcInit: function () {
+        // Retain the factory in emitted JS; Emscripten only keeps $-prefixed library symbols.
+        $createDuneCityWebRtc: createDuneCityWebRtc,
+        $createDuneCityWebRtc__postset: 'createDuneCityWebRtc = $createDuneCityWebRtc;',
+
+        $webrtcInit__deps: ['$createDuneCityWebRtc'],
+        $webrtcInit: function () {
             if (Module.__dunecityWebrtc) return;
             const config = {
                 signaling: (typeof DUNECITY_WEBRTC_CONFIG !== 'undefined' && DUNECITY_WEBRTC_CONFIG && DUNECITY_WEBRTC_CONFIG.signaling) || undefined,
                 iceServers: (typeof DUNECITY_WEBRTC_CONFIG !== 'undefined' && DUNECITY_WEBRTC_CONFIG && DUNECITY_WEBRTC_CONFIG.iceServers) || [],
             };
-            Module.__dunecityWebrtc = createDuneCityWebRtc({
+            Module.__dunecityWebrtc = $createDuneCityWebRtc({
                 RTCPeerConnection: (typeof RTCPeerConnection !== 'undefined') ? RTCPeerConnection : window.RTCPeerConnection,
                 WebSocket: WebSocket,
                 config: config,
@@ -508,23 +513,28 @@ if (typeof mergeInto === 'function' && typeof LibraryManager !== 'undefined') {
                     }
                 },
             });
-            // expose passive stats for tests/diagnostics
             Module.dunecityWebrtcStats = Module.__dunecityWebrtc.getStats;
         },
+
+        webrtcHostRoom__deps: ['$webrtcInit'],
         webrtcHostRoom: function () {
-            webrtcInit();
-            return Module.__dunecityWebrtc.hostRoom();
+            $webrtcInit();
+            return Module.__dunecityWebrtc.hostRoom() ? 1 : 0;
         },
+
+        webrtcJoinRoom__deps: ['$webrtcInit'],
         webrtcJoinRoom: function (roomPtr) {
-            webrtcInit();
+            $webrtcInit();
             const room = UTF8ToString(roomPtr);
-            return Module.__dunecityWebrtc.joinRoom(room);
+            return Module.__dunecityWebrtc.joinRoom(room) ? 1 : 0;
         },
+
         webrtcSendTo: function (peer, channel, ptr, len) {
             if (!Module.__dunecityWebrtc) return 0;
             const bytes = HEAPU8.slice(ptr, ptr + len);
             return Module.__dunecityWebrtc.send(channel, bytes) ? 1 : 0;
         },
+
         webrtcGetRoomCode: function (bufPtr, bufLen) {
             if (!Module.__dunecityWebrtc) return 0;
             const code = Module.__dunecityWebrtc.getRoomCode();
@@ -532,6 +542,7 @@ if (typeof mergeInto === 'function' && typeof LibraryManager !== 'undefined') {
             stringToUTF8(code, bufPtr, bufLen);
             return 1;
         },
+
         webrtcGetState: function () {
             if (!Module.__dunecityWebrtc) return 0; /* IDLE */
             const s = Module.__dunecityWebrtc.getStats();
@@ -539,9 +550,11 @@ if (typeof mergeInto === 'function' && typeof LibraryManager !== 'undefined') {
             if (s.role) return 1; /* CONNECTING */
             return 0;
         },
+
         webrtcGetRttMs: function () {
             return (Module.__dunecityWebrtc && Module.__dunecityWebrtc.getRttMs()) | 0;
         },
+
         webrtcDisconnect: function () {
             if (Module.__dunecityWebrtc) Module.__dunecityWebrtc.disconnect();
         },

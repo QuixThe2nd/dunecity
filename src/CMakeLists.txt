@@ -498,8 +498,9 @@ if(EMSCRIPTEN)
         -sALLOW_MEMORY_GROWTH=1
         -sMAXIMUM_MEMORY=2147483648
         -sFORCE_FILESYSTEM=1
-        -sENVIRONMENT=web,worker
+        -sENVIRONMENT=web
         -sMODULARIZE=0
+        -sEXPORTED_FUNCTIONS=['_main','_webrtcOnEvent']
         -sEXPORTED_RUNTIME_METHODS=cwrap,ccall
         -sASSERTIONS=1
     )
