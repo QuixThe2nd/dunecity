@@ -216,6 +216,9 @@ target_sources(dunecity
 
         # Network
         Network/NetworkManager.cpp
+        Network/WebRtcTransport.cpp
+
+        # Players
 
         # Players
         players/Player.cpp
@@ -352,6 +355,7 @@ target_sources(dunecity
         misc/FileSystem.cpp
         misc/fnkdat.cpp
         misc/format.cpp
+        misc/FrameYield.cpp
         misc/IFileStream.cpp
         misc/md5.cpp
         misc/OFileStream.cpp
@@ -363,7 +367,7 @@ target_sources(dunecity
 )
 
 # Desktop-only network backends: ENet LAN discovery, metaserver client, UPnP,
-# STUN. The browser build replaces them with the ENetHttpStub.
+# STUN. The browser build replaces all of them with the WebRTC transport.
 if(NOT EMSCRIPTEN)
     target_sources(dunecity
         PRIVATE
@@ -467,6 +471,8 @@ endif()
 
 # Link libraries
 if(EMSCRIPTEN)
+    set(DUNECITY_WEBRTC_GLUE "${CMAKE_SOURCE_DIR}/platform/web/webrtc_glue.js")
+
     set(DUNECITY_EM_PORT_FLAGS
         -sUSE_SDL=2
         -sUSE_SDL_MIXER=2
@@ -502,13 +508,15 @@ if(EMSCRIPTEN)
         -sFORCE_FILESYSTEM=1
         -sENVIRONMENT=web
         -sMODULARIZE=0
-        -sEXPORTED_FUNCTIONS=['_main']
+        -sEXPORTED_FUNCTIONS=['_main','_webrtcOnEvent']
         -sEXPORTED_RUNTIME_METHODS=cwrap,ccall
         -sASSERTIONS=1
     )
     foreach(preload IN LISTS DUNECITY_EM_PRELOADS)
         list(APPEND DUNECITY_EM_LINK_FLAGS "SHELL:--preload-file ${preload}")
     endforeach()
+
+    list(APPEND DUNECITY_EM_LINK_FLAGS "SHELL:--js-library ${DUNECITY_WEBRTC_GLUE}")
 
     target_link_options(dunecity PRIVATE ${DUNECITY_EM_LINK_FLAGS})
     set_target_properties(dunecity PROPERTIES

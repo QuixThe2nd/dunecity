@@ -69,6 +69,10 @@ private:
     void checkAllClientsReady();
     void updateDiscordGameStarting();
     void updateDiscordLobbyPresence();
+#ifdef __EMSCRIPTEN__
+    /// Browser: refresh the host's signaling room code label.
+    void updateRoomCodeLabel();
+#endif
     void onPeerDisconnected(const std::string& playername, bool bHost, int cause);
 
     void extractMapInfo(INIFile* pMap);
@@ -126,6 +130,9 @@ private:
     Label           mapPropertyAuthors;
     Label           mapPropertyLicense;
     Label           mapPropertyMod;
+#ifdef __EMSCRIPTEN__
+    Label           roomCodeLabel;   ///< Browser host: the signaling room code to give the joining player.
+#endif
 
     // bottom row of buttons
     HBox            buttonHBox;

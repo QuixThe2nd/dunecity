@@ -40,6 +40,7 @@ std::mutex Game::performanceLogMutex;
 #include <misc/OFileStream.h>
 #include <misc/IMemoryStream.h>
 #include <misc/FileSystem.h>
+#include <misc/FrameYield.h>
 #include <misc/fnkdat.h>
 #include <misc/draw_util.h>
 #include <misc/md5.h>
@@ -2517,7 +2518,13 @@ void Game::runMainLoop() {
                 }
                 // Break out of loop to avoid spinning - we'll try again next frame
                 // Also add a small delay to avoid burning CPU
+#ifdef __EMSCRIPTEN__
+                // Browser build: yielding to the event loop both avoids burning
+                // CPU and lets lockstep commands arrive while we wait.
+                yieldFrameToBrowser();
+#else
                 SDL_Delay(1);
+#endif
                 break;
             }
         }
@@ -2664,6 +2671,10 @@ void Game::runMainLoop() {
             logFrameTiming();
             lastTimingLogMs = now;
         }
+
+        // Browser build: hand control back to the event loop once per frame so
+        // lockstep commands and transport events keep arriving mid-game.
+        yieldFrameToBrowser();
 
     } while (!bQuitGame && !finishedLevel);
 }
