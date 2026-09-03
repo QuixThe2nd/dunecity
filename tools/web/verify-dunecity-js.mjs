@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * Post-build verification for dunecity.js WebRTC glue wiring.
- * Fails on DCE of createDuneCityWebRtc or unprefixed webrtcInit calls in source.
+ * Fails on DCE of createDuneCityWebRtc or literal $-prefixed helper calls at runtime.
  *
  * Usage:
  *   node tools/web/verify-dunecity-js.mjs path/to/dunecity.js
@@ -26,6 +26,14 @@ function fail(msg) {
   process.exit(1);
 }
 
+function hoistEmscriptenLibraryHelpers(lib, target) {
+  for (const [key, value] of Object.entries(lib)) {
+    if (key.startsWith('$')) {
+      target[key.slice(1)] = value;
+    }
+  }
+}
+
 if (mode === '--source') {
   if (!text.includes('$createDuneCityWebRtc: createDuneCityWebRtc')) {
     fail('webrtc_glue.js must export $createDuneCityWebRtc to survive Emscripten DCE');
@@ -36,8 +44,20 @@ if (mode === '--source') {
   if (!text.includes('webrtcHostRoom__deps')) {
     fail('webrtc_glue.js must declare webrtcHostRoom__deps');
   }
-  if (/\bwebrtcInit\s*\(/.test(text.replace(/\$webrtcInit/g, ''))) {
-    fail('webrtc_glue.js must not call unprefixed webrtcInit(); use $webrtcInit()');
+  if (text.includes('$createDuneCityWebRtc__postset')) {
+    fail('webrtc_glue.js must not use $createDuneCityWebRtc__postset; $ keys emit unprefixed runtime ids');
+  }
+  if (/\$createDuneCityWebRtc\s*\(/.test(text)) {
+    fail('webrtc_glue.js must call createDuneCityWebRtc(...), not literal $createDuneCityWebRtc(...) at runtime');
+  }
+  if (/\$webrtcInit\s*\(/.test(text)) {
+    fail('webrtc_glue.js must call webrtcInit(), not literal $webrtcInit() at runtime');
+  }
+  if (!/\bcreateDuneCityWebRtc\s*\(/.test(text)) {
+    fail('webrtc_glue.js must call createDuneCityWebRtc(...) inside $webrtcInit');
+  }
+  if (!/\bwebrtcInit\s*\(/.test(text)) {
+    fail('webrtc_glue.js must call webrtcInit() from exported wrappers');
   }
   console.log(`OK: source WebRTC library wiring in ${filePath}`);
   process.exit(0);
@@ -47,16 +67,22 @@ if (mode === '--source') {
 if (
   !/function\s+createDuneCityWebRtc\s*\(/.test(text) &&
   !/var\s+createDuneCityWebRtc\s*=/.test(text) &&
-  !/createDuneCityWebRtc\s*=\s*\$createDuneCityWebRtc/.test(text)
+  !/createDuneCityWebRtc\s*=\s*function/.test(text)
 ) {
   fail('dunecity.js missing createDuneCityWebRtc factory (DCE or glue not linked)');
 }
 
-if (!/function _webrtcHostRoom\(\)\{\$webrtcInit\(\)/.test(text)) {
-  fail('dunecity.js _webrtcHostRoom must call $webrtcInit() (unprefixed webrtcInit bug)');
+if (!/function _webrtcHostRoom\(\)\{webrtcInit\(\)/.test(text)) {
+  fail('dunecity.js _webrtcHostRoom must call webrtcInit() (Emscripten $ key emits unprefixed id)');
 }
-if (/function _webrtcHostRoom\(\)\{webrtcInit\(\)/.test(text)) {
-  fail('dunecity.js _webrtcHostRoom calls unprefixed webrtcInit()');
+if (/function _webrtcHostRoom\(\)\{\$webrtcInit\(\)/.test(text)) {
+  fail('dunecity.js _webrtcHostRoom calls literal $webrtcInit() (ReferenceError in browser)');
+}
+if (/\$createDuneCityWebRtc\s*\(/.test(text)) {
+  fail('dunecity.js must not reference literal $createDuneCityWebRtc(...) at runtime');
+}
+if (/\$webrtcInit\s*\(/.test(text)) {
+  fail('dunecity.js must not reference literal $webrtcInit() at runtime');
 }
 
 const exportNames = [
@@ -106,11 +132,7 @@ if (typeof lib.webrtcHostRoom !== 'function') {
   fail('LibraryManager.library missing webrtcHostRoom wrapper');
 }
 
-for (const [key, value] of Object.entries(lib)) {
-  if (key.startsWith('$')) {
-    globalThis[key] = value;
-  }
-}
+hoistEmscriptenLibraryHelpers(lib, globalThis);
 
 try {
   lib.webrtcHostRoom();

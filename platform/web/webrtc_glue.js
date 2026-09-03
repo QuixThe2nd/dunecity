@@ -487,7 +487,6 @@ if (typeof mergeInto === 'function' && typeof LibraryManager !== 'undefined') {
     mergeInto(LibraryManager.library, {
         // Retain the factory in emitted JS; Emscripten only keeps $-prefixed library symbols.
         $createDuneCityWebRtc: createDuneCityWebRtc,
-        $createDuneCityWebRtc__postset: 'createDuneCityWebRtc = $createDuneCityWebRtc;',
 
         $webrtcInit__deps: ['$createDuneCityWebRtc'],
         $webrtcInit: function () {
@@ -496,7 +495,7 @@ if (typeof mergeInto === 'function' && typeof LibraryManager !== 'undefined') {
                 signaling: (typeof DUNECITY_WEBRTC_CONFIG !== 'undefined' && DUNECITY_WEBRTC_CONFIG && DUNECITY_WEBRTC_CONFIG.signaling) || undefined,
                 iceServers: (typeof DUNECITY_WEBRTC_CONFIG !== 'undefined' && DUNECITY_WEBRTC_CONFIG && DUNECITY_WEBRTC_CONFIG.iceServers) || [],
             };
-            Module.__dunecityWebrtc = $createDuneCityWebRtc({
+            Module.__dunecityWebrtc = createDuneCityWebRtc({
                 RTCPeerConnection: (typeof RTCPeerConnection !== 'undefined') ? RTCPeerConnection : window.RTCPeerConnection,
                 WebSocket: WebSocket,
                 config: config,
@@ -518,13 +517,13 @@ if (typeof mergeInto === 'function' && typeof LibraryManager !== 'undefined') {
 
         webrtcHostRoom__deps: ['$webrtcInit'],
         webrtcHostRoom: function () {
-            $webrtcInit();
+            webrtcInit();
             return Module.__dunecityWebrtc.hostRoom() ? 1 : 0;
         },
 
         webrtcJoinRoom__deps: ['$webrtcInit'],
         webrtcJoinRoom: function (roomPtr) {
-            $webrtcInit();
+            webrtcInit();
             const room = UTF8ToString(roomPtr);
             return Module.__dunecityWebrtc.joinRoom(room) ? 1 : 0;
         },
