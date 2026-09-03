@@ -298,6 +298,11 @@ CustomGamePlayers::CustomGamePlayers(const GameInitSettings& newGameInitSettings
     ModInfo activeModInfo = ModManager::instance().getModInfo(ModManager::instance().getActiveModName());
     mapPropertyMod.setText(activeModInfo.displayName);
     mapPropertyValuesVBox.addWidget(&mapPropertyMod);
+#ifdef __EMSCRIPTEN__
+    // Browser host: show the signaling room code the other player must enter.
+    mapPropertyNamesVBox.addWidget(Label::create(_("Room Code") + ":"));
+    mapPropertyValuesVBox.addWidget(&roomCodeLabel);
+#endif
     rightVBox.addWidget(Spacer::create());
 
     mainVBox.addWidget(Spacer::create(), 0.04);
@@ -678,7 +683,24 @@ CustomGamePlayers::CustomGamePlayers(const GameInitSettings& newGameInitSettings
                                             getObjectDataHash(), VERSIONSTRING);
         }
     }
+
+#ifdef __EMSCRIPTEN__
+    // The room code arrives asynchronously from the signaling server; update()
+    // refreshes the label once it shows up.
+    updateRoomCodeLabel();
+#endif
 }
+
+#ifdef __EMSCRIPTEN__
+void CustomGamePlayers::updateRoomCodeLabel() {
+    if(bServer && pNetworkManager != nullptr) {
+        const std::string roomCode = pNetworkManager->getWebRtcRoomCode();
+        roomCodeLabel.setText(roomCode.empty() ? "..." : roomCode);
+    } else {
+        roomCodeLabel.setText("-");
+    }
+}
+#endif
 
 void CustomGamePlayers::updateDiscordLobbyPresence() {
     if(pNetworkManager == nullptr) return;
@@ -742,6 +764,10 @@ void CustomGamePlayers::onChildWindowClose(Window* child) {
 }
 
 void CustomGamePlayers::update() {
+#ifdef __EMSCRIPTEN__
+    updateRoomCodeLabel();
+#endif
+
     if(isCoopGameType(gameInitSettings.getGameType()) && startGameTime == 0 && bServer && !bWaitingForModAcks) {
         const int partner = houseInfo[0].player2DropDown.getSelectedEntryIntData();
         const bool waiting = partner == PLAYER_OPEN || partner == PLAYER_CLOSED;

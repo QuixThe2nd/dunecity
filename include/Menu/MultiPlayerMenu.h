@@ -19,8 +19,10 @@
 #include <GUI/ClickMap.h>
 #include <GUI/VBox.h>
 
-#include <Network/LANGameFinderAndAnnouncer.h>
 #include <Network/ChangeEventList.h>
+#ifndef __EMSCRIPTEN__
+#include <Network/LANGameFinderAndAnnouncer.h>
+#endif
 
 #include <GameInitSettings.h>
 
@@ -43,16 +45,25 @@ private:
     bool validateAndSavePlayerName();
     void savePlayerNameToConfig();
 
+#ifndef __EMSCRIPTEN__
     void onCreateLANGame();
     void onCreateInternetGame();
     void onPlayOnline();
     void onHostCampaignCoop();
+#else
+    void onCreateGame();
+    /// Browser: refresh the connecting/connected/error status line.
+    void update() override;
+#endif
     void onConnect();
+#ifndef __EMSCRIPTEN__
     void onJoin();
+#endif
     void onQuit();
 
     void onPeerDisconnected(const std::string& playername, bool bHost, int cause);
 
+#ifndef __EMSCRIPTEN__
     void onGameTypeChange(int buttonID);
     void onGameListSelectionChange(bool bInteractive);
 
@@ -62,12 +73,14 @@ private:
 
     void onGameServerInfoList(const std::list<GameServerInfo>& gameServerInfoList);
     void onMetaServerError(int errorcause, const std::string& errorMessage);
-
+#endif
 
     void onReceiveGameInfo(const GameInitSettings& gameInitSettings, const ChangeEventList& changeEventList);
 
+#ifndef __EMSCRIPTEN__
     std::list<GameServerInfo> LANGameList;
     std::list<GameServerInfo> InternetGameList;
+#endif
 
     StaticContainer windowWidget;
 
@@ -76,16 +89,26 @@ private:
 
     Label           captionLabel;
 
+#ifdef __EMSCRIPTEN__
+    HBox            connectHBox;
+    TextBox         roomCodeTextBox;
+    TextButton      connectButton;
+    Label           connectionStatusLabel;
+#else
     HBox            connectHBox;
     TextBox         connectHostTextBox;
     TextBox         connectPortTextBox;
     TextButton      connectButton;
+#endif
 
     HBox            playerNameHBox;
     TextBox         playerNameTextBox;
 
     // left VBox with create game buttons
     VBox            leftVBox;
+#ifdef __EMSCRIPTEN__
+    TextButton      createGameButton;
+#else
     TextButton      createLANGameButton;
     TextButton      createInternetGameButton;
     TextButton      playOnlineButton;
@@ -101,6 +124,7 @@ private:
     // bottom row of buttons
     HBox            buttonHBox;
     TextButton      joinButton;
+#endif
     TextButton      backButton;
 };
 

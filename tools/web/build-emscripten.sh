@@ -8,7 +8,7 @@
 #   dunecity.data   (preloaded game assets)
 #   shell.js / shell.css (production browser shell)
 #
-# Requires: git, cmake, python3.
+# Requires: git, cmake, python3, node (for webrtc glue unit tests only).
 #
 # Artifact sizes use tools/web/file-size-bytes.sh (portable wc -c) so the
 # script works on Linux CI and macOS dev machines.
@@ -79,6 +79,9 @@ if ! emcc --version 2>/dev/null | grep -q "${EMSDK_VERSION}"; then
     exit 1
 fi
 echo "==> Using ${EMCC_VERSION}"
+
+echo "==> WebRTC glue source checks"
+node "${ROOT}/tools/web/verify-dunecity-js.mjs" --source "${ROOT}/platform/web/webrtc_glue.js"
 
 echo "==> Prebuilding Emscripten SDL ports (serial cache warmup)"
 unset EM_CACHE_IS_LOCKED
