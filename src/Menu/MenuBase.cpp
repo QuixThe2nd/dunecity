@@ -22,6 +22,7 @@
 #include <FileClasses/LoadSavePNG.h>
 #include <misc/string_util.h>
 #include <misc/FileSystem.h>
+#include <misc/FrameYield.h>
 #include <misc/draw_util.h>
 #include <misc/DiscordManager.h>
 #include <misc/TouchInput.h>
@@ -97,6 +98,10 @@ int MenuBase::showMenu() {
 
         // VSync is controlled via SDL_HINT_RENDER_VSYNC in main.cpp
         // No software frame limiting needed in menus
+
+        // Browser build: hand control back to the event loop once per frame so
+        // WebRTC/signaling callbacks can run while this menu blocks.
+        yieldFrameToBrowser();
     }
 
     return retVal;

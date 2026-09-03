@@ -215,13 +215,10 @@ target_sources(dunecity
         Menu/HowToPlayMenu.cpp
 
         # Network
-        Network/LANGameFinderAndAnnouncer.cpp
         Network/NetworkManager.cpp
-        Network/ENetHttp.cpp
-        Network/MetaServerClient.cpp
-        Network/VersionChecker.cpp
-        Network/UPnPManager.cpp
-        Network/StunClient.cpp
+        Network/WebRtcTransport.cpp
+
+        # Players
 
         # Players
         players/Player.cpp
@@ -358,6 +355,7 @@ target_sources(dunecity
         misc/FileSystem.cpp
         misc/fnkdat.cpp
         misc/format.cpp
+        misc/FrameYield.cpp
         misc/IFileStream.cpp
         misc/md5.cpp
         misc/OFileStream.cpp
@@ -367,6 +365,20 @@ target_sources(dunecity
         misc/Scaler.cpp
         misc/TouchInput.cpp
 )
+
+# Desktop-only network backends: ENet LAN discovery, metaserver client, UPnP,
+# STUN. The browser build replaces all of them with the WebRTC transport.
+if(NOT EMSCRIPTEN)
+    target_sources(dunecity
+        PRIVATE
+            Network/LANGameFinderAndAnnouncer.cpp
+            Network/ENetHttp.cpp
+            Network/MetaServerClient.cpp
+            Network/VersionChecker.cpp
+            Network/UPnPManager.cpp
+            Network/StunClient.cpp
+    )
+endif()
 
 # C source files
 target_sources(dunecity

@@ -8,7 +8,9 @@
 #include <FileClasses/INIFile.h>
 
 #include <Network/NetworkManager.h>
+#ifndef __EMSCRIPTEN__
 #include <Network/ENetHelper.h>
+#endif
 
 #include <GUI/MsgBox.h>
 
@@ -42,6 +44,51 @@ MultiPlayerMenu::MultiPlayerMenu() : MenuBase() {
     mainVBox.addWidget(&playerNameHBox, 28);
     mainVBox.addWidget(VSpacer::create(8));
 
+#ifdef __EMSCRIPTEN__
+    // Browser: join by the host's 4-character room code. No IP/port entry.
+    connectHBox.addWidget(Label::create(_("Room Code:")), 100);
+    roomCodeTextBox.setMaximumTextLength(4);
+    connectHBox.addWidget(&roomCodeTextBox, 90);
+    connectHBox.addWidget(HSpacer::create(20));
+    connectButton.setText(_("Connect"));
+    connectButton.setOnClick(std::bind(&MultiPlayerMenu::onConnect, this));
+    connectHBox.addWidget(&connectButton, 100);
+    connectHBox.addWidget(Spacer::create());
+
+    mainVBox.addWidget(&connectHBox, 28);
+    mainVBox.addWidget(VSpacer::create(8));
+
+    connectionStatusLabel.setText(_("Not connected"));
+    connectionStatusLabel.setAlignment(Alignment_HCenter);
+    mainVBox.addWidget(&connectionStatusLabel, 24);
+
+    mainVBox.addWidget(VSpacer::create(16));
+
+    createGameButton.setText(_("Create Online Game"));
+    createGameButton.setOnClick(std::bind(&MultiPlayerMenu::onCreateGame, this));
+    leftVBox.addWidget(&createGameButton, 0.2);
+    leftVBox.addWidget(Spacer::create());
+
+    mainHBox.addWidget(&leftVBox, 180);
+    mainHBox.addWidget(Spacer::create());
+
+    mainVBox.addWidget(Spacer::create(), 0.05);
+    mainVBox.addWidget(&mainHBox, 0.85);
+    mainVBox.addWidget(Spacer::create(), 0.05);
+    mainVBox.addWidget(VSpacer::create(10));
+
+    backButton.setText(_("Back"));
+    backButton.setOnClick(std::bind(&MultiPlayerMenu::onQuit, this));
+
+    // Start Network Manager (browser transport; no LAN discovery)
+    SDL_Log("Starting network...");
+    try {
+        pNetworkManager = std::make_unique<NetworkManager>(settings.network.serverPort, settings.network.metaServer);
+        SDL_Log("Network initialization completed.");
+    } catch (const std::exception& e) {
+        SDL_Log("Network initialization failed: %s", e.what());
+    }
+#else
     // Connect row
     connectHBox.addWidget(Label::create("Host:"), 50);
     connectHostTextBox.setText("localhost");
@@ -136,6 +183,7 @@ MultiPlayerMenu::MultiPlayerMenu() : MenuBase() {
     }
 
     onGameTypeChange(0);
+#endif
 }
 
 
@@ -202,6 +250,75 @@ void MultiPlayerMenu::onChildWindowClose(Window* pChildWindow) {
     // TODO
 }
 
+#ifdef __EMSCRIPTEN__
+
+void MultiPlayerMenu::onCreateGame() {
+    if (!validateAndSavePlayerName()) {
+        return;
+    }
+    // Same lobby path as the desktop build; NetworkManager::startServer picks
+    // the browser branch (signaling room) internally.
+    CustomGameMenu(true, true).showMenu();
+}
+
+void MultiPlayerMenu::update() {
+    if(pNetworkManager == nullptr) {
+        return;
+    }
+
+    // Connecting/connected/error status line driven by the transport state.
+    switch(pNetworkManager->getWebRtcState()) {
+        case WebRtcTransport::State::Idle: {
+            connectionStatusLabel.setText(_("Not connected"));
+        } break;
+
+        case WebRtcTransport::State::Connecting: {
+            connectionStatusLabel.setText(_("Connecting..."));
+        } break;
+
+        case WebRtcTransport::State::Connected: {
+            connectionStatusLabel.setText(_("Connected"));
+        } break;
+
+        case WebRtcTransport::State::Failed: {
+            connectionStatusLabel.setText(_("Connection failed"));
+        } break;
+    }
+}
+
+void MultiPlayerMenu::onConnect() {
+    if (!validateAndSavePlayerName()) {
+        return;
+    }
+    if (!pNetworkManager) {
+        openWindow(MsgBox::create(_("Network not available.")));
+        return;
+    }
+
+    std::string roomCode = roomCodeTextBox.getText();
+    // Trim whitespace
+    size_t start = roomCode.find_first_not_of(" \t");
+    size_t end = roomCode.find_last_not_of(" \t");
+    if(start != std::string::npos) {
+        roomCode = roomCode.substr(start, end - start + 1);
+    } else {
+        roomCode = "";
+    }
+
+    if(roomCode.empty()) {
+        openWindow(MsgBox::create(_("Please enter the room code from the game host.")));
+        return;
+    }
+
+    pNetworkManager->setOnReceiveGameInfo(std::bind(&MultiPlayerMenu::onReceiveGameInfo, this, std::placeholders::_1, std::placeholders::_2));
+    pNetworkManager->setOnPeerDisconnected(std::bind(&MultiPlayerMenu::onPeerDisconnected, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3));
+    pNetworkManager->connectWebRtc(roomCode, settings.general.playerName);
+
+    connectionStatusLabel.setText(_("Connecting..."));
+}
+
+#else // native desktop
+
 void MultiPlayerMenu::onCreateLANGame() {
     if (!validateAndSavePlayerName()) {
         return;
@@ -236,6 +353,8 @@ void MultiPlayerMenu::onConnect() {
     openWindow(MsgBox::create(_("Connecting...")));
 }
 
+#endif // __EMSCRIPTEN__
+
 
 void MultiPlayerMenu::onPeerDisconnected(const std::string& playername, bool bHost, int cause) {
     if(bHost && pNetworkManager) {
@@ -246,6 +365,8 @@ void MultiPlayerMenu::onPeerDisconnected(const std::string& playername, bool bHo
         showDisconnectMessageBox(cause);
     }
 }
+
+#ifndef __EMSCRIPTEN__
 
 void MultiPlayerMenu::onJoin() {
     if (!validateAndSavePlayerName()) {
@@ -550,6 +671,8 @@ void MultiPlayerMenu::onMetaServerError(int errorcause, const std::string& error
         } break;
     }
 }
+
+#endif // __EMSCRIPTEN__
 
 void MultiPlayerMenu::onReceiveGameInfo(const GameInitSettings& gameInitSettings, const ChangeEventList& changeEventList) {
     closeChildWindow();

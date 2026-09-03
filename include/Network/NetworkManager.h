@@ -18,24 +18,43 @@
 #ifndef NETWORKMANAGER_H
 #define NETWORKMANAGER_H
 
-#include <Network/ENetPacketIStream.h>
-#include <Network/ENetPacketOStream.h>
+#include <Network/NetworkTransportTypes.h>
 #include <Network/ChangeEventList.h>
 #include <Network/CommandList.h>
+#include <Network/WebRtcTransport.h>
 
+#ifndef __EMSCRIPTEN__
 #include <Network/LANGameFinderAndAnnouncer.h>
 #include <Network/MetaServerClient.h>
 #include <Network/UPnPManager.h>
+#include <enet/enet.h>
+#endif
 
 #include <misc/string_util.h>
 #include <misc/SDL2pp.h>
 
-#include <enet/enet.h>
 #include <string>
 #include <list>
+#include <map>
 #include <vector>
 #include <functional>
 #include <stdarg.h>
+
+#ifdef __EMSCRIPTEN__
+/**
+    ENetPeer stand-in for the browser transport. Owns nothing itself: NetworkManager
+    allocates one per connected remote peer and stores its PeerData* in `data`,
+    exactly like ENet does for native connections. `webRtcPeerId` is the opaque
+    signaling/transport handle — browser peer identity never fakes IP/port data.
+*/
+struct NetPeer {
+    void* data = nullptr;
+    Uint32 roundTripTime = 0;
+    uint32_t webRtcPeerId = 0;
+};
+#else
+using NetPeer = ENetPeer;
+#endif
 
 #define NETWORKDISCONNECT_QUIT              1
 #define NETWORKDISCONNECT_TIMEOUT           2
@@ -104,11 +123,27 @@ public:
     void stopServer();
 
     void connect(const std::string& hostname, int port, const std::string& playerName);
+#ifndef __EMSCRIPTEN__
     void connect(ENetAddress address, const std::string& playerName);
+#else
+    /**
+        Browser transport join: connect to a host's signaling room by its short
+        room code. Player identity stays an opaque peer id; no IP/port involved.
+    */
+    void connectWebRtc(const std::string& roomCode, const std::string& playerName);
+#endif
 
     void disconnect();
 
     void update();
+
+#ifdef __EMSCRIPTEN__
+    /// Room code assigned by the signaling server (host) / joined code (client).
+    std::string getWebRtcRoomCode() const { return pWebRtcTransport->getRoomCode(); }
+
+    /// Coarse transport state for UI (connecting/connected/error indicators).
+    WebRtcTransport::State getWebRtcState() const { return pWebRtcTransport->getState(); }
+#endif
 
     void sendChatMessage(const std::string& message);
 
@@ -125,7 +160,7 @@ public:
     std::list<std::string> getConnectedPeers() const {
         std::list<std::string> peerNameList;
 
-        for(const ENetPeer* pPeer : peerList) {
+        for(const NetPeer* pPeer : peerList) {
             PeerData* peerData = static_cast<PeerData*>(pPeer->data);
             if(peerData != nullptr) {
                 peerNameList.push_back(peerData->name);
@@ -137,6 +172,7 @@ public:
 
     int getMaxPeerRoundTripTime();
 
+#ifndef __EMSCRIPTEN__
     LANGameFinderAndAnnouncer* getLANGameFinderAndAnnouncer() {
         return pLANGameFinderAndAnnouncer.get();
     };
@@ -144,6 +180,7 @@ public:
     MetaServerClient* getMetaServerClient() {
         return pMetaServerClient.get();
     };
+#endif
 
     /**
         Sets the function that should be called when a chat message is received
@@ -261,7 +298,7 @@ public:
         \param  modName         Name of the active mod
         \param  modChecksum     Combined mod checksum
     */
-    void sendModInfoToPeer(ENetPeer* peer, const std::string& modName, const std::string& modChecksum);
+    void sendModInfoToPeer(NetPeer* peer, const std::string& modName, const std::string& modChecksum);
 
     /**
         Send mod info to all connected clients (host only).
@@ -318,20 +355,33 @@ public:
 private:
     static void debugNetwork(PRINTF_FORMAT_STRING const char* fmt, ...) PRINTF_VARARG_FUNC(1);
 
-    void sendPacketToHost(ENetPacketOStream& packetStream, int channel = 0);
+    void sendPacketToHost(NetworkPacketOStream& packetStream, int channel = 0);
 
-    void sendPacketToPeer(ENetPeer* peer, ENetPacketOStream& packetStream, int channel = 0);
-    
+    void sendPacketToPeer(NetPeer* peer, NetworkPacketOStream& packetStream, int channel = 0);
+
     /**
         Package and send mod files to a peer in chunks.
         \param  peer        The peer to send to
         \param  modName     Name of the mod to send
     */
-    void sendModFilesToPeer(ENetPeer* peer, const std::string& modName);
+    void sendModFilesToPeer(NetPeer* peer, const std::string& modName);
 
-    void sendPacketToAllConnectedPeers(ENetPacketOStream& packetStream, int channel = 0);
+    void sendPacketToAllConnectedPeers(NetworkPacketOStream& packetStream, int channel = 0);
 
-    void handlePacket(ENetPeer* peer, ENetPacketIStream& packetStream);
+    void handlePacket(NetPeer* peer, NetworkPacketIStream& packetStream);
+
+#ifdef __EMSCRIPTEN__
+    /// Look up (or create) the NetPeer for a transport peer handle.
+    NetPeer* findPeerByWebRtcId(uint32_t webRtcPeerId, bool bCreate);
+    /// Disconnect one remote peer (browser: tears down the single connection).
+    void disconnectPeer(NetPeer* peer, int cause);
+    /// Drop all peer bookkeeping after the transport went away.
+    void clearAllPeers();
+#else
+    void disconnectPeer(ENetPeer* peer, enet_uint32 cause) {
+        enet_peer_disconnect_later(peer, cause);
+    }
+#endif
 
     class PeerData {
     public:
@@ -344,12 +394,12 @@ private:
         };
 
 
-        PeerData(ENetPeer* pPeer, PeerState peerState)
+        PeerData(NetPeer* pPeer, PeerState peerState)
          : pPeer(pPeer), peerState(peerState), timeout(0)  {
         }
 
 
-        ENetPeer*               pPeer;
+        NetPeer*                pPeer;
 
         PeerState               peerState;
         Uint32                  timeout;
@@ -358,10 +408,12 @@ private:
         std::string             gameVersion;
         std::string             quantBotConfigHash;
         std::string             objectDataHash;
-        std::list<ENetPeer*>    notYetConnectedPeers;
+        std::list<NetPeer*>     notYetConnectedPeers;
     };
 
+#ifndef __EMSCRIPTEN__
     ENetHost* host = nullptr;
+#endif
     bool bIsServer = false;
     bool bLANServer = false;
     bool bGameInProgress = false;  // Set true when game starts - disables lobby-only features
@@ -371,11 +423,16 @@ private:
 
     std::string playerName;
 
-    ENetPeer*   connectPeer = nullptr;
+    NetPeer*   connectPeer = nullptr;
 
-    std::list<ENetPeer*> peerList;
+    std::list<NetPeer*> peerList;
 
-    std::list<ENetPeer*> awaitingConnectionList;
+    std::list<NetPeer*> awaitingConnectionList;
+
+#ifdef __EMSCRIPTEN__
+    std::unique_ptr<WebRtcTransport> pWebRtcTransport;
+    uint32_t connectPeerWebRtcId = 0;   // transport handle of the host we joined
+#endif
 
     std::function<void (const std::string&, const std::string&)>            pOnReceiveChatMessage;
     std::function<void (const GameInitSettings&, const ChangeEventList&)>   pOnReceiveGameInfo;
@@ -403,6 +460,13 @@ private:
     };
     ModTransferState modTransferState;
 
+    // Keep-alive: send a reliable ping every 10 seconds (ENet reliable packet
+    // natively, control DataChannel in the browser build) to keep the
+    // connection warm.
+    Uint32                                      lastKeepAliveTime = 0;
+    static constexpr int                        KEEPALIVE_INTERVAL_MS = 10000;   // 10 seconds
+
+#ifndef __EMSCRIPTEN__
     std::unique_ptr<LANGameFinderAndAnnouncer>  pLANGameFinderAndAnnouncer = nullptr;
     std::unique_ptr<MetaServerClient>           pMetaServerClient = nullptr;
     std::unique_ptr<UPnPManager>                pUPnPManager = nullptr;
@@ -411,11 +475,7 @@ private:
     Uint32                                      upnpLeaseStartTime = 0;
     static constexpr int                        UPNP_LEASE_DURATION = 3600;      // 1 hour lease
     static constexpr int                        UPNP_RENEWAL_MARGIN = 300;       // Renew 5 min before expiry
-    
-    // NAT keep-alive: send reliable ping every 10 seconds to prevent NAT timeout
-    Uint32                                      lastKeepAliveTime = 0;
-    static constexpr int                        KEEPALIVE_INTERVAL_MS = 10000;   // 10 seconds
-    
+
     // NAT Hole Punch: Non-blocking state machine for host-side punching
     struct PendingPunch {
         std::string clientId;
@@ -470,6 +530,7 @@ public:
      * Get the ENet host (for STUN queries)
      */
     ENetHost* getHost() const { return host; }
+#endif // __EMSCRIPTEN__
 };
 
 #endif // NETWORKMANAGER_H

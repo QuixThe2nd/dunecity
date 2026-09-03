@@ -21,6 +21,7 @@
 #include <FileClasses/FileManager.h>
 #include <FileClasses/music/MusicPlayer.h>
 #include <misc/SDL2pp.h>
+#include <misc/FrameYield.h>
 #include <CursorManager.h>
 
 #include <globals.h>
@@ -74,7 +75,13 @@ void CutScene::run()
 
         const int frameTime = SDL_GetTicks() - frameStart;
         if(frameTime < nextFrameTime) {
+#ifdef __EMSCRIPTEN__
+            // Browser build: yield instead of sleeping so WebRTC/signaling
+            // callbacks keep flowing during cutscenes.
+            yieldFrameToBrowser();
+#else
             SDL_Delay(nextFrameTime - frameTime);
+#endif
         }
     }
 }
