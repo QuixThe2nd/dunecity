@@ -356,6 +356,13 @@ void MultiPlayerMenu::onConnect() {
 #endif // __EMSCRIPTEN__
 
 
+void MultiPlayerMenu::onQuit() {
+    SDL_Event quitEvent;
+    quitEvent.type = SDL_QUIT;
+    SDL_PushEvent(&quitEvent);
+}
+
+
 void MultiPlayerMenu::onPeerDisconnected(const std::string& playername, bool bHost, int cause) {
     if(bHost && pNetworkManager) {
         pNetworkManager->setOnReceiveGameInfo(std::function<void (const GameInitSettings&, const ChangeEventList&)>());
@@ -505,13 +512,6 @@ void MultiPlayerMenu::onJoin() {
 
         openWindow(MsgBox::create(_("Connecting...")));
     }
-}
-
-
-void MultiPlayerMenu::onQuit() {
-    SDL_Event quitEvent;
-    quitEvent.type = SDL_QUIT;
-    SDL_PushEvent(&quitEvent);
 }
 
 

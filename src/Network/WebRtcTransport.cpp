@@ -22,11 +22,13 @@
 
 #ifdef __EMSCRIPTEN__
 
+#include <emscripten.h>
+
 // JS glue (platform/web/webrtc_glue.js, linked with --js-library)
 extern "C" {
 int webrtcHostRoom();
 int webrtcJoinRoom(const char* pRoomCode);
-void webrtcSendTo(int peerHandle, int channel, const uint8_t* pData, int length);
+int webrtcSendTo(int peerHandle, int channel, const uint8_t* pData, int length);
 int webrtcGetRoomCode(char* pBuffer, int bufferLength);
 int webrtcGetState();
 int webrtcGetRttMs();
