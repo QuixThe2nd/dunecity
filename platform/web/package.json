@@ -1,0 +1,16 @@
+{
+  "name": "dunecity-webrtc-glue",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Unit tests for the DuneCity browser WebRTC bridge (platform/web/webrtc_glue.js).",
+  "scripts": {
+    "test": "node --test test/*.test.cjs"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "devDependencies": {
+    "ws": "^8.18.0"
+  },
+  "license": "UNLICENSED"
+}
