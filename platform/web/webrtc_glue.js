@@ -25,6 +25,16 @@
 
 'use strict';
 
+// Every DUNECITY_WEBRTC_* constant is declared twice on purpose:
+//   - here, as top-level const, so the Node unit tests (and module.exports) see
+//     the real values;
+//   - again below in the Emscripten mergeInto() block as `$NAME: '=...'`
+//     verbatim-string library items, because Emscripten only emits library
+//     object members into dunecity.js — these top-level declarations never
+//     reach the browser.
+// platform/web/test/emscripten-webrtc-library.test.cjs fails if the two halves
+// drift apart or if a constant used by retained runtime code is missing.
+
 const DUNECITY_WEBRTC_CONTROL_LABEL = 'control';
 const DUNECITY_WEBRTC_COMMANDS_LABEL = 'commands';
 const DUNECITY_WEBRTC_CONTROL_OPTIONS = { ordered: true };
@@ -485,7 +495,46 @@ if (typeof module !== 'undefined' && module.exports) {
  */
 if (typeof mergeInto === 'function' && typeof LibraryManager !== 'undefined') {
     mergeInto(LibraryManager.library, {
-        webrtcInit: function () {
+        // Emscripten emits $NAME library items whose value is a string starting
+        // with '=' as `var NAME = <verbatim>;` in dunecity.js. The values below
+        // must match the top-level const declarations above exactly;
+        // emscripten-webrtc-library.test.cjs enforces that.
+        $DUNECITY_WEBRTC_CONTROL_LABEL: "='control'",
+        $DUNECITY_WEBRTC_COMMANDS_LABEL: "='commands'",
+        $DUNECITY_WEBRTC_CONTROL_OPTIONS: '={ ordered: true }',
+        $DUNECITY_WEBRTC_COMMANDS_OPTIONS: '={ ordered: false, maxRetransmits: 0 }',
+        $DUNECITY_WEBRTC_CONTROL_HIGH_WATER: '=(512 * 1024)',
+        $DUNECITY_WEBRTC_CONTROL_LOW_WATER: '=(128 * 1024)',
+        $DUNECITY_WEBRTC_COMMANDS_HIGH_WATER: '=(512 * 1024)',
+        $DUNECITY_WEBRTC_MAX_SIGNAL_BYTES: '=(256 * 1024)',
+        $DUNECITY_WEBRTC_SIGNAL_PROTOCOL_VERSION: '=1',
+        $DUNECITY_WEBRTC_EVENT_CONNECT: '=0',
+        $DUNECITY_WEBRTC_EVENT_DISCONNECT: '=1',
+        $DUNECITY_WEBRTC_EVENT_MESSAGE: '=2',
+        $DUNECITY_WEBRTC_EVENT_STATE: '=3',
+        $DUNECITY_WEBRTC_STATE_IDLE: '=0',
+        $DUNECITY_WEBRTC_STATE_CONNECTING: '=1',
+        $DUNECITY_WEBRTC_STATE_CONNECTED: '=2',
+        $DUNECITY_WEBRTC_STATE_FAILED: '=3',
+
+        // Retain the factory in emitted JS; Emscripten only keeps $-prefixed library
+        // symbols. __deps recursively retains every $DUNECITY_WEBRTC_* constant above,
+        // so the emitted factory has no free missing identifiers.
+        $createDuneCityWebRtc__deps: [
+            '$DUNECITY_WEBRTC_CONTROL_LABEL', '$DUNECITY_WEBRTC_COMMANDS_LABEL',
+            '$DUNECITY_WEBRTC_CONTROL_OPTIONS', '$DUNECITY_WEBRTC_COMMANDS_OPTIONS',
+            '$DUNECITY_WEBRTC_CONTROL_HIGH_WATER', '$DUNECITY_WEBRTC_CONTROL_LOW_WATER',
+            '$DUNECITY_WEBRTC_COMMANDS_HIGH_WATER', '$DUNECITY_WEBRTC_MAX_SIGNAL_BYTES',
+            '$DUNECITY_WEBRTC_SIGNAL_PROTOCOL_VERSION',
+            '$DUNECITY_WEBRTC_EVENT_CONNECT', '$DUNECITY_WEBRTC_EVENT_DISCONNECT',
+            '$DUNECITY_WEBRTC_EVENT_MESSAGE', '$DUNECITY_WEBRTC_EVENT_STATE',
+            '$DUNECITY_WEBRTC_STATE_IDLE', '$DUNECITY_WEBRTC_STATE_CONNECTING',
+            '$DUNECITY_WEBRTC_STATE_CONNECTED', '$DUNECITY_WEBRTC_STATE_FAILED',
+        ],
+        $createDuneCityWebRtc: createDuneCityWebRtc,
+
+        $webrtcInit__deps: ['$createDuneCityWebRtc'],
+        $webrtcInit: function () {
             if (Module.__dunecityWebrtc) return;
             const config = {
                 signaling: (typeof DUNECITY_WEBRTC_CONFIG !== 'undefined' && DUNECITY_WEBRTC_CONFIG && DUNECITY_WEBRTC_CONFIG.signaling) || undefined,
@@ -508,23 +557,28 @@ if (typeof mergeInto === 'function' && typeof LibraryManager !== 'undefined') {
                     }
                 },
             });
-            // expose passive stats for tests/diagnostics
             Module.dunecityWebrtcStats = Module.__dunecityWebrtc.getStats;
         },
+
+        webrtcHostRoom__deps: ['$webrtcInit'],
         webrtcHostRoom: function () {
             webrtcInit();
-            return Module.__dunecityWebrtc.hostRoom();
+            return Module.__dunecityWebrtc.hostRoom() ? 1 : 0;
         },
+
+        webrtcJoinRoom__deps: ['$webrtcInit'],
         webrtcJoinRoom: function (roomPtr) {
             webrtcInit();
             const room = UTF8ToString(roomPtr);
-            return Module.__dunecityWebrtc.joinRoom(room);
+            return Module.__dunecityWebrtc.joinRoom(room) ? 1 : 0;
         },
+
         webrtcSendTo: function (peer, channel, ptr, len) {
             if (!Module.__dunecityWebrtc) return 0;
             const bytes = HEAPU8.slice(ptr, ptr + len);
             return Module.__dunecityWebrtc.send(channel, bytes) ? 1 : 0;
         },
+
         webrtcGetRoomCode: function (bufPtr, bufLen) {
             if (!Module.__dunecityWebrtc) return 0;
             const code = Module.__dunecityWebrtc.getRoomCode();
@@ -532,6 +586,7 @@ if (typeof mergeInto === 'function' && typeof LibraryManager !== 'undefined') {
             stringToUTF8(code, bufPtr, bufLen);
             return 1;
         },
+
         webrtcGetState: function () {
             if (!Module.__dunecityWebrtc) return 0; /* IDLE */
             const s = Module.__dunecityWebrtc.getStats();
@@ -539,9 +594,11 @@ if (typeof mergeInto === 'function' && typeof LibraryManager !== 'undefined') {
             if (s.role) return 1; /* CONNECTING */
             return 0;
         },
+
         webrtcGetRttMs: function () {
             return (Module.__dunecityWebrtc && Module.__dunecityWebrtc.getRttMs()) | 0;
         },
+
         webrtcDisconnect: function () {
             if (Module.__dunecityWebrtc) Module.__dunecityWebrtc.disconnect();
         },

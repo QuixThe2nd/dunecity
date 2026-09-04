@@ -505,11 +505,14 @@ if(EMSCRIPTEN)
         -sASYNCIFY=1
         -sALLOW_MEMORY_GROWTH=1
         -sMAXIMUM_MEMORY=2147483648
+        # Default 64KB stack overflows during game init (GFXManager/config parsing
+        # call depth + exception/asyncify frame overhead).
+        -sSTACK_SIZE=8388608
         -sFORCE_FILESYSTEM=1
         -sENVIRONMENT=web
         -sMODULARIZE=0
         -sEXPORTED_FUNCTIONS=['_main','_webrtcOnEvent']
-        -sEXPORTED_RUNTIME_METHODS=cwrap,ccall
+        -sEXPORTED_RUNTIME_METHODS=cwrap,ccall,FS
         -sASSERTIONS=1
     )
     foreach(preload IN LISTS DUNECITY_EM_PRELOADS)

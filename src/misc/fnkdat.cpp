@@ -391,6 +391,10 @@ int fnkdat(const _TCHAR* target, _TCHAR* buffer, int len, int flags) {
 #include <SDL_system.h>
 #endif
 
+#ifdef __EMSCRIPTEN__
+#include <SDL_filesystem.h>
+#endif
+
 #ifdef __APPLE__
 #include <misc/MacFunctions.h>
 #endif
@@ -461,6 +465,19 @@ int fnkdat(const char* target, char* buffer, int len, int flags) {
          }
          FNKDAT_S(strncpy(buffer, prefPath, len));
          SDL_free(prefPath);
+      }
+#elif defined(__EMSCRIPTEN__)
+      {
+         /* MEMFS has no /etc/passwd so getpwuid() cannot resolve a home
+            directory; ask SDL instead and fall back to the writable
+            /config dir bundled with the build. */
+         char* prefPath = SDL_GetPrefPath("DuneCity", "DuneCity");
+         if(prefPath == NULL) {
+            FNKDAT_S(strncpy(buffer, "/config", len));
+         } else {
+            FNKDAT_S(strncpy(buffer, prefPath, len));
+            SDL_free(prefPath);
+         }
       }
 #else
       {

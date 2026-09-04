@@ -24,6 +24,7 @@
 #include <SDL_endian.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <stdarg.h>
 #include <algorithm>
 
 extern Palette palette;
@@ -36,7 +37,7 @@ extern Palette palette;
 */
 Wsafile::Wsafile(SDL_RWops* rwop)
 {
-    readdata(1,rwop);
+    readdata(1,&rwop);
 }
 
 /// Constructor
@@ -49,7 +50,8 @@ Wsafile::Wsafile(SDL_RWops* rwop)
 */
 Wsafile::Wsafile(SDL_RWops* rwop0, SDL_RWops* rwop1)
 {
-    readdata(2,rwop0,rwop1);
+    SDL_RWops* rwops[] = { rwop0, rwop1 };
+    readdata(2,rwops);
 }
 
 /// Constructor
@@ -63,7 +65,8 @@ Wsafile::Wsafile(SDL_RWops* rwop0, SDL_RWops* rwop1)
 */
 Wsafile::Wsafile(SDL_RWops* rwop0, SDL_RWops* rwop1, SDL_RWops* rwop2)
 {
-    readdata(3,rwop0,rwop1,rwop2);
+    SDL_RWops* rwops[] = { rwop0, rwop1, rwop2 };
+    readdata(3,rwops);
 }
 
 /// Constructor
@@ -78,7 +81,8 @@ Wsafile::Wsafile(SDL_RWops* rwop0, SDL_RWops* rwop1, SDL_RWops* rwop2)
 */
 Wsafile::Wsafile(SDL_RWops* rwop0, SDL_RWops* rwop1, SDL_RWops* rwop2, SDL_RWops* rwop3)
 {
-    readdata(4,rwop0,rwop1,rwop2,rwop3);
+    SDL_RWops* rwops[] = { rwop0, rwop1, rwop2, rwop3 };
+    readdata(4,rwops);
 }
 
 /// Constructor
@@ -93,8 +97,13 @@ Wsafile::Wsafile(int num,...) {
     va_list args;
     va_start(args,num);
 
-    readdata(num,args);
+    std::vector<SDL_RWops*> rwops;
+    for(int i = 0; i < num; i++) {
+        rwops.push_back(va_arg(args,SDL_RWops*));
+    }
     va_end(args);
+
+    readdata(num, rwops.data());
 }
 
 /// Destructor
@@ -265,24 +274,18 @@ std::unique_ptr<unsigned char[]> Wsafile::readfile(SDL_RWops* rwop, int* filesiz
 /**
     This methods reads from the RWops all data and concatinates all the frames to one animation. The SDL_RWops
     can be readonly but must support seeking.
-    \param  NumFiles    Number of SDL_RWops
-    \param  ...         SDL_RWops for each wsa-File. (can be readonly)
-*/
-void Wsafile::readdata(int numFiles, ...) {
-    va_list args;
-    va_start(args,numFiles);
-    readdata(numFiles,args);
-    va_end(args);
-}
-
-/// Helper method for reading and concatinating various WSA-Files.
-/**
-    This methods reads from the RWops all data and concatinates all the frames to one animation. The SDL_RWops
-    can be readonly but must support seeking.
     \param  numFiles    Number of SDL_RWops
-    \param  args        SDL_RWops for each wsa-File should be in this va_list. (can be readonly)
+    \param  rwops       Array with one SDL_RWops for each wsa-File. (can be readonly)
+
+    The RWops are passed as an explicit array instead of through a varargs
+    (...)/va_list interface: under Emscripten the game compiles with exception
+    catching + Asyncify, which routes calls through fixed-signature invoke
+    wrappers that do not reliably forward the wasm varargs ABI. A va_arg() on
+    that path returned a stale pointer and crashed GFX loading (use-after-free
+    of an SDL_RWops). Passing the pointers as normal arguments matches the
+    Shpfile/Icnfile loaders, which work on all platforms.
 */
-void Wsafile::readdata(int numFiles, va_list args) {
+void Wsafile::readdata(int numFiles, SDL_RWops* const* rwops) {
     std::vector<std::unique_ptr<unsigned char[]>> pFiledata(numFiles);
     std::vector<Uint32*> index(numFiles);
     std::vector<Uint16> numberOfFrames(numFiles);
@@ -293,7 +296,7 @@ void Wsafile::readdata(int numFiles, va_list args) {
 
     for(int i = 0; i < numFiles; i++) {
         int wsaFilesize;
-        const auto rwop = va_arg(args,SDL_RWops*);
+        const auto rwop = rwops[i];
         pFiledata[i] = readfile(rwop,&wsaFilesize);
         numberOfFrames[i] = SDL_SwapLE16(*(reinterpret_cast<Uint16*>(pFiledata[i].get())) );
 
