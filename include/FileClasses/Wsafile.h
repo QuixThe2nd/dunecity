@@ -21,8 +21,6 @@
 #include "Animation.h"
 #include <misc/SDL2pp.h>
 
-#include <stdarg.h>
-
 /// A class for loading a *.WSA-File.
 /**
     This class can read the animation in a *.WSA-File and return it as SDL_Surfaces.
@@ -74,8 +72,7 @@ public:
 private:
     void decodeFrames(const unsigned char* pFiledata, Uint32* index, int numberOfFrames, unsigned char* pDecodedFrames, int x, int y) const;
     std::unique_ptr<unsigned char[]> readfile(SDL_RWops* rwop, int* filesize) const;
-    void readdata(int numFiles, ...);
-    void readdata(int numFiles, va_list args);
+    void readdata(int numFiles, SDL_RWops* const* rwops);
     std::vector<unsigned char> decodedFrames;
 
     Uint16 numFrames = 0;
