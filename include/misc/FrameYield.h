@@ -25,13 +25,14 @@
     emscripten_set_main_loop state machine, the Emscripten build compiles with
     -sASYNCIFY and each frame boundary calls through here. yieldFrameToBrowser()
     unwinds the whole call stack to the JavaScript event loop (where WebSocket
-    signaling and WebRTC DataChannel callbacks live) and resumes on the next
-    tick. Native builds keep their blocking loops and pay nothing.
+    signaling and WebRTC DataChannel callbacks live) via a non-zero Asyncify
+    sleep and resumes on the next tick. Native builds keep their blocking loops
+    and pay nothing.
 */
 #ifdef __EMSCRIPTEN__
-void yieldFrameToBrowser();
+void yieldFrameToBrowser(unsigned int durationMs = 1);
 #else
-inline void yieldFrameToBrowser() { }
+inline void yieldFrameToBrowser(unsigned int = 1) { }
 #endif
 
 #endif // FRAMEYIELD_H
