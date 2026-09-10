@@ -39,6 +39,7 @@
 #include <misc/FileSystem.h>
 #include <misc/WebRuntime.h>
 #include <misc/draw_util.h>
+#include <misc/FrameYield.h>
 #include <misc/string_util.h>
 #include <misc/IMemoryStream.h>
 
@@ -281,6 +282,14 @@ CustomGamePlayers::CustomGamePlayers(const GameInitSettings& newGameInitSettings
         INIFile inimap(gameInitSettings.getFilename());
         extractMapInfo(&inimap);
     }
+
+#ifdef __EMSCRIPTEN__
+    // Browser build: extractMapInfo() above (full map INI parse + minimap
+    // render) ran as one synchronous block inside the Next click handler.
+    // Yield before building the lobby widgets so the page can service input
+    // and signaling between the two halves of the transition.
+    yieldFrameToBrowser();
+#endif
 
     rightVBox.addWidget(VSpacer::create(10));
     rightVBox.addWidget(&mapPropertiesHBox, 0.01);
@@ -582,6 +591,12 @@ CustomGamePlayers::CustomGamePlayers(const GameInitSettings& newGameInitSettings
 
         playerListVBox.addWidget(VSpacer::create(4), 0.0);
         playerListVBox.addWidget(Spacer::create(), 0.07);
+
+#ifdef __EMSCRIPTEN__
+        // Browser build: each house row builds several dropdowns with full
+        // entry lists; yield per row to keep the lobby transition paced.
+        yieldFrameToBrowser();
+#endif
 
         if(i >= numHouses) {
             curHouseInfo.houseInfoVBox.setEnabled(false);

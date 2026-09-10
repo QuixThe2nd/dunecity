@@ -20,11 +20,13 @@
 
 #include <emscripten.h>
 
-void yieldFrameToBrowser() {
-    // A zero-length sleep still unwinds the Asyncify call stack to the
-    // browser event loop and resumes afterwards: pending signaling and
-    // DataChannel callbacks get a chance to run every frame.
-    emscripten_sleep(0);
+void yieldFrameToBrowser(unsigned int durationMs) {
+    // A non-zero Asyncify sleep unwinds the call stack to the browser event
+    // loop and resumes afterwards. Zero-duration sleeps do not reliably hand
+    // control back, so pending signaling and DataChannel callbacks starve.
+    // Callers may pass a longer duration to pace a loop (e.g. a cutscene
+    // frame budget); clamp so a caller passing 0 still yields.
+    emscripten_sleep(durationMs < 1 ? 1 : durationMs);
 }
 
 #endif // __EMSCRIPTEN__
