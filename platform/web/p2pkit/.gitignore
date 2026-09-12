@@ -1,0 +1,9 @@
+node_modules/
+dist/
+coverage/
+*.log
+.DS_Store
+.env
+.env.*
+*.tsbuildinfo
+platform/web/p2pkit/node_modules/
