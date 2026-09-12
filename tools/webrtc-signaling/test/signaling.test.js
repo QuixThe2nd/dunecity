@@ -612,3 +612,108 @@ test('server.js runs directly: binds PORT, serves health, relays, and shuts down
     assert.equal(stdout.includes('listening'), true);
   }
 });
+
+// ---- p2pkit dialect relay (additive server extension) ----------------------
+
+const gotDialectDescription = (client) =>
+  client.messages.find((m) => m.description && m.description.type === 'offer');
+const gotDialectIce = (client) => client.messages.find((m) => m.iceCandidate);
+const gotAnnounce = (client) => client.messages.find((m) => m.announce === true);
+
+test('p2pkit description and iceCandidate envelopes relay verbatim to addressed peer', async () => {
+  const server = await startServer();
+  try {
+    const pair = await createPair(server);
+    const offer = { type: 'offer', sdp: 'v=0\r\no=- 46117317 2 IN IP4 127.0.0.1\r\ns=-\r\n' };
+    pair.a.send({ description: offer, from: pair.aId, to: pair.bId });
+    const gotOffer = await pair.b.expect(gotDialectDescription);
+    assert.equal(gotOffer.from, pair.aId);
+    assert.equal(gotOffer.to, pair.bId);
+    assert.deepEqual(gotOffer.description, offer);
+
+    const candidate = { candidate: 'candidate:1 1 UDP 2130706431 192.168.1.4 8998 typ host', sdpMid: '0' };
+    pair.b.send({ iceCandidate: candidate, from: pair.bId, to: pair.aId });
+    const gotCandidate = await pair.a.expect(gotDialectIce);
+    assert.equal(gotCandidate.from, pair.bId);
+    assert.equal(gotCandidate.to, pair.aId);
+    assert.deepEqual(gotCandidate.iceCandidate, candidate);
+
+    pair.a.close();
+    pair.b.close();
+  } finally {
+    await cleanup(server);
+  }
+});
+
+test('p2pkit announce relays to other peer only (no self-echo)', async () => {
+  const server = await startServer();
+  try {
+    const pair = await createPair(server);
+    pair.a.send({ announce: true, from: pair.aId });
+    const got = await pair.b.expect(gotAnnounce);
+    assert.equal(got.from, pair.aId);
+    assert.equal(got.announce, true);
+    assert.equal(pair.a.messages.some((m) => m.announce === true), false);
+    pair.a.close();
+    pair.b.close();
+  } finally {
+    await cleanup(server);
+  }
+});
+
+test('p2pkit spoofed from is rejected with invalid-message', async () => {
+  const server = await startServer();
+  try {
+    const pair = await createPair(server);
+    pair.a.send({ description: { type: 'offer', sdp: 'x' }, from: 'pdeadbeef', to: pair.bId });
+    await pair.a.expect(errorOfCode('invalid-message'));
+    pair.a.close();
+    pair.b.close();
+  } finally {
+    await cleanup(server);
+  }
+});
+
+test('p2pkit envelope from sender not in room returns invalid-target', async () => {
+  const server = await startServer();
+  try {
+    const pair = await createPair(server);
+    const loner = await connect(server.url);
+    loner.send({ description: { type: 'offer', sdp: 'x' }, from: 'pdeadbeef', to: pair.aId });
+    await loner.expect(errorOfCode('invalid-target'));
+    loner.close();
+    pair.a.close();
+    pair.b.close();
+  } finally {
+    await cleanup(server);
+  }
+});
+
+test('p2pkit envelope to wrong or self target returns invalid-target', async () => {
+  const server = await startServer();
+  try {
+    const pair = await createPair(server);
+    pair.a.send({ description: { type: 'offer', sdp: 'x' }, from: pair.aId, to: 'pdeadbee' });
+    await pair.a.expect(errorOfCode('invalid-target'));
+    pair.a.send({ description: { type: 'offer', sdp: 'x' }, from: pair.aId, to: pair.aId });
+    await pair.a.expect(errorOfCode('invalid-target'));
+    pair.a.close();
+    pair.b.close();
+  } finally {
+    await cleanup(server);
+  }
+});
+
+test('p2pkit dialect messages do not draw unsupported-version', async () => {
+  const server = await startServer();
+  try {
+    const pair = await createPair(server);
+    pair.a.send({ description: { type: 'offer', sdp: 'x' }, from: pair.aId, to: pair.bId });
+    await pair.b.expect(gotDialectDescription);
+    assert.equal(pair.a.messages.some((m) => m.code === 'unsupported-version'), false);
+    pair.a.close();
+    pair.b.close();
+  } finally {
+    await cleanup(server);
+  }
+});
