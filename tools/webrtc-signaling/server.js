@@ -214,6 +214,14 @@ export function createSignalingServer(userOptions = {}) {
       sendError(state, 'invalid-message', 'Message must be a JSON object');
       return;
     }
+    if (
+      !Object.prototype.hasOwnProperty.call(message, 'v') &&
+      !Object.prototype.hasOwnProperty.call(message, 'type') &&
+      (message.announce === true || message.description !== undefined || message.iceCandidate !== undefined)
+    ) {
+      handleP2pkitEnvelope(state, message, at);
+      return;
+    }
     if (message.v !== 1) {
       sendError(state, 'unsupported-version', `Unsupported protocol version ${JSON.stringify(message.v)}; expected 1`);
       return;
@@ -299,6 +307,59 @@ export function createSignalingServer(userOptions = {}) {
     if (hostState && hostState !== state) {
       sendJson(hostState, { v: 1, type: 'peer-joined', peerId: state.peerId });
     }
+  }
+
+  function handleP2pkitEnvelope(state, message, at) {
+    const room = state.roomCode !== null ? rooms.get(state.roomCode) : undefined;
+    if (!room || state.peerId === null || !room.peers.has(state.peerId)) {
+      sendError(state, 'invalid-target', 'Signal target invalid: sender is not in a room');
+      return;
+    }
+    if (typeof message.from !== 'string' || message.from !== state.peerId) {
+      sendError(state, 'invalid-message', 'Envelope "from" must match the sender peer id');
+      return;
+    }
+
+    if (message.announce === true) {
+      room.lastActivityAt = at;
+      for (const [peerId, peerState] of room.peers) {
+        if (peerId === state.peerId) continue;
+        sendJson(peerState, { announce: true, from: state.peerId });
+      }
+      return;
+    }
+
+    if (typeof message.to !== 'string') {
+      sendError(state, 'invalid-message', 'Envelope requires string "to"');
+      return;
+    }
+    const targetState = peers.get(message.to);
+    if (!targetState || targetState.roomCode !== room.code || targetState.peerId === state.peerId) {
+      sendError(state, 'invalid-target', `Signal target ${JSON.stringify(message.to)} is not valid`);
+      return;
+    }
+
+    if (message.description !== undefined) {
+      if (typeof message.description !== 'object' || message.description === null || Array.isArray(message.description)) {
+        sendError(state, 'invalid-message', 'description must be an object');
+        return;
+      }
+      room.lastActivityAt = at;
+      sendJson(targetState, { description: message.description, from: state.peerId, to: message.to });
+      return;
+    }
+
+    if (message.iceCandidate !== undefined) {
+      if (typeof message.iceCandidate !== 'object' || message.iceCandidate === null || Array.isArray(message.iceCandidate)) {
+        sendError(state, 'invalid-message', 'iceCandidate must be an object');
+        return;
+      }
+      room.lastActivityAt = at;
+      sendJson(targetState, { iceCandidate: message.iceCandidate, from: state.peerId, to: message.to });
+      return;
+    }
+
+    sendError(state, 'invalid-message', 'Unknown p2pkit envelope shape');
   }
 
   function handleSignal(state, message, at) {
