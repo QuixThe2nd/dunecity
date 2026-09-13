@@ -56,11 +56,9 @@ void runCampaignPacingProbe(Game& game) {
     // enemy fairness and dispatch; a full partner also escapes a depleted map.
     game.gameCycleCount=MILLI2CYCLES(16*60000);game.techLevel=9;
     bot->lastCalculatedSpice=0;partner->lastCalculatedSpice=0;
-    const int oldCredits=owner->getCredits();owner->takeCredits(oldCredits);
-    auto* playerHouse=const_cast<House*>(partner->getHouse());
-    const int playerCredits=playerHouse->getCredits();playerHouse->takeCredits(playerCredits);
-    require(bot->campaignRequiredArmy(16000)==600,"Exhausted enemy still demands an unaffordable army");
-    require(partner->campaignRequiredArmy(16000)==600,"Exhausted partner still waits for 16000 army value");
+    // Keep the house's remaining credits: idle money was another deadlock.
+    require(bot->campaignRequiredArmy(16000)==0,"Exhausted enemy still demands an unaffordable army");
+    require(partner->campaignRequiredArmy(16000)==0,"Exhausted partner still waits for 16000 army value");
     partner->lastCalculatedSpice=1000;
     require(partner->campaignRequiredArmy(8000)==8000,"Live economy lost its normal readiness goal");
     bot->campaignWave={};bot->campaignWave.initialized=true;

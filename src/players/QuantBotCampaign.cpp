@@ -71,12 +71,12 @@ int QuantBot::campaignRequiredArmy(int configuredThreshold) const {
     int required = isCampaignEnemy()
         ? CampaignDifficultyPolicy::requiredArmy(campaignProfile(), configuredThreshold)
         : configuredThreshold;
-    // A depleted map cannot finance a fixed army goal. Use surviving forces,
-    // while dispatch still enforces home reserves and enemy wave limits.
-    // Delay this fallback beyond the opening and the initial spice scan.
-    if (getGameCycleCount() >= MILLI2CYCLES(15 * 60000)
-        && lastCalculatedSpice == 0 && getHouse()->getCredits() < 300)
-        required = std::min(required, 600);
+    // Once the map is depleted, stop waiting for a larger army. A leftover
+    // cash balance or a few cheap survivors must not keep the game idle.
+    // Dispatch still enforces home reserves, opening and enemy wave limits.
+    // Delay this fallback beyond the initial spice scan and opening phase.
+    if (getGameCycleCount() >= MILLI2CYCLES(15 * 60000) && lastCalculatedSpice == 0)
+        required = 0;
     return required;
 }
 
