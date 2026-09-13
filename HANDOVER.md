@@ -30,8 +30,12 @@ Final-source level-9 runs (seed 486409243, no human commands or skip, continuous
 budget assertions) won: Easy/Easy at 89,669 cycles (23.91 game minutes), Hard/Hard
 at 108,599 cycles (28.96). Evidence under
 `/tmp/dunecity-campaign-balance/{pressure,easy9,hard-hard9}-669-verified`.
-Browser build is being packaged; do not infer a public deployment. This is a
-local candidate. Human accessibility and broad seed/house coverage are not yet
+Full Emscripten Release build passes. Local preview serves 669, game-source
+commit `81ff90afa4cda8f8acffe768f194d4ee205aee36`; all seven served artifact hashes
+match `play/build.json`. Browser tab 8 at `http://127.0.0.1:18766/play/` was opened
+fresh, displayed v1.0.669, and reached the updated campaign setup successfully.
+All four native menu descriptions were inspected without clipping. No public
+deployment or push was performed. Human accessibility and broad seed/house coverage are not yet
 established. See `docs/campaign-ai-difficulty-matrix.md` for exact values.
 
 ## Campaign difficulty design matrix — 13 September 2026 (superseded by implementation above)

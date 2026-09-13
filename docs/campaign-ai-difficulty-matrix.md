@@ -58,6 +58,11 @@ minutes, Hard/Hard won in 28.96. Both continuously assert shared limits. These
 are AI regression samples, not proof of human difficulty. Logs and screenshots:
 `/tmp/dunecity-campaign-balance/{pressure,easy9,hard-hard9}-669-verified`.
 
+Full Emscripten Release build also passed. The local browser preview serves
+1.0.669 from game-source commit `81ff90a`; all seven served artifact hashes match
+its manifest. A fresh browser load displayed v1.0.669 and opened the updated
+campaign menu successfully. This candidate has not been pushed or publicly deployed.
+
 ## Original audit and proposal
 
 13 September 2026. Audited against local source `6aaa634` (1.0.668) and the
