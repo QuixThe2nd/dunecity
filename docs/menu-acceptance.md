@@ -1,4 +1,76 @@
-# Menu acceptance checks — 13 September 2026
+# Hosting fixes and acceptance — 1.0.673, 13 September 2026
+
+Local hosting acceptance now passes. The candidate is built in
+`build/bin/dunecity.app`; `/Applications/dunecity.app` was still 1.0.653 when
+checked and has not been replaced. Nothing has been pushed or deployed.
+
+## Changes
+
+- Create Campaign / Create Custom Game now validate and save the name entered
+  on Join Online before constructing the setup and host roster. Previously
+  those actions silently used the old saved name.
+- Creating a custom online lobby requires an explicit Open player slot. An
+  offline setup filled with AI retains its choices when switched online, but
+  now explains that a place must be opened for a guest. The old lobby's fallback
+  could replace an AI; this is a setup-clarity fix, not a transport fix.
+- Admission now says it is connecting to the host until the host's setup is
+  received. Diagnostics record receipt and opening of the roster without
+  exposing invitation codes or admission credentials.
+- Emscripten Release now uses the source-controlled `-O2` final optimizer
+  pipeline, retaining `-O3` C++ compilation and Asyncify. The temporary
+  `CMAKE_EXE_LINKER_FLAGS_RELEASE` override was cleared. The normal Release
+  build completes with the checked-in settings, resolving the prior build gate.
+
+## Live verification
+
+All clients in these 673 checks ran the same candidate and used an isolated
+local PHP signaling service. No public room or public chat message was created.
+
+| Check | Observed result |
+| --- | --- |
+| Native host, public Campaign, browser guest | The room appeared in the directory; the guest roster displayed before Start on two joins. Setup-to-roster diagnostics measured 25 ms and 20 ms. Both clients entered the Atreides mission and ran beyond cycle 12,374 with no reported desync. A browser-issued infantry movement appeared on the native host. |
+| Browser host, private Custom, native guest | BrowserHost673, edited on Join Online, appeared in the setup and both rosters. The guest joined by code before Start, the content/start barrier completed, and both entered the 128×128 Habbanya-Penny match. Browser host received native peer reports through at least cycle 2,249. Both returned to menus after the host left. |
+| Browser host, browser guest Campaign comparison | The earlier 672 comparison also displayed the guest roster before Start and entered gameplay. The original persistent waiting-display observation was not reproduced; it is not attributed to a proven network or renderer defect. |
+| Campaign keyboard Start | Actual native keyboard navigation reached Start and launched the match. A production-menu test also reaches Start after a simulated partner takes the open seat. Earlier difficulty operating it was not established as a code defect. |
+| Automated checks | All seven CTest groups pass, including host-name validation and no-open-seat regressions. Native/web dependency audits, version consistency and strict native app signature verification pass. |
+
+The 672 waiting-screen finding is superseded by these successful pre-start
+roster checks. Receipt/opening diagnostics remain to investigate any recurrence.
+Do not claim a transport repair where none was established.
+
+## Crash alerts during testing
+
+macOS report `dunecity-2026-09-13-214953.ips` identifies PID 30706 in the temporary
+Dune Menu Host copy: `SIGKILL (Code Signature Invalid)` / `Taskgated Invalid
+Signature`. Its executable had been replaced without re-signing that copied
+bundle. It was re-signed and relaunched successfully; the built delivery app
+passes strict verification. Stop copied clients before replacing their binaries,
+then re-sign the copy before relaunching.
+
+A separate `menu-probe-2026-09-13-215900.ips` was a test-fixture error: the probe
+called `getChangeEventListForNewPlayer` without a NetworkManager. The corrected
+fixture uses the seat-assignment operation directly; all tests pass. Neither
+report establishes a gameplay crash in the candidate.
+
+## Evidence and remaining release check
+
+Evidence remains under `../outputs/dunecity-menu-acceptance`, including
+`ctest-673-complete.log`, `menu-probe-673-final.log`, `web-673-build.log`,
+`web-673-final-build.log`, `native-673-final-build.log` and
+`native-673-session.log`. Browser virtual-filesystem diagnostics were inspected
+through CDP and screens through computer use. The production health endpoint
+answered `status=ok`, `protocol=1`; that alone is not a hosting test.
+
+Before general release, have Stefan host using the 673 build and a second
+matching client, then confirm the lobby, start and commands from another device
+or network. The installed 653 app and an older public browser build are not
+matching test clients. Saved-session resumption, WAN/NAT, mobile and campaign
+completion are not newly signed off by this pass. Earlier offline/settings/
+Extras acceptance evidence remains below.
+
+---
+
+# Historical 672 menu acceptance — 13 September 2026
 
 Local candidate: 1.0.672 on `feat/menu-navigation`, following 3989cd2 (1.0.670).
 The verification uses the built production app, isolated host/guest profiles,

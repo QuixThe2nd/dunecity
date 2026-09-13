@@ -1,3 +1,32 @@
+## Hosting fixes — 1.0.673 local, 13 September 2026
+
+Create Campaign/Custom from Join Online now commits the entered name before
+building the roster. Custom online setup requires an explicit open guest slot;
+existing AI choices survive the Offline → Online switch. Admission progress no
+longer says Joined before receiving the host setup, and receipt/roster timestamps
+make the transition observable. The source-controlled web Release link uses -O2
+with O3 C++ compilation; the local linker override is cleared and normal native
+and web Release builds pass.
+
+All seven CTest groups and dependency/version/signature audits pass. Real 673
+native-host/browser-guest public campaign and browser-host/native-guest private
+custom games reached gameplay. Guest rosters were visible before Start; campaign
+receipt-to-roster took 20–25 ms on two joins, peer traffic passed cycle 12,374,
+and a browser infantry command appeared natively. Custom peer reports passed
+2,249. No reported desync in inspected diagnostics. The older browser waiting
+observation was not reproduced; do not invent a transport root cause or claim
+one was repaired. The suspected native keyboard trap was input-testing trouble;
+actual keyboard Start and a production-menu focus test pass.
+
+Stefan's crash screenshot was traced to temporary host PID 30706 rejected by
+macOS after replacing its executable without re-signing the copied app. Re-sign
+fixed it. A separate menu-probe crash was corrected test setup (network callback
+without a manager). Exact reports/evidence and scope: docs/menu-acceptance.md.
+The playable delivery app passes strict codesign verification. Applications still
+held 1.0.653; the 673 test candidate is build/bin/dunecity.app. No install, push or
+deployment performed. Human hosting / second-device or network check remains
+before release; no new saved-session, WAN, mobile or campaign-completion claim.
+
 ## Menu acceptance — 1.0.672 local, 13 September 2026
 
 Stefan requested actual verification. Commit 2f440b5 fixes a live-discovered

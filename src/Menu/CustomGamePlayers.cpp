@@ -1437,6 +1437,16 @@ void CustomGamePlayers::updateDiscordGameStarting() {
 void CustomGamePlayers::onNext()
 {
     if(setup && setup->online) {
+        bool hasOpenSeat = false;
+        for(int i = 0; i < numHouses; ++i) {
+            hasOpenSeat |= houseInfo[i].player1DropDown.getSelectedEntryIntData() == PLAYER_OPEN;
+            if(gameInitSettings.isMultiplePlayersPerHouse())
+                hasOpenSeat |= houseInfo[i].player2DropDown.getSelectedEntryIntData() == PLAYER_OPEN;
+        }
+        if(!hasOpenSeat) {
+            openWindow(MsgBox::create(_("Choose Open for a player slot before creating an online lobby.\nLeave a place for another player to join.")));
+            return;
+        }
         setup->players = getChangeEventList();
         quit(MENU_SETUP_HOST);
         return;

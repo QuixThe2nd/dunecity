@@ -485,8 +485,16 @@ bool CrossplayMenu::validateAndSavePlayerName() {
     return true;
 }
 
-void CrossplayMenu::onHostCustomGame() { playCustomGame(true); refreshPublicGames(); }
-void CrossplayMenu::onHostCampaignCoop() { SinglePlayerMenu::playCampaign(true); refreshPublicGames(); }
+void CrossplayMenu::onHostCustomGame() {
+    if(!validateAndSavePlayerName()) return;
+    playCustomGame(true);
+    refreshPublicGames();
+}
+void CrossplayMenu::onHostCampaignCoop() {
+    if(!validateAndSavePlayerName()) return;
+    SinglePlayerMenu::playCampaign(true);
+    refreshPublicGames();
+}
 
 void CrossplayMenu::onJoin() {
     std::string normalized;
@@ -626,6 +634,7 @@ void CrossplayMenu::openDirectSession() {
                   std::placeholders::_1, std::placeholders::_2, std::placeholders::_3));
 
     roomCode = grantedRoom.roomCode;
+    SDL_Log("Online lobby: admission granted (%s); opening direct session", pendingHosting ? "host" : "guest");
     publicRoom = grantedRoom.visibility == "public";
     pNetworkManager->setPublicRelayRoom(publicRoom);
     stage = Stage::Connecting;
@@ -762,7 +771,7 @@ void CrossplayMenu::update() {
                 : _("Your private game is open. Opening the lobby..."));
         } else {
             stage = Stage::ClientWaiting;
-            setStatus(_("Joined. Waiting for the host's game setup..."));
+            setStatus(_("Connecting to the host and receiving game setup..."));
         }
         refreshControls();
         if(!preparedGame) refreshPublicGames();
@@ -786,6 +795,7 @@ void CrossplayMenu::onReceiveGameInfo(const GameInitSettings& gameInitSettings,
 
     pendingGameInfo = std::make_unique<GameInitSettings>(gameInitSettings);
     pendingLobbyChanges = changeEventList;
+    SDL_Log("Online lobby: received host setup; queued lobby transition at %u ms", SDL_GetTicks());
 }
 
 void CrossplayMenu::enterReceivedLobby(const GameInitSettings& gameInitSettings,
@@ -795,6 +805,7 @@ void CrossplayMenu::enterReceivedLobby(const GameInitSettings& gameInitSettings,
 
     auto pCustomGamePlayers = std::make_unique<CustomGamePlayers>(gameInitSettings, false);
     pCustomGamePlayers->onReceiveChangeEventList(changeEventList);
+    SDL_Log("Online lobby: showing guest roster at %u ms", SDL_GetTicks());
     const int result = pCustomGamePlayers->showMenu();
     pCustomGamePlayers.reset();
 

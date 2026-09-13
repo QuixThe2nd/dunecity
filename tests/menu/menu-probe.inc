@@ -10,7 +10,7 @@
 #include <players/PlayerFactory.h>
 
 void menuRequire(bool value, const char* message) {
-    if(!value) throw std::runtime_error(message);
+    if(!value) { SDL_Log("MENU_PROBE_FAIL: %s", message); throw std::runtime_error(message); }
 }
 void menuCapture(MenuBase& menu, const std::string& name) {
     SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
@@ -73,6 +73,23 @@ int runMenuProbe() {
     setup.rules = effectiveGameOptions;
     const auto map = setup.maps.front();
     GameInitSettings init(getBasename(map,true),readCompleteFile(map),false,setup.rules);
+    {
+        GameInitSettings coop(HOUSE_ATREIDES, setup.rules, 1);
+        coop.enableCoop(true, "Keyboard co-op");
+        auto scenario = pFileManager->openCampaignFile(coop.getFilename());
+        std::string scenarioData(static_cast<size_t>(SDL_RWsize(scenario.get())), '\0');
+        SDL_RWread(scenario.get(), scenarioData.data(), 1, scenarioData.size());
+        coop.setScenarioData(scenarioData);
+        CustomGamePlayers menu(coop,true);
+        SDL_Event tab{}; tab.type=SDL_KEYDOWN; tab.key.keysym.sym=SDLK_TAB;
+        // A partner arriving enables Start after the lobby was built with it disabled.
+        menu.update();
+        menu.setPlayer2Slot("Keyboard partner",1);
+        menu.update();
+        bool reachedStart=false;
+        for(int i=0;i<40;++i) { menu.handleInput(tab); if(menu.nextButton.isActive()) { SDL_Log("MENU_PROBE: campaign Start reached after %d Tabs",i+1); reachedStart=true; break; } }
+        menuRequire(reachedStart,"Campaign lobby keyboard focus cannot reach Start after a partner joins");
+    }
     ChangeEventList original;
     {
         CustomGamePlayers menu(init,true,false,&setup);
@@ -96,6 +113,13 @@ int runMenuProbe() {
         }
         menu.update();
         menuCapture(menu,"custom-online");
+        menu.onNext();
+        menuRequire(!menu.isQuiting() && menu.hasChildWindow(),"Online setup allowed a lobby with every guest seat occupied by AI");
+        menu.closeChildWindow();
+        menu.processChildWindowOpenCloses();
+        auto& opponent = menu.houseInfo[1].player1DropDown;
+        for(int i=0;i<opponent.getNumEntries();++i)
+            if(opponent.getEntry(i)==_("open")) { opponent.setSelectedItem(i); break; }
         menu.onNext();
         menuRequire(menu.retVal==MENU_SETUP_HOST,"Create Lobby did not return prepared setup");
     }
@@ -122,6 +146,14 @@ int runMenuProbe() {
     setup.players=original;
     {
         CrossplayMenu menu;
+        menu.playerNameTextBox.setText("");
+        menu.onHostCustomGame();
+        menuRequire(menu.hasChildWindow(),"Custom hosting bypasses the entered player name");
+        menu.closeChildWindow(); menu.processChildWindowOpenCloses();
+        menu.onHostCampaignCoop();
+        menuRequire(menu.hasChildWindow(),"Campaign hosting bypasses the entered player name");
+        menu.closeChildWindow(); menu.processChildWindowOpenCloses();
+        menu.playerNameTextBox.setText(settings.general.playerName);
         menu.stage=CrossplayMenu::Stage::Choosing;
         PublicRelayGame coop, custom;
         coop.mode="coop"; coop.hostName="Campaign host"; coop.roomCode="AAAA-BBBB-CCCC"; coop.players=1; coop.maxPeers=2;
