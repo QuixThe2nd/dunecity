@@ -1,6 +1,6 @@
 // Real campaign helper, above-normal market prices and competing producers.
 void runCampaignHelperEconomyProbe(Game& game) {
-    auto require=[](bool ok,const char* why){if(!ok)throw std::runtime_error(why);};
+    auto require=[](bool ok,const char* why){if(!ok){SDL_Log("CAMPAIGN_HELPER_ECONOMY_FAIL: %s",why);throw std::runtime_error(why);}};
     auto* house=game.getHouse(HOUSE_HARKONNEN);
     QuantBot* bot=nullptr;
     for(const auto& player:house->getPlayerList())
@@ -17,11 +17,12 @@ void runCampaignHelperEconomyProbe(Game& game) {
             }
         throw std::runtime_error("No helper fixture site");
     };
+    require(place(Structure_WindTrap),"Windtrap placement failed");
     for(int i=0;i<3;++i)require(place(Structure_Refinery),"Refinery placement failed");
     auto* factory=dynamic_cast<BuilderBase*>(place(Structure_HeavyFactory));
     auto* port=dynamic_cast<StarPort*>(place(Structure_StarPort));
     require(factory && port,"Producer placement failed");
-    while(house->getNumItems(Unit_Harvester)<8)house->createUnit(Unit_Harvester,true);
+    while(house->getNumItems(Unit_Harvester)<8)require(house->createUnit(Unit_Harvester,true),"Worker creation failed");
     if(!house->getNumItems(Unit_Carryall))house->createUnit(Unit_Carryall,true);
     auto& market=house->getChoam();
     for(auto& item:market.availableItems) {
@@ -43,8 +44,9 @@ void runCampaignHelperEconomyProbe(Game& game) {
     // Paid cargo must count toward the target but not drain the budget twice.
     // Isolate its unpaid-cash test from unrelated construction commitments.
     auto saved=structureList;structureList.clear();structureList.push_back(port);structureList.push_back(factory);
-    house->takeCredits(house->getCredits());house->addCredits(2500);
+    house->takeCredits(house->getCredits());house->addCredits(3000);
     factory->currentProductionQueue.clear();factory->updateBuildList();
+    require(factory->isAvailableToBuild(Unit_Tank),"Factory fixture needs available tank production");
     try {bot->build(4200);}catch(...){structureList=saved;throw;}
     structureList=saved;
     require(queuedWorkers()==7,"Pending deliveries were ordered twice");
