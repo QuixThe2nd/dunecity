@@ -719,6 +719,16 @@ if (typeof mergeInto === 'function' && typeof LibraryManager !== 'undefined') {
         $DUNECITY_WEBRTC_STATE_CONNECTED: '=2',
         $DUNECITY_WEBRTC_STATE_FAILED: '=3',
 
+        $cachedP2pkit: '=null',
+        $resolveP2pkit__deps: ['$cachedP2pkit'],
+        $resolveP2pkit: resolveP2pkit,
+        $isP2pkitDialectMessage: isP2pkitDialectMessage,
+        $validateSignallingMessage: validateSignallingMessage,
+        $createDuneCitySignallingChannel__deps: [
+            '$validateSignallingMessage', '$DUNECITY_WEBRTC_MAX_SIGNAL_BYTES',
+        ],
+        $createDuneCitySignallingChannel: createDuneCitySignallingChannel,
+
         // Retain the factory in emitted JS; Emscripten only keeps $-prefixed library
         // symbols. __deps recursively retains every $DUNECITY_WEBRTC_* constant above,
         // so the emitted factory has no free missing identifiers.
@@ -732,6 +742,7 @@ if (typeof mergeInto === 'function' && typeof LibraryManager !== 'undefined') {
             '$DUNECITY_WEBRTC_EVENT_MESSAGE', '$DUNECITY_WEBRTC_EVENT_STATE',
             '$DUNECITY_WEBRTC_STATE_IDLE', '$DUNECITY_WEBRTC_STATE_CONNECTING',
             '$DUNECITY_WEBRTC_STATE_CONNECTED', '$DUNECITY_WEBRTC_STATE_FAILED',
+            '$resolveP2pkit', '$createDuneCitySignallingChannel', '$isP2pkitDialectMessage',
         ],
         $createDuneCityWebRtc: createDuneCityWebRtc,
 
