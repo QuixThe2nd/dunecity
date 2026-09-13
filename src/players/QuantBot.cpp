@@ -3207,13 +3207,17 @@ void QuantBot::build(int militaryValue) {
 	int money = getHouse()->getCredits();
     militaryValue += queuedMilitaryValue;
 	const bool citySimEnabled = currentGame && currentGame->isCitySimEnabled();
-    if (citySimEnabled) {
-        // Queued refineries bring a worker too; count it once across build passes.
-        const int pendingRefineries = std::max(0,itemCount[Structure_Refinery]
-            - getHouse()->getNumItems(Structure_Refinery));
-        itemCount[Unit_Harvester] += std::min(pendingRefineries,
-            std::max(0,harvesterLimit-itemCount[Unit_Harvester]));
-    }
+    // A queued refinery supplies a free worker when placed. Reserve that
+    // worker alongside factory production and paid imports in every game mode.
+    const int engineHarvesterLimit = getHouse()->getMaxHarvesters();
+    const int actualHarvesters = getHouse()->getNumItems(Unit_Harvester)
+        + getHouse()->getNumItems(Unit_RebelHarvester);
+    const int pendingRefineries = std::max(0,itemCount[Structure_Refinery]
+        - getHouse()->getNumItems(Structure_Refinery));
+    itemCount[Unit_Harvester] += engineHarvesterLimit > 0
+        ? std::min(pendingRefineries, std::max(0,engineHarvesterLimit
+            - itemCount[Unit_Harvester] - itemCount[Unit_RebelHarvester]))
+        : pendingRefineries;
     const bool powerRules = getHouse()->isPowerRequired();
     const bool turretPowerRequired = getGameInitSettings().getGameOptions().rocketTurretsNeedPower;
     const bool vanillaEconomy = !citySimEnabled && !powerRules;
@@ -5194,7 +5198,6 @@ void QuantBot::build(int militaryValue) {
                     if (money >= data[Structure_Refinery][houseID].price) {
                         itemID = Structure_Refinery;
                         structureRule = "city_spice_opening";
-                        if (itemCount[Unit_Harvester] < harvesterLimit) ++itemCount[Unit_Harvester];
                     }
                     if (emitStatsLog) traceDecision("city_spice_opening", AITelemetry::Record()
                         .set("target",openingRefineries).set("refineries",itemCount[Structure_Refinery])
@@ -5382,9 +5385,6 @@ void QuantBot::build(int militaryValue) {
 					&& itemCount[Structure_Refinery] == 0
 					&& pBuilder->isAvailableToBuild(Structure_Refinery)) {
 					itemID = Structure_Refinery; structureRule = "refinery_economy";
-					if (itemCount[Unit_Harvester] < harvesterLimit) {
-						itemCount[Unit_Harvester]++;
-					}
 				}
 
                 // Establish repairs before more factories/tech consume the opening
@@ -5413,9 +5413,6 @@ void QuantBot::build(int militaryValue) {
 			&& pBuilder->isAvailableToBuild(Structure_Refinery)
 			&& !(gameMode == GameMode::Campaign && itemCount[Structure_Refinery] >= 2 && itemCount[Structure_RepairYard] == 0 && currentGame && currentGame->techLevel >= 5)) {
 						itemID = Structure_Refinery; structureRule = "refinery_economy";
-						if (itemCount[Unit_Harvester] < harvesterLimit) {
-							itemCount[Unit_Harvester]++;
-						}
 					}
 				// 4. Refinery (< 4, money < 2000) — non-city-sim only.
 				if (itemID == NONE_ID && !skipRemainingStructureLogic
@@ -5426,9 +5423,6 @@ void QuantBot::build(int militaryValue) {
 				&& pBuilder->isAvailableToBuild(Structure_Refinery)
 					&& money < 2000) {
 					itemID = Structure_Refinery; structureRule = "refinery_economy";
-					if (itemCount[Unit_Harvester] < harvesterLimit) {
-						itemCount[Unit_Harvester]++;
-					}
 				}
 				// City income gate: in city sim mode, defer military infrastructure
 				// (StarPort/Radar/LightFactory) until the city has at least the
@@ -5715,10 +5709,6 @@ void QuantBot::build(int militaryValue) {
 						&& pBuilder->isAvailableToBuild(Structure_Refinery)
 						&& !(gameMode == GameMode::Campaign && itemCount[Structure_Refinery] >= 2 && itemCount[Structure_RepairYard] == 0 && currentGame && currentGame->techLevel >= 5)) {
 						itemID = Structure_Refinery; structureRule = "refinery_economy";
-						// Only increment if below limit (free harvester will only spawn if below limit)
-						if (itemCount[Unit_Harvester] < harvesterLimit) {
-							itemCount[Unit_Harvester]++;
-						}
 					}
 				// 14. Expand repair only when existing capacity is busy and production supports it.
 				if (itemID == NONE_ID && !skipRemainingStructureLogic
@@ -5962,6 +5952,17 @@ void QuantBot::build(int militaryValue) {
                     .set("spendable", money).set("queued_production_cost", queuedProductionCost));
                 itemID = NONE_ID;
             }
+            // Paid imports must still be delivered. If they fill the last slots,
+            // wait before adding a refinery that could spawn another worker first.
+            // Once the fleet has arrived, capacity-only refineries are safe again.
+            if (itemID==Structure_Refinery && engineHarvesterLimit>0
+                && actualHarvesters<engineHarvesterLimit
+                && itemCount[Unit_Harvester]+itemCount[Unit_RebelHarvester]>=engineHarvesterLimit) {
+                traceDecision("construction_rejected", AITelemetry::Record()
+                    .set("builder",pBuilder->getObjectID()).set("item",itemID)
+                    .set("rule",structureRule).set("reason","pending_worker_capacity"));
+                itemID=NONE_ID;
+            }
 			if (emitStatsLog) logDebug("BUILD-CHOICE: CY=%u item=%u credits=%d skip=%d",
 				pBuilder->getObjectID(), itemID, money, skipRemainingStructureLogic);
             // A later power/tech override cannot reuse a service's 1x1 site.
@@ -6088,11 +6089,8 @@ void QuantBot::build(int militaryValue) {
                             .set("item",itemID).set("x",selectedPlaceLocation.x).set("y",selectedPlaceLocation.y)
                             .set("removed_zones",removed));
                     }
-                    if (itemID==Structure_Refinery && itemCount[Unit_Harvester]<harvesterLimit
-                        && (structureRule==std::string("city_opening_investment")
-                            || structureRule==std::string("city_economy") || structureRule==std::string("city_economy_fallback")
-                            || structureRule==std::string("city_refinery_capacity")
-                            || structureRule==std::string("city_opening_refinery_investment")))
+                    if (itemID==Structure_Refinery && (engineHarvesterLimit==0
+                        || itemCount[Unit_Harvester]+itemCount[Unit_RebelHarvester]<engineHarvesterLimit))
                         ++itemCount[Unit_Harvester];
 					reservedStructures[planningBuilder] = {itemID, selectedPlaceLocation};
                     if (placeLocations.empty()) placeLocations.push_back(selectedPlaceLocation);

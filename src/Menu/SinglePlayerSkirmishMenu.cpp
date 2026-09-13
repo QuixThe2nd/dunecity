@@ -284,7 +284,7 @@ void SinglePlayerSkirmishMenu::onChildWindowClose(Window* pChildWindow) {
     if(pGameOptionsWindow != nullptr) {
         currentGameOptions = pGameOptionsWindow->getGameOptions();
         // Choices made here become the new defaults, the same as in Options.
-        saveGameOptionsAsDefaults(currentGameOptions);
+        // Game Rules only persists defaults when the player requests it.
     }
 }
 

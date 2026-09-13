@@ -1,3 +1,13 @@
+## 2026-09-14 — Integrated campaign release candidate 1.0.680
+
+Merged main 49d58ed (menu navigation and reproducible browser/mod packaging)
+with the campaign AI changes. Worker planning now reserves pending refinery
+workers in every mode and only after a successful construction order. New
+refineries wait when paid/queued workers already fill the engine cap, until
+those workers arrive. This preserves paid deliveries and capacity expansion.
+Validation and publication are in progress; see the preceding 679 assessment
+for the eight over-cap scenarios being rerun.
+
 ## 2026-09-14 — Native release assessment, local AI 1.0.679
 
 Tested clean source `552a59f`: 71 scenarios (59 matrix +12 other-house level-9
@@ -160,6 +170,169 @@ because of the defense bug. Full artifacts are in `669-validation` and
 The visible 669 Easy/Easy Harkonnen level 9 (seed 163683417) reached the ending
 cinematic after the last telemetry read at 24.61 game minutes. The user closed
 that browser tab before final score/summary capture; do not invent exact totals.
+## Browser bundled mods restored — 1.0.679, 13 September 2026
+
+Stefan reported that public browser 1.0.665 only listed Dune City and Vanilla.
+Emscripten preloaded data/config/sprites but omitted mods/Tornie and mods/Dune2R.
+Native packaging already included both. The pending 1.0.674 tag and duplicate
+main CI runs (34759208672, 34759197806) were force-cancelled before publication;
+GitHub latest remained 1.0.665. Keep the existing v1.0.674 tag immutable.
+
+Version 1.0.679 adds both managed mod payloads to browser preloads, excluding
+Dune2R optional downloadable art as native packaging does. Managed reseeding
+recreates the empty Dune2R asset directories omitted by file-only archives,
+preventing fallback to Vanilla on the next launch. Existing downloaded art is
+preserved. The build and production web workflows validate the actual JS/data
+archive for both mods and Tornie's SHA256 manifest. Six regression tests cover
+metadata forms (including minified exponent offsets), missing mods, corruption,
+truncated data and accidental art. The actual 679 archive verifies all 769
+Tornie checksum entries and six Dune2R files in 38,455,774 bytes.
+The check correctly rejects the previous CI 674 artifact for missing Tornie.
+Native Release, dependency audit and all seven CTest groups pass.
+
+Shipping authorization persists for 679, with the already disclosed WAN and
+multiplayer save/resume limits. Keep Stefan's running local 673 game untouched.
+Local browser acceptance passes on the existing 674 preview profile upgraded
+to 679: all four mods appear in Extras, Custom Game and Campaign. Tornie and
+Dune2R activate and remain active after individual reloads; an offline Tornie
+custom game reaches gameplay. Public publication must be verified separately.
+
+Stefan explicitly requested a GitHub administrator exception for ggtothemax.
+Ruleset 23003149 now permits User 325456832 in pull_request bypass mode; all
+other rules are preserved. Readback confirmed pull_requests_only. PR 30 merged
+with that exception after checks passed, producing 72bae344. Do not broaden the
+exception to other admins or direct pushes. The website copy is staged separately
+in dunelegacy-release-674 and must be updated for 679 before publication.
+
+## Release authorization — 1.0.674, 13 September 2026
+
+Stefan explicitly requested shipping after being told that different-network,
+two-device multiplayer and multiplayer save/resume remained unverified. Release
+1.0.674 with those limits recorded in releases/desktop/1.0.674.md. This authorizes
+normal stable-tag desktop, browser, website and SourceForge publication; keep the
+current local human co-op session running. Source is a fast-forward of public
+main b7db719. Publication outcome must be checked separately from local builds.
+
+## Classic player setup restored — 1.0.674 local, 13 September 2026
+
+Stefan rejected the sparse left-aligned player setup and requested the original
+custom-player UI for both Offline and Online. The classic centered roster/map
+composition, full player labels and dropdown widths (where space permits),
+wide-screen button margins, and optional Bonus palette selector are restored.
+The unified map/mod/connection/rules setup and 673 hosting validation remain;
+private/public visibility appears only online. Compact shared-house rows fit
+640 pixels. Simulation, saves and transport are unchanged.
+
+Native Release and all seven CTest groups pass; after the final narrow Bonus
+label adjustment, the menu probe passes again. It now asserts actual rendering
+at 640×480, 854×480 and 1280×720, including six-house Offline/Online, shared
+houses, campaign lobby and Tornie bonus colors. The test-only main bypasses
+SDL dummy desktop clamping, which otherwise silently reduced 1280 to 1024.
+The final web Release build and dependency audit also pass. Native/web 674
+artifacts are separate from the running 673 session. See docs/menu-acceptance.md.
+
+Stefan also personally hosted and started a private 673 Ordos campaign in the
+browser. Codex joined as MenuHost using the matching native client; both rosters
+were visible before Start, both entered the mission, and Stefan's unit movement
+and exploration appeared natively. Peer reports passed cycle 27,749 without a
+reported desync/disconnect in inspected diagnostics. This passes the human
+hosting/start check locally; it does not establish WAN or a completed campaign.
+
+IMPORTANT: Stefan is still playing. Keep browser tab 3, localhost:8769, the
+private service localhost:60458, and the running 673 Dune Menu Host test copy
+untouched. Do not close/reload the browser, replace its served play folder, stop
+the test client, or overwrite its executable/profile. The 674 build belongs in
+build/bin and a separate play-674 package; switch only after the current game.
+No install, push, PR or public deployment performed.
+
+## Hosting fixes — 1.0.673 local, 13 September 2026
+
+Create Campaign/Custom from Join Online now commits the entered name before
+building the roster. Custom online setup requires an explicit open guest slot;
+existing AI choices survive the Offline → Online switch. Admission progress no
+longer says Joined before receiving the host setup, and receipt/roster timestamps
+make the transition observable. The source-controlled web Release link uses -O2
+with O3 C++ compilation; the local linker override is cleared and normal native
+and web Release builds pass.
+
+All seven CTest groups and dependency/version/signature audits pass. Real 673
+native-host/browser-guest public campaign and browser-host/native-guest private
+custom games reached gameplay. Guest rosters were visible before Start; campaign
+receipt-to-roster took 20–25 ms on two joins, peer traffic passed cycle 12,374,
+and a browser infantry command appeared natively. Custom peer reports passed
+2,249. No reported desync in inspected diagnostics. The older browser waiting
+observation was not reproduced; do not invent a transport root cause or claim
+one was repaired. The suspected native keyboard trap was input-testing trouble;
+actual keyboard Start and a production-menu focus test pass.
+
+Stefan's crash screenshot was traced to temporary host PID 30706 rejected by
+macOS after replacing its executable without re-signing the copied app. Re-sign
+fixed it. A separate menu-probe crash was corrected test setup (network callback
+without a manager). Exact reports/evidence and scope: docs/menu-acceptance.md.
+The playable delivery app passes strict codesign verification. Applications still
+held 1.0.653; the 673 test candidate is build/bin/dunecity.app. No install, push or
+deployment performed. Human hosting / second-device or network check remains
+before release; no new saved-session, WAN, mobile or campaign-completion claim.
+
+## Menu acceptance — 1.0.672 local, 13 September 2026
+
+Stefan requested actual verification. Commit 2f440b5 fixes a live-discovered
+Home keyboard trap: hidden legacy buttons participated in Tab navigation.
+Only visible destinations now register in screen order, and initial focus is
+assigned after registration. The production-menu probe checks a complete cycle.
+Native Release, dependency/version/signature checks and all seven CTest groups
+pass. A live cycle with Continue visible also passed.
+
+Isolated native clients exercised all four core routes into actual gameplay:
+offline Campaign and Custom, private-code online Custom (670), and public
+Campaign co-op (672). Campaign retained Ordos/level 4 through cancellation and
+hosting and loaded SCENO008.INI. Real directory filters distinguished campaign
+from custom. Custom peer traffic reached cycle 11,999; campaign passed 2,600;
+neither inspected log reported desync. Offline save → Home → Continue resumed
+the mission. Online custom saves route into hosting lobbies in 670 and 672.
+Mods and Map Editor opened from Extras; unified Graphics was inspected.
+
+Exact evidence and scope are in `docs/menu-acceptance.md`, with logs and isolated
+profiles under `../outputs/dunecity-menu-acceptance`. The browser test build
+joined a fresh public native campaign, passed the start barrier, and ran to
+cycle 14,624 with no reported desync. A browser unit command appeared on the
+host. Browser Home/Join/Graphics/Audio mouse navigation passed. The browser
+initial lobby display remains open: it could show Join Online's waiting screen
+until the host started, despite the host recognizing the browser. Saved co-op
+admission was checked, but actual saved-session resumption is not claimed.
+
+Default web Release linking was stopped after over 20 minutes in Binaryen's
+local2Stack optimizer (12.2 GB sampled footprint). The successful browser test
+used existing Release objects with CMAKE_EXE_LINKER_FLAGS_RELEASE=-O2; default
+project flags are unchanged. This does not validate the default O3 web release.
+No WAN/mobile or completed-campaign claim. Nothing was pushed or deployed.
+Existing Game Rules/New Map keyboard dismissal remains a follow-up; native
+pointer automation was unreliable. The candidate is not fully signed off.
+
+## Menu navigation — 1.0.670 local, 13 September 2026
+
+Stefan approved implementing the menu review, including Mods and Map Editor in
+Extras. This candidate starts from campaign-controls commit 81ff90a (1.0.669).
+Home now goes directly to Campaign, Custom Game, Join Online, Load Game,
+Settings and Extras. Campaign has explicit Start, Offline/Online, full campaign
+or single mission; online hosting carries the selected setup into the lobby.
+Custom combines map/mod/connection/rules/player choices, preserving the roster
+when changing connection mode. Join Online has mode/mod filters, invitation
+codes, separate public chat, and secondary legacy LAN/direct connections.
+
+Graphics and interface controls share Settings > Graphics. Audio, Controls and
+Advanced are separate tabs. Unchanged legacy network fields no longer block
+unrelated settings changes. Setup rules persist globally only when requested.
+Continue detects eligible recent offline saves; Load Game routes by saved type.
+See `docs/menu-navigation.md` for the exact flow and remaining follow-ups.
+
+Native Release and dependency audits pass. All six existing CTest targets pass;
+the new real-menu probe verifies setup preservation, filters and settings
+validation, and renders at 640×480 and 854×480 with isolated profiles. Its images
+are in `build/menu-probe`. Small-screen player rows were corrected after visual
+inspection, including shared-house controls. The app is in `build/bin`.
+No public deployment, browser/mobile verification or live two-peer game test
+is claimed for this menu candidate.
 
 ## Campaign difficulty implementation — 1.0.669 local, 13 September 2026
 

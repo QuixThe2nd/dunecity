@@ -132,7 +132,9 @@ jobs:
           sudo apt-get install -y git python3
 
       - name: Check browser build safety
-        run: python3 -m unittest discover -s scripts/tests -p 'test_web_build.py'
+        run: |
+          python3 -m unittest discover -s scripts/tests -p 'test_web_build.py'
+          python3 -m unittest discover -s scripts/tests -p 'test_check_web_mods.py'
 
       # The direct-play bridge bundle is committed so that a clean clone builds without npm.
       # These three steps are what keeps that honest: install the pinned tool, prove the

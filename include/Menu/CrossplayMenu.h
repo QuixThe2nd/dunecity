@@ -42,6 +42,7 @@
 #include <Network/RoomAdmissionClient.h>
 
 #include <GameInitSettings.h>
+#include <mod/ModInfo.h>
 
 #include <memory>
 #include <string>
@@ -51,6 +52,7 @@
 class CrossplayMenu : public MenuBase {
 public:
     CrossplayMenu();
+    CrossplayMenu(const GameInitSettings& game, bool publicGame, const ChangeEventList& players = {});
     ~CrossplayMenu() override;
 
     void update() override;
@@ -65,6 +67,8 @@ private:
         Finished        ///< the session ended; the reason is on screen
     };
 
+    void refreshDirectory();
+    void layoutControls();
     void onHostCustomGame();
     void onHostCampaignCoop();
     void onJoin();
@@ -95,6 +99,15 @@ private:
     /// Fingerprint of the bundled content, as the relay and the lobby both understand it.
     static std::string contentFingerprint();
 
+    std::unique_ptr<GameInitSettings> preparedGame;
+    ChangeEventList preparedPlayers;
+    bool autoHostRequested = false;
+    bool showChat = false;
+    DropDownBox modeFilter, modFilter;
+    std::vector<ModInfo> availableMods;
+    TextButton chatToggle, otherConnections;
+    TextView preparedSummary;
+    std::vector<PublicRelayGame> allPublicGames;
     Stage       stage = Stage::Choosing;
     bool        hostingCoop = false;
     bool        pendingHosting = false;

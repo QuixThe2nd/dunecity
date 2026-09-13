@@ -172,6 +172,14 @@ bool refreshManagedMod(const std::string& modName,
             std::filesystem::copy_options::recursive |
             std::filesystem::copy_options::overwrite_existing);
 
+        // File-only packages (including Emscripten preload data) omit empty
+        // directories. Recreate the optional asset roots before validating
+        // the installed Dune2R shell, even when no art packs are installed.
+        if(modName == DUNE2R_MOD_NAME) {
+            std::filesystem::create_directories(staged / "graphics_hd" / "units");
+            std::filesystem::create_directories(staged / "graphics_compact" / "objpics");
+        }
+
         // Dune2R art is downloaded independently of the managed mod shell.
         // Carry user-installed packs into the replacement before the atomic
         // swap so a game update never erases a large, verified download.

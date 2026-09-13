@@ -71,8 +71,14 @@ private:
     StaticContainer windowWidget;
 
     Label       title;
-    VBox        pages[3];
-    TextButton  pageButtons[3];
+    VBox        pages[5];
+    TextButton  pageButtons[5];
+    static int lastPage;
+    HBox        interfaceHBox;
+    DropDownBox interfaceSizeDropDownBox;
+    DropDownBox aspectDropDownBox;
+    HBox        scrollHBox;
+    DropDownBox scrollSpeedDropDownBox;
     HBox        introHBox;
     HBox        flagsHBox;
 

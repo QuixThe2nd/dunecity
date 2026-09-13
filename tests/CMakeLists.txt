@@ -367,3 +367,15 @@ if(DUNECITY_DIRECT_P2P AND NOT EMSCRIPTEN)
     target_link_libraries(dunecity_p2p_interop PRIVATE ${DUNECITY_LIBDATACHANNEL_TARGET})
     target_compile_features(dunecity_p2p_interop PRIVATE cxx_std_17)
 endif()
+
+# Real SDL menu rendering and setup preservation, using isolated local profiles.
+# The diagnostic main links production menu objects; no test access ships in the app.
+if(APPLE AND CMAKE_GENERATOR STREQUAL "Ninja")
+    find_package(Python3 COMPONENTS Interpreter QUIET)
+    if(Python3_Interpreter_FOUND)
+        add_test(NAME menu_navigation_probe COMMAND ${Python3_EXECUTABLE}
+            ${CMAKE_SOURCE_DIR}/tests/menu/run-menu-probe.py
+            --build-dir ${CMAKE_BINARY_DIR} --output-dir ${CMAKE_BINARY_DIR}/menu-probe)
+        set_tests_properties(menu_navigation_probe PROPERTIES TIMEOUT 300 RUN_SERIAL TRUE)
+    endif()
+endif()

@@ -16,6 +16,9 @@
  */
 
 #include <Menu/SinglePlayerMenu.h>
+#include <Menu/CrossplayMenu.h>
+#include <Menu/CustomGamePlayers.h>
+#include <FileClasses/FileManager.h>
 
 #include <globals.h>
 
@@ -110,8 +113,11 @@ void SinglePlayerMenu::onCampaign() {
     playCampaign();
 }
 
-void SinglePlayerMenu::playCampaign() {
-    int player = HouseChoiceMenu().showMenu();
+void SinglePlayerMenu::playCampaign(bool online) {
+  bool keepRules = false;
+  for(;;) {
+    int player = HouseChoiceMenu(online, keepRules).showMenu();
+    keepRules = true;
 
     if(player < 0) {
         return;
@@ -135,11 +141,13 @@ void SinglePlayerMenu::playCampaign() {
         "qBotEasy", "qBotMedium", "qBotHard", "qBotBrutal", "qBotDefend", "CampaignAIPlayer"
     };
 
-    const bool supportSelected = (supportBotIndex > 0);
+    const bool supportSelected = (supportBotIndex > 0) && !HouseChoiceMenu::isOnline();
     const char* supportPlayerClass = supportSelected ? kSupportPlayerClasses[supportBotIndex] : nullptr;
     const char* enemyAIClass = kEnemyAIClasses[enemyAIIndex];
 
-    GameInitSettings init((HOUSETYPE) player, gameOptions, HouseChoiceMenu::getStartLevel());
+    GameInitSettings init = HouseChoiceMenu::isSingleMission()
+        ? GameInitSettings((HOUSETYPE) player, HouseChoiceMenu::getStartLevel(), gameOptions)
+        : GameInitSettings((HOUSETYPE) player, gameOptions, HouseChoiceMenu::getStartLevel());
     if(supportSelected) {
         init.setMultiplePlayersPerHouse(true);
     }
@@ -165,7 +173,18 @@ void SinglePlayerMenu::playCampaign() {
         }
     }
 
-    startSinglePlayerGame(init);
+    if(HouseChoiceMenu::isOnline()) {
+        init.enableCoop(!HouseChoiceMenu::isSingleMission(), settings.general.playerName + "'s co-op game");
+        auto file = pFileManager->openCampaignFile(init.getFilename());
+        const auto size = SDL_RWsize(file.get());
+        if(size <= 0) throw std::runtime_error("Could not read this campaign mission.");
+        std::string data(static_cast<size_t>(size), '\0');
+        if(SDL_RWread(file.get(), data.data(), 1, data.size()) != data.size()) throw std::runtime_error("Could not read this campaign mission.");
+        init.setScenarioData(data);
+        if(CrossplayMenu(init, HouseChoiceMenu::isPublicGame()).showMenu() == MENU_QUIT_GAME_FINISHED) return;
+        online = true;
+    } else { startSinglePlayerGame(init); return; }
+  }
 }
 
 void SinglePlayerMenu::onCustom() {

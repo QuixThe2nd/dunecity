@@ -16,6 +16,8 @@
  */
 
 #include <Menu/HouseChoiceMenu.h>
+#include <sand.h>
+#include <Menu/PlaySetup.h>
 #include <Menu/SinglePlayerSkirmishMenu.h>
 #include <mod/ModManager.h>
 
@@ -72,15 +74,20 @@ constexpr int kEnemyAIOptionCount = sizeof(kEnemyAIClasses) / sizeof(kEnemyAICla
 }
 
 // Static member definitions
+int HouseChoiceMenu::s_house = HOUSE_ATREIDES;
+bool HouseChoiceMenu::s_online = false;
+bool HouseChoiceMenu::s_singleMission = false;
+bool HouseChoiceMenu::s_publicGame = false;
 int HouseChoiceMenu::s_startLevel = 1;
 int HouseChoiceMenu::s_supportBotIndex = 0;
 int HouseChoiceMenu::s_enemyAIIndex = 0;
 SettingsClass::GameOptionsClass HouseChoiceMenu::s_currentGameOptions;
 
-HouseChoiceMenu::HouseChoiceMenu() : MenuBase()
+HouseChoiceMenu::HouseChoiceMenu(bool online, bool keepRules) : MenuBase()
 {
+    s_online = online;
     currentHouseChoiceScrollPos = 0;
-    s_currentGameOptions = effectiveGameOptions;  // Use mod-aware effective options
+    if(!keepRules) s_currentGameOptions = effectiveGameOptions;
 
     // set up window
     int xpos = std::max(0,(getRendererWidth() - 640)/2);
@@ -93,9 +100,30 @@ HouseChoiceMenu::HouseChoiceMenu() : MenuBase()
     setWindowWidget(&windowWidget);
 
 
-    selectYourHouseLabel.setTexture(pGFXManager->getUIGraphic(UI_SelectYourHouseLarge));
-    selectYourHouseLabel.setFitToSize(true);
-    windowWidget.addWidget(&selectYourHouseLabel, Point(0,0), Point(640, 56));
+    titleLabel.setText(_("Campaign"));
+    titleLabel.setTextColor(COLOR_WHITE);
+    titleLabel.setTextFontSize(20);
+    titleLabel.setAlignment(Alignment_HCenter);
+    windowWidget.addWidget(&titleLabel, Point(0,0), Point(640,26));
+    connectionDropDown.addEntry(_("Offline"), 0);
+    connectionDropDown.addEntry(_("Online co-op"), 1);
+    connectionDropDown.setSelectedItem(s_online ? 1 : 0);
+    connectionDropDown.setOnSelectionChange([this](bool) { s_online = connectionDropDown.getSelectedIndex() == 1; updateConnection(); });
+    windowWidget.addWidget(&connectionDropDown, Point(48,30), Point(174,24));
+    journeyDropDown.addEntry(_("Full campaign"), 0);
+    journeyDropDown.addEntry(_("Single mission"), 1);
+    journeyDropDown.setSelectedItem(s_singleMission ? 1 : 0);
+    journeyDropDown.setOnSelectionChange([this](bool interactive) { if(interactive) { s_singleMission = journeyDropDown.getSelectedIndex() == 1; populateLevels(); updateConnection(); } });
+    windowWidget.addWidget(&journeyDropDown, Point(232,30), Point(174,24));
+    visibilityDropDown.addEntry(_("Private - invite code"), 0);
+    visibilityDropDown.addEntry(_("Public - anyone"), 1);
+    visibilityDropDown.setSelectedItem(s_publicGame ? 1 : 0);
+    visibilityDropDown.setOnSelectionChange([this](bool) { s_publicGame = visibilityDropDown.getSelectedIndex() == 1; });
+    windowWidget.addWidget(&visibilityDropDown, Point(416,30), Point(176,24));
+    selectedHouseLabel.setTextColor(COLOR_WHITE);
+    selectedHouseLabel.setTextFontSize(12);
+    selectedHouseLabel.setAlignment(Alignment_HCenter);
+    windowWidget.addWidget(&selectedHouseLabel, Point(232,250), Point(176,40));
 
     // set up buttons
     house1Button.setOnClick(std::bind(&HouseChoiceMenu::onHouseButton, this, 0));
@@ -128,15 +156,11 @@ HouseChoiceMenu::HouseChoiceMenu() : MenuBase()
         item->setAlignment(Alignment_Left);
         windowWidget.addWidget(item, Point(x, y), Point(256, 18));
     };
-    label("Start from level", 48, 294);
-    for(int level = 1; level <= 9; ++level)
-        startLevelDropDown.addEntry(_("Level ") + std::to_string(level), level);
-    startLevelDropDown.setSelectedItem(s_startLevel - 1);
-    startLevelDropDown.setOnSelectionChange([this](bool) {
-        s_startLevel = std::clamp(startLevelDropDown.getSelectedEntryIntData(), 1, 9);
-    });
+    label("Start from", 48, 294);
+    populateLevels();
+    startLevelDropDown.setOnSelectionChange([this](bool) { s_startLevel = startLevelDropDown.getSelectedEntryIntData(); });
     windowWidget.addWidget(&startLevelDropDown, Point(48, 315), Point(256, 22));
-    label("Begin here, then continue the campaign.", 48, 339);
+    label("Choose a house above, then start below.", 48, 339);
 
     label("Campaign mod", 48, 365);
     availableMods = ModManager::instance().listMods();
@@ -190,16 +214,18 @@ HouseChoiceMenu::HouseChoiceMenu() : MenuBase()
     windowWidget.addWidget(&enemyDescription, Point(336, 423), Point(256, 30));
     onEnemyAISelectionChanged(false);
 
-    gameOptionsButton.setText(_("Game Options"));
+    gameOptionsButton.setText(_("Game Rules"));
     gameOptionsButton.setOnClick(std::bind(&HouseChoiceMenu::onGameOptions, this));
-    windowWidget.addWidget(&gameOptionsButton, Point(80, 455), Point(150, 22));
-    hostCoopButton.setText(_("Host Co-op"));
-    hostCoopButton.setTooltipText(_("Open the co-op lobby to configure a shared campaign."));
-    hostCoopButton.setOnClick([] { SinglePlayerSkirmishMenu(true).showMenu(); });
-    windowWidget.addWidget(&hostCoopButton, Point(245, 455), Point(150, 22));
+    windowWidget.addWidget(&gameOptionsButton, Point(184, 455), Point(128, 24));
+    hostCoopButton.setOnClick([this]() { quit(s_house); });
+    windowWidget.addWidget(&hostCoopButton, Point(448,455), Point(144,24));
     backButton.setText(_("Back"));
     backButton.setOnClick([this] { quit(); });
-    windowWidget.addWidget(&backButton, Point(410, 455), Point(150, 22));
+    windowWidget.addWidget(&backButton, Point(48,455), Point(128,24));
+    loadButton.setText(_("Load Save"));
+    loadButton.setOnClick([]() { showGameLibrary(); });
+    windowWidget.addWidget(&loadButton, Point(320,455), Point(120,24));
+    updateConnection();
     updateHouseChoice();
 }
 
@@ -209,8 +235,7 @@ void HouseChoiceMenu::onChildWindowClose(Window* pChildWindow) {
     GameOptionsWindow* pGameOptionsWindow = dynamic_cast<GameOptionsWindow*>(pChildWindow);
     if(pGameOptionsWindow != nullptr) {
         s_currentGameOptions = pGameOptionsWindow->getGameOptions();
-        // Choices made here become the new defaults, the same as in Options.
-        saveGameOptionsAsDefaults(s_currentGameOptions);
+        // Rules stay local unless Remember is selected in the rules dialog.
     }
 }
 
@@ -293,12 +318,31 @@ void HouseChoiceMenu::onHouseButton(int button) {
             break;
     }
 
-    int ret = HouseChoiceInfoMenu(selectedHouse).showMenu();
-    quit(ret == MENU_QUIT_DEFAULT ? MENU_QUIT_DEFAULT : selectedHouse);
+    s_house = selectedHouse;
+    updateHouseChoice();
 }
 
 
+void HouseChoiceMenu::populateLevels() {
+    startLevelDropDown.clearAllEntries();
+    s_startLevel = std::clamp(s_startLevel, 1, s_singleMission ? 22 : 9);
+    for(int i = 1; i <= (s_singleMission ? 22 : 9); ++i)
+        startLevelDropDown.addEntry((s_singleMission ? _("Mission ") : _("Level ")) + std::to_string(i), i);
+    startLevelDropDown.setSelectedItem(s_startLevel - 1);
+}
+
+void HouseChoiceMenu::updateConnection() {
+    hostCoopButton.setText(s_online ? _("Create Lobby") : s_singleMission ? _("Start Mission") : _("Start Campaign"));
+    visibilityDropDown.setEnabled(s_online);
+    supportBotDropDown.setEnabled(!s_online);
+    if(s_online) supportDescription.setText(_("Two people share one house and army.\nYour partner joins in the lobby."));
+    else onSupportBotSelectionChanged(false);
+}
+
 void HouseChoiceMenu::updateHouseChoice() {
+    if(!isHouseAvailable(static_cast<HOUSETYPE>(s_house))) s_house = HOUSE_ATREIDES;
+    selectedHouseLabel.setText(_("Selected:") + std::string("\n") + getHouseNameByNumber(static_cast<HOUSETYPE>(s_house)));
+
     // House1 button
     house1Button.setTextures(pGFXManager->getUIGraphic(UI_Herald_ColoredLarge, houseOrder[currentHouseChoiceScrollPos+0]));
 

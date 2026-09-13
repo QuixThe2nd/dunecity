@@ -34,6 +34,11 @@ void runCampaignHelperEconomyProbe(Game& game) {
     bot->gameMode=QuantBot::GameMode::Custom;bot->harvesterLimit=15;
     bot->militaryValueLimit=40000;bot->lastCalculatedSpice=36000;
     house->takeCredits(house->getCredits());house->addCredits(9000);
+    auto* yard=dynamic_cast<BuilderBase*>(place(Structure_ConstructionYard));
+    require(yard,"Construction yard placement failed");
+    yard->updateBuildList();
+    yard->doProduceItem(Structure_Refinery);
+    require(yard->getCurrentProducedItem()==Structure_Refinery,"Pending refinery setup failed");
     bot->build(4200);
     auto queuedWorkers=[&]() {
         int count=0;for(const auto& item:port->currentProductionQueue)count+=item.itemID==Unit_Harvester;
@@ -42,18 +47,27 @@ void runCampaignHelperEconomyProbe(Game& game) {
     require(queuedWorkers()==5,"Helper failed to buy all available workers toward its 15-worker target");
     require(!port->okToOrder(),"Worker order was not dispatched");
     // While five paid workers are in transit, a second port can buy exactly
-    // the remaining two. Neither double reservation nor duplicate orders fit.
+    // the remaining one: the queued refinery supplies the other. Neither double reservation nor duplicate orders fit.
     auto* second=dynamic_cast<StarPort*>(place(Structure_StarPort));
     require(second,"Second port placement failed");
     for(auto& item:market.availableItems)if(item.itemID==Unit_Harvester)item.num=2;
     second->updateBuildList();
-    auto saved=structureList;structureList.clear();structureList.push_back(port);structureList.push_back(second);
+    auto saved=structureList;structureList.clear();structureList.push_back(port);structureList.push_back(second);structureList.push_back(yard);
     house->takeCredits(house->getCredits());house->addCredits(1800);
     try {bot->build(4200);}catch(...){structureList=saved;throw;}
     structureList=saved;
     int remaining=0;for(const auto& item:second->currentProductionQueue)remaining+=item.itemID==Unit_Harvester;
-    require(queuedWorkers()==5 && remaining==2,"Paid cargo blocked later orders or was counted twice");
-    require(house->getCredits()==0,"Two worker imports were not charged exactly once");
-    SDL_Log("CAMPAIGN_HELPER_ECONOMY_PASS: eight workers plus seven above-market imports reach 15; pending cargo counted once, cash not reserved twice");
+    require(queuedWorkers()==5 && remaining==1,"Paid cargo blocked later orders or was counted twice");
+    require(house->getCredits()==900,"One worker import was not charged exactly once");
+    // Another refinery would finish before paid cargo and create a sixteenth
+    // worker. Capacity expansion must wait until those workers have arrived.
+    auto* capacityYard=dynamic_cast<BuilderBase*>(place(Structure_ConstructionYard));
+    require(capacityYard,"Capacity yard placement failed");
+    capacityYard->updateBuildList();
+    house->addCredits(20000);
+    bot->build(4200);
+    for(const auto& item:capacityYard->currentProductionQueue)
+        require(item.itemID!=Structure_Refinery,"Refinery can overtake paid workers and exceed the cap");
+    SDL_Log("CAMPAIGN_HELPER_ECONOMY_PASS: eight workers plus one refinery worker and six above-market imports reach 15; paid cargo counted once, capacity expansion deferred");
     SDL_Log("CAMPAIGN_BALANCE_RESULT: probe=helper_economy outcome=passed");
 }
