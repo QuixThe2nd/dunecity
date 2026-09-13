@@ -1,6 +1,6 @@
 # Campaign QuantBot: current behaviour and proposed difficulty design
 
-## Implemented local candidate: 1.0.671
+## Implemented local candidate: 1.0.672
 
 Stefan authorized implementation after reviewing this matrix. The following
 settings now apply to QuantBot campaign enemies. The original audit/proposal
@@ -17,7 +17,7 @@ below remains the design history, not the current release status.
 | Human partner's home reserve by army value | 25% | 15% | 10% | 5% |
 
 Campaign enemy readiness is the smaller of its legacy army threshold and the
-combined sortie value cap. This lets Easy send a small wave without first
+twice the combined sortie value cap. This lets Easy retain a defensive reserve without first
 amassing an oversized reserve; failed readiness checks retry within 15 game
 seconds. Turn selection uses the same criterion. The opening/recovery gates
 still apply. Easy/Medium/Hard enemy worker limits retain their configured initial
@@ -26,10 +26,11 @@ still applies. Human-house partners retain their growth policy; Brutal keeps its
 broader economy policy. Existing excess workers are not removed.
 
 All times are game time. Combat value uses purchase value with a minimum of 100
-for free/cheap scripted troops. House-level configured attack percentages still
-apply within the combined allowance. Multiple eligible houses share the troop
-and value allowance. A depleted house may send one unit above its percentage
-allowance, but never above the shared count/value ceiling. An active wave cannot
+for free/cheap scripted troops. Easy/Medium enemies can commit at most half their army value; Hard/Brutal keep
+their configured fractions. The shared allowance applies in addition. Multiple eligible houses share the troop
+and value allowance. A depleted Hard/Brutal house may send one unit above its percentage
+allowance, but never above the shared count/value ceiling; Easy/Medium keep their
+half-army reserve. An active wave cannot
 be topped up; one house's aircraft and ground troops occupy the same saved slot.
 Mixed-difficulty enemy alliances use their lowest active difficulty's pressure
 profile. Eligible houses rotate by oldest launch, with deterministic house ties.

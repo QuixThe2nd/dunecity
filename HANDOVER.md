@@ -1,3 +1,21 @@
+## Campaign defensive reserve refinement — 1.0.672 local, 13 September 2026
+
+Stefan refined readiness: a level-4 Easy wave may be four 300-value units, so
+2,400 army value should permit four attackers and four defenders. Readiness is
+now min(legacy threshold, twice the shared wave value cap). Easy/Medium campaign
+enemy selection uses at most 50 percent army value, still within shared count/
+value caps, and does not use the depleted-army exception that could send its last
+unit. Hard/Brutal retain configured fractions and their previous exception.
+Zero configured attack fraction still disables dispatch. The 671 worker-limit
+fix and 670 Area Guard/defensive response fixes remain included.
+
+The actual eight-tank fixture passes: 2,399 is below readiness, 2,400 sends exactly
+four tanks, opening is respected, and repeated checks cannot top up the wave.
+The earlier 671 batch was interrupted on this refinement; do not describe its
+partial results as final-672 validation. The 671 web optimizer was also stopped.
+Final native fixtures, full-match matrix and browser build are being rerun.
+No public push or deployment has occurred.
+
 ## Campaign worker caps and small-wave readiness — 1.0.671 local, 13 September 2026
 
 Stefan reported excess enemy workers and no attacks in a closed match. Latest

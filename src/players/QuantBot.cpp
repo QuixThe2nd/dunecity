@@ -6628,7 +6628,10 @@ void QuantBot::launchGroundHunt() {
         : CampaignDifficultyPolicy::profile(static_cast<int>(difficulty),currentGame->techLevel);
     auto pressure = limited ? campaignPressure() : CampaignDifficultyPolicy::Pressure{};
     const float ratio = getQuantBotConfig().getSettings(static_cast<int>(difficulty)).attackForceMilitaryValueRatio;
-    const int percent = std::isfinite(ratio) ? static_cast<int>(std::clamp(ratio,0.0f,1.0f)*100.0f+0.5f) : 0;
+    int percent = std::isfinite(ratio) ? static_cast<int>(std::clamp(ratio,0.0f,1.0f)*100.0f+0.5f) : 0;
+    // Beginner-facing campaign waves can use half the army, bounded by their
+    // small shared sortie cap. The other half remains available to defend.
+    if (limited && difficulty<=Difficulty::Medium && percent>0) percent=50;
     int armyValue=0, committedValue=0;
     std::vector<SimpleArmyPolicy::Responder> candidates;
     for (const auto* unit : getUnitList()) {
@@ -6664,7 +6667,7 @@ void QuantBot::launchGroundHunt() {
         }
         // A depleted army can field one affordable unit without bypassing the
         // alliance ceiling or adding replacements to an existing house's wave.
-        if (selected.empty() && percent>0) {
+        if (selected.empty() && percent>0 && difficulty>=Difficulty::Hard) {
             const SimpleArmyPolicy::Responder* cheapest=nullptr;
             for (const auto& candidate : candidates)
                 if (CampaignDifficultyPolicy::fits(profile,pressure,candidate.value)

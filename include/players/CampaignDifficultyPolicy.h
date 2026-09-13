@@ -39,8 +39,9 @@ struct Wave {
 };
 struct Pressure { int houses=0, units=0, value=0; uint32_t lastActive=0; };
 inline int requiredArmy(const Profile& p, int configuredThreshold) {
-    // A small permitted sortie must not wait for a much larger legacy army goal.
-    return std::min(std::max(0,configuredThreshold),p.value);
+    // Aim for one permitted sortie plus the same value available for defense,
+    // without waiting for a much larger legacy army goal.
+    return std::min(std::max(0,configuredThreshold),2*p.value);
 }
 inline bool canLaunch(const Profile& p, const Pressure& used, uint32_t now,
                       uint32_t opening, uint32_t recoveryCycles) {

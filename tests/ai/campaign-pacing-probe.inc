@@ -31,23 +31,29 @@ void runCampaignPacingProbe(Game& game) {
     }
     // Ensure a usable army exists; these real troops still pass through the
     // normal percentage selection and shared-wave budget code.
+    auto savedUnits=unitList;std::vector<UnitBase*> army;
     auto* owner=const_cast<House*>(bot->getHouse());int spawned=0;
-    for(int y=1;y<currentGameMap->getSizeY()-1 && spawned<6;++y)
-        for(int x=1;x<currentGameMap->getSizeX()-1 && spawned<6;++x)
+    for(int y=1;y<currentGameMap->getSizeY()-1 && spawned<8;++y)
+        for(int x=1;x<currentGameMap->getSizeX()-1 && spawned<8;++x)
             if(!currentGameMap->getTile(x,y)->hasAGroundObject() && !currentGameMap->getTile(x,y)->isMountain()) {
                 auto* unit=owner->createUnit(Unit_Tank);require(unit,"Pacing tank creation failed");
-                unit->deploy(Coord(x,y));bot->doSetAttackMode(unit,AREAGUARD);++spawned;
+                unit->deploy(Coord(x,y));bot->doSetAttackMode(unit,AREAGUARD);army.push_back(unit);++spawned;
             }
+    savedUnits=unitList;unitList.clear();for(auto* unit:army)unitList.push_back(unit);
+    try {
     bot->militaryValueLimit=9200;bot->attackTimer=0;
     game.techLevel=4;bot->campaignWave.opening=game.getGameCycleCount()+100;
-    bot->attack(1500);require(bot->campaignWave.members.empty(),"Small-wave readiness bypassed opening grace");
+    bot->attack(2400);require(bot->campaignWave.members.empty(),"Small-wave readiness bypassed opening grace");
     game.gameCycleCount+=100;
-    bot->attack(1500);
-    require(!bot->campaignWave.members.empty(),"Easy waited for 4600 army value instead of fielding its small wave");
-    const auto first=bot->campaignWave.members;bot->attack(1500);
+    bot->attack(2399);require(bot->campaignWave.members.empty(),"Easy launched without its defensive reserve");
+    bot->attack(2400);
+    require(bot->campaignWave.members.size()==4,"Eight tanks did not send four while keeping four defenders");
+    const auto first=bot->campaignWave.members;bot->attack(2400);
     require(bot->campaignWave.members==first,"Readiness change topped up an active wave");
     const auto used=bot->campaignPressure();const auto limit=bot->campaignProfile();
     require(used.houses<=limit.houses && used.units<=limit.units && used.value<=limit.value,"Small wave exceeded assault limits");
-    SDL_Log("CAMPAIGN_PACING_PASS: 1500 army launches below legacy 4600 threshold, opening and shared limits preserved");
+    } catch (...) {unitList=savedUnits;throw;}
+    unitList=savedUnits;
+    SDL_Log("CAMPAIGN_PACING_PASS: eight 300-value tanks send four and retain four at 2400 readiness; opening and shared limits preserved");
     SDL_Log("CAMPAIGN_BALANCE_RESULT: probe=pacing outcome=passed");
 }

@@ -3,7 +3,8 @@
 
 Uses the existing macOS Ninja build. Access-control relaxation is restricted to
 this diagnostic executable; no test hooks are compiled into the shipped game.
---attack-percent changes Easy's per-house fraction; alliance caps still apply. Results
+--attack-percent sets the legacy Easy fraction (zero disables dispatch); campaign
+Easy/Medium use the half-army policy plus alliance caps. Results
 and structured AI decision logs remain in --output-dir. This is a simulation
 comparison, not a substitute for the browser playtest or human playtesting.
 """
