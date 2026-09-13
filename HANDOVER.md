@@ -1,3 +1,13 @@
+## 2026-09-14 — 1.0.680 validation complete; publication in progress
+
+71 native scenarios resolved naturally: 46 wins, 25 losses, no crash/timeout.
+All enemies attacked; all 21 advanced level-9 helpers reached 15 workers; zero
+over-cap cases (679 had eight). Seven CTest groups and eight real-engine
+behavioral fixtures pass. Browser build, bundled mods and 18 shell/packaging
+checks pass; actual level-9 launch and selection after feedback pass.
+See [680 validation](docs/campaign-ai-validation-680.md) for evidence and limits.
+PR #33 is undergoing release checks. No production completion claimed yet.
+
 ## 1.0.679 published and verified — 14 September 2026 (Sydney)
 
 The missing browser mods fix and menu release are live. PR 31 merged as
