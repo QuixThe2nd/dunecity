@@ -196,6 +196,7 @@ target_sources(dunecity
 
         # Menu
         Menu/MenuBase.cpp
+        Menu/PlaySetup.cpp
         Menu/MainMenu.cpp
         Menu/DisplayMenu.cpp
         Menu/SinglePlayerMenu.cpp
@@ -244,6 +245,7 @@ target_sources(dunecity
         players/CampaignAIPlayer.cpp
         players/AIDecisionLog.cpp
         players/QuantBot.cpp
+        players/QuantBotCampaign.cpp
         players/Mentat.cpp
         players/MentatBuildOrderMentat.cpp
         players/QuantBotConfig.cpp
@@ -538,6 +540,10 @@ if(EMSCRIPTEN)
         "SHELL:-sDISABLE_EXCEPTION_CATCHING=0"
     )
     target_link_options(dunecity PRIVATE
+        # Keep Release C++ compilation at -O3, but use the -O2 wasm
+        # optimizer pipeline. Binaryen's -O3 local2Stack pass grows prohibitively
+        # on this Asyncify build (over 20 minutes / 12 GB in the release probe).
+        "$<$<CONFIG:Release>:-O2>"
         "SHELL:-sUSE_SDL=2"
         "SHELL:-sUSE_SDL_MIXER=2"
         "SHELL:-sUSE_SDL_TTF=2"

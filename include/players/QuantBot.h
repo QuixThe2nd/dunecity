@@ -27,6 +27,7 @@
 #include <units/MCV.h>
 class Harvester;
 #include <players/QuantBotConfig.h>
+#include <players/CampaignDifficultyPolicy.h>
 #include <players/AIDecisionLog.h>
 
 #include <DataTypes.h>
@@ -121,6 +122,18 @@ private:
     std::set<Uint32> groundSquad;
     std::map<Uint32, Uint32> manualUnitOrders, defenceAssignments;
     void launchGroundHunt();
+    CampaignDifficultyPolicy::Wave campaignWave;
+    bool isCampaignEnemy() const;
+    std::vector<const QuantBot*> campaignAlliance() const;
+    CampaignDifficultyPolicy::Profile campaignProfile() const;
+    CampaignDifficultyPolicy::Pressure campaignPressure() const;
+    bool campaignCanLaunch() const;
+    bool campaignCombatUnit(const UnitBase* unit) const;
+    bool campaignLocalContact(const ObjectBase* target) const;
+    bool campaignControlsUnit(const UnitBase* unit);
+    void updateCampaignWave();
+    void holdCampaignUnit(const UnitBase* unit);
+    const ObjectBase* campaignObjective(const UnitBase* unit, int group) const;
     void releaseLegacyGroundSquad();
     std::map<Uint32,Uint32> defenceResponseCycles;
     bool humanControls(const UnitBase* unit) const;

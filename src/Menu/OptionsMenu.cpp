@@ -45,6 +45,8 @@
 
 #include <algorithm>
 
+int OptionsMenu::lastPage = 1;
+
 OptionsMenu::OptionsMenu() : MenuBase()
 {
     determineAvailableScreenResolutions();
@@ -65,16 +67,16 @@ OptionsMenu::OptionsMenu() : MenuBase()
     setWindowWidget(&windowWidget);
 
     const int left = (getSize().x - 540) / 2;
-    title.setText(_("OPTIONS"));
+    title.setText(_("SETTINGS"));
     title.setTextFontSize(22);
     title.setAlignment(Alignment_HCenter);
     windowWidget.addWidget(&title, Point(left, 18), Point(540, 30));
-    const char* tabNames[] = {"GENERAL", "DISPLAY", "AUDIO / NETWORK"};
-    for(int page = 0; page < 3; ++page) {
+    const char* tabNames[] = {"General", "Graphics", "Audio", "Controls", "Advanced"};
+    for(int page = 0; page < 5; ++page) {
         pageButtons[page].setText(_(tabNames[page]));
         pageButtons[page].setToggleButton(true);
         pageButtons[page].setOnClick([this, page] { showPage(page); });
-        windowWidget.addWidget(&pageButtons[page], Point(left + page * 182, 58), Point(176, 36));
+        windowWidget.addWidget(&pageButtons[page], Point(left + page * 108, 58), Point(104, 36));
         windowWidget.addWidget(&pages[page], Point(left, 110), Point(540, getSize().y - 192));
     }
     auto optionLabel = [](const std::string& text) {
@@ -91,12 +93,12 @@ OptionsMenu::OptionsMenu() : MenuBase()
     NameHBox.addWidget(Spacer::create(), 0.5);
     nameTextBox.setText(settings.general.playerName);
 
-    pages[0].addWidget(&NameHBox, 40);
-    pages[0].addWidget(VSpacer::create(8));
+    pages[0].addWidget(&NameHBox, 32);
+    pages[0].addWidget(VSpacer::create(6));
 
     gameOptionsHBox.addWidget(Spacer::create(), 0.5);
 
-    gameOptionsHBox.addWidget(optionLabel(_("Default Game Options")), 190);
+    gameOptionsHBox.addWidget(optionLabel(_("Default Game Rules")), 190);
     gameOptionsButton.setText(_("Change..."));
     gameOptionsButton.setOnClick(std::bind(&OptionsMenu::onGameOptions, this));
     gameOptionsHBox.addWidget(&gameOptionsButton, 130);
@@ -105,8 +107,8 @@ OptionsMenu::OptionsMenu() : MenuBase()
 
     gameOptionsHBox.addWidget(Spacer::create(), 0.5);
 
-    pages[0].addWidget(&gameOptionsHBox, 40);
-    pages[0].addWidget(VSpacer::create(8));
+    pages[4].addWidget(&gameOptionsHBox, 32);
+    pages[4].addWidget(VSpacer::create(6));
 
     languageHBox.addWidget(Spacer::create(), 0.5);
     languageHBox.addWidget(optionLabel(_("Language")), 190);
@@ -123,8 +125,8 @@ OptionsMenu::OptionsMenu() : MenuBase()
     languageHBox.addWidget(Spacer::create(), 190);
     languageHBox.addWidget(Spacer::create(), 0.5);
 
-    pages[0].addWidget(&languageHBox, 40);
-    pages[0].addWidget(VSpacer::create(8));
+    pages[0].addWidget(&languageHBox, 32);
+    pages[0].addWidget(VSpacer::create(6));
 
     generalHBox.addWidget(Spacer::create(), 0.5);
     generalHBox.addWidget(optionLabel(_("Campaign AI")), 190);
@@ -158,12 +160,12 @@ OptionsMenu::OptionsMenu() : MenuBase()
     introHBox.addWidget(Spacer::create(), 0.5);
     introHBox.addWidget(&introCheckbox, 480);
     introHBox.addWidget(Spacer::create(), 0.5);
-    pages[0].addWidget(&introHBox, 40);
-    pages[0].addWidget(VSpacer::create(8));
+    pages[0].addWidget(&introHBox, 32);
+    pages[0].addWidget(VSpacer::create(6));
     generalHBox.addWidget(Spacer::create(), 0.5);
 
-    pages[0].addWidget(&generalHBox, 40);
-    pages[0].addWidget(VSpacer::create(8));
+    pages[4].addWidget(&generalHBox, 32);
+    pages[4].addWidget(VSpacer::create(6));
 
     resolutionHBox.addWidget(Spacer::create(), 0.5);
 #ifdef __ANDROID__
@@ -214,8 +216,8 @@ OptionsMenu::OptionsMenu() : MenuBase()
 
     resolutionHBox.addWidget(Spacer::create(), 0.5);
 
-    pages[1].addWidget(&resolutionHBox, 40);
-    pages[1].addWidget(VSpacer::create(8));
+    pages[1].addWidget(&resolutionHBox, 32);
+    pages[1].addWidget(VSpacer::create(6));
 
     videoHBox.addWidget(Spacer::create(), 0.5);
     fullScreenCheckbox.setText(_("Full Screen"));
@@ -233,8 +235,8 @@ OptionsMenu::OptionsMenu() : MenuBase()
     flagsHBox.addWidget(&showTutorialHintsCheckbox, 240);
     videoHBox.addWidget(Spacer::create(), 0.5);
 
-    pages[1].addWidget(&videoHBox, 40);
-    pages[1].addWidget(VSpacer::create(8));
+    pages[1].addWidget(&videoHBox, 32);
+    pages[1].addWidget(VSpacer::create(6));
 
     videoHBox2.addWidget(Spacer::create(), 0.5);
     showWatermarkCheckbox.setText(_("Show Watermark"));
@@ -242,8 +244,8 @@ OptionsMenu::OptionsMenu() : MenuBase()
     showWatermarkCheckbox.setOnClick(std::bind(&OptionsMenu::onChangeOption, this, true));
     flagsHBox.addWidget(&showWatermarkCheckbox, 240);
     flagsHBox.addWidget(Spacer::create(), 0.5);
-    pages[1].addWidget(&flagsHBox, 40);
-    pages[1].addWidget(VSpacer::create(8));
+    pages[0].addWidget(&flagsHBox, 32);
+    pages[0].addWidget(VSpacer::create(6));
     videoHBox2.addWidget(optionLabel(_("Cursor")), 190);
     cursorVisibilityDropDownBox.addEntry(_("Auto"), 0);
     cursorVisibilityDropDownBox.addEntry(_("Hidden"), 1);
@@ -265,8 +267,8 @@ OptionsMenu::OptionsMenu() : MenuBase()
     videoHBox2.addWidget(&cursorScaleDropDownBox, 70);
     videoHBox2.addWidget(Spacer::create(), 0.5);
 
-    pages[1].addWidget(&videoHBox2, 40);
-    pages[1].addWidget(VSpacer::create(8));
+    pages[1].addWidget(&videoHBox2, 32);
+    pages[1].addWidget(VSpacer::create(6));
 
     paletteHBox.addWidget(Spacer::create(), 0.5);
     paletteHBox.addWidget(optionLabel(_("Menu Layout")), 110);
@@ -285,12 +287,59 @@ OptionsMenu::OptionsMenu() : MenuBase()
     });
     paletteHBox.addWidget(&paletteDropDownBox, 180);
     paletteHBox.addWidget(Spacer::create(), 0.5);
-    pages[1].addWidget(&paletteHBox, 40);
-    pages[1].addWidget(VSpacer::create(8));
+    pages[1].addWidget(&paletteHBox, 32);
+    pages[1].addWidget(VSpacer::create(6));
     palettePreview.setText("DUNE LEGACY");
     palettePreview.setEnabled(false);
     updatePalettePreview();
-    pages[1].addWidget(&palettePreview, 40);
+    pages[1].addWidget(&palettePreview, 24);
+
+    interfaceHBox.addWidget(Spacer::create(), 0.5);
+    interfaceHBox.addWidget(optionLabel(_("Interface Size")), 190);
+    const char* sizes[] = {"Large", "Medium", "Small", "Automatic"};
+    const int heights[] = {480, 600, 768, 0};
+    for(int size = 0; size < 4; ++size) {
+#ifdef __ANDROID__
+        if(size == 3) continue;
+#endif
+        interfaceSizeDropDownBox.addEntry(_(sizes[size]), heights[size]);
+        if(heights[size] == settings.video.interfaceHeight) interfaceSizeDropDownBox.setSelectedItem(size);
+    }
+    interfaceSizeDropDownBox.setOnSelectionChange(std::bind(&OptionsMenu::onChangeOption, this, std::placeholders::_1));
+    interfaceHBox.addWidget(&interfaceSizeDropDownBox, 130);
+    aspectDropDownBox.addEntry("4:3", 0);
+    aspectDropDownBox.addEntry("16:9", 1);
+#ifdef __EMSCRIPTEN__
+    aspectDropDownBox.setSelectedItem(settings.video.physicalWidth * 3 > settings.video.physicalHeight * 4 ? 1 : 0);
+#else
+    aspectDropDownBox.setSelectedItem(settings.video.width * 3 > settings.video.height * 4 ? 1 : 0);
+#endif
+    aspectDropDownBox.setOnSelectionChange(std::bind(&OptionsMenu::onChangeOption, this, std::placeholders::_1));
+#if defined(__ANDROID__) || defined(__EMSCRIPTEN__)
+    interfaceHBox.addWidget(optionLabel(_("Shape")), 80);
+    interfaceHBox.addWidget(&aspectDropDownBox, 80);
+#else
+    interfaceHBox.addWidget(Spacer::create(), 160);
+#endif
+    interfaceHBox.addWidget(Spacer::create(), 0.5);
+    pages[1].addWidget(&interfaceHBox, 32);
+    pages[1].addWidget(VSpacer::create(6));
+
+    scrollHBox.addWidget(Spacer::create(), 0.5);
+    scrollHBox.addWidget(optionLabel(_("Scroll Speed")), 190);
+    for(int speed : {1, 2, 3, 4, 5, 6, 8, 10, 12, 16, 20}) {
+        scrollSpeedDropDownBox.addEntry(std::to_string(speed), speed);
+        if(speed == settings.general.scrollSpeed) scrollSpeedDropDownBox.setSelectedItem(scrollSpeedDropDownBox.getNumEntries()-1);
+    }
+    if(scrollSpeedDropDownBox.getSelectedEntryIntData() != settings.general.scrollSpeed) {
+        scrollSpeedDropDownBox.addEntry(std::to_string(settings.general.scrollSpeed), settings.general.scrollSpeed);
+        scrollSpeedDropDownBox.setSelectedItem(scrollSpeedDropDownBox.getNumEntries()-1);
+    }
+    scrollSpeedDropDownBox.setOnSelectionChange(std::bind(&OptionsMenu::onChangeOption, this, std::placeholders::_1));
+    scrollHBox.addWidget(&scrollSpeedDropDownBox, 130);
+    scrollHBox.addWidget(Spacer::create(), 160);
+    scrollHBox.addWidget(Spacer::create(), 0.5);
+    pages[3].addWidget(&scrollHBox, 32);
 
     audioHBox.addWidget(Spacer::create(), 0.5);
     playSFXCheckbox.setText(_("Play SFX"));
@@ -303,8 +352,8 @@ OptionsMenu::OptionsMenu() : MenuBase()
     audioHBox.addWidget(&playMusicCheckbox, 240);
     audioHBox.addWidget(Spacer::create(), 0.5);
 
-    pages[2].addWidget(&audioHBox, 40);
-    pages[2].addWidget(VSpacer::create(8));
+    pages[2].addWidget(&audioHBox, 32);
+    pages[2].addWidget(VSpacer::create(6));
 
     audioHBox2.addWidget(Spacer::create(), 0.5);
     playCreditsSFXCheckbox.setText(_("Play Credits SFX"));
@@ -314,8 +363,8 @@ OptionsMenu::OptionsMenu() : MenuBase()
     audioHBox2.addWidget(Spacer::create(), 240);
     audioHBox2.addWidget(Spacer::create(), 0.5);
 
-    pages[2].addWidget(&audioHBox2, 40);
-    pages[2].addWidget(VSpacer::create(8));
+    pages[2].addWidget(&audioHBox2, 32);
+    pages[2].addWidget(VSpacer::create(6));
 
     networkPortHBox.addWidget(Spacer::create(), 0.5);
     networkPortHBox.addWidget(optionLabel(_("Port")), 190);
@@ -326,8 +375,8 @@ OptionsMenu::OptionsMenu() : MenuBase()
     portTextBox.setText(std::to_string(settings.network.serverPort));
     networkPortHBox.addWidget(Spacer::create(), 190);
     networkPortHBox.addWidget(Spacer::create(), 0.5);
-    pages[2].addWidget(&networkPortHBox, 40);
-    pages[2].addWidget(VSpacer::create(8));
+    pages[4].addWidget(&networkPortHBox, 32);
+    pages[4].addWidget(VSpacer::create(6));
 
     networkMetaServerHBox.addWidget(Spacer::create(), 0.5);
     networkMetaServerHBox.addWidget(optionLabel(_("MetaServer")), 190);
@@ -335,16 +384,16 @@ OptionsMenu::OptionsMenu() : MenuBase()
     networkMetaServerHBox.addWidget(&metaServerTextBox, 290);
     metaServerTextBox.setText(settings.network.metaServer);
     networkMetaServerHBox.addWidget(Spacer::create(), 0.5);
-    pages[2].addWidget(&networkMetaServerHBox, 40);
-    pages[2].addWidget(VSpacer::create(8));
+    pages[4].addWidget(&networkMetaServerHBox, 32);
+    pages[4].addWidget(VSpacer::create(6));
 
     restoreDefaultsHBox.addWidget(Spacer::create(), 0.5);
     restoreDefaultsButton.setText(_("Restore Config Defaults"));
     restoreDefaultsButton.setOnClick(std::bind(&OptionsMenu::onRestoreDefaults, this));
     restoreDefaultsHBox.addWidget(&restoreDefaultsButton, 320);
     restoreDefaultsHBox.addWidget(Spacer::create(), 0.5);
-    pages[0].addWidget(&restoreDefaultsHBox, 40);
-    pages[0].addWidget(VSpacer::create(8));
+    pages[4].addWidget(&restoreDefaultsHBox, 32);
+    pages[4].addWidget(VSpacer::create(6));
 
     backButton.setText(_("BACK"));
     backButton.setOnClick(std::bind(&OptionsMenu::onOptionsCancel, this));
@@ -360,7 +409,7 @@ OptionsMenu::OptionsMenu() : MenuBase()
 #ifdef __ANDROID__
     fullScreenCheckbox.setEnabled(false);
 #endif
-    showPage(0);
+    showPage(lastPage);
 }
 
 OptionsMenu::~OptionsMenu()
@@ -369,7 +418,8 @@ OptionsMenu::~OptionsMenu()
 }
 
 void OptionsMenu::showPage(int page) {
-    for(int i = 0; i < 3; ++i) {
+    lastPage = page;
+    for(int i = 0; i < 5; ++i) {
         pages[i].setVisible(i == page);
         pages[i].setEnabled(i == page);
         pageButtons[i].setToggleState(i == page);
@@ -392,6 +442,11 @@ void OptionsMenu::onChangeOption(bool bInteractive) {
     }
     const PlayerFactory::PlayerData* pPlayerData = PlayerFactory::getByIndex(aiDropDownBox.getSelectedEntryIntData());
     bChanged |= ((pPlayerData == nullptr) || (settings.ai.campaignAI != pPlayerData->getPlayerClass()));
+    bChanged |= settings.general.scrollSpeed != scrollSpeedDropDownBox.getSelectedEntryIntData();
+    bChanged |= settings.video.interfaceHeight != interfaceSizeDropDownBox.getSelectedEntryIntData();
+#if defined(__ANDROID__) || defined(__EMSCRIPTEN__)
+    bChanged |= (settings.video.width * 3 > settings.video.height * 4) != (aspectDropDownBox.getSelectedEntryIntData() == 1);
+#endif
     bChanged |= (settings.general.playIntro != introCheckbox.isChecked());
     bChanged |= (settings.general.showTutorialHints != showTutorialHintsCheckbox.isChecked());
 
@@ -429,23 +484,28 @@ void OptionsMenu::onChangeOption(bool bInteractive) {
 
 void OptionsMenu::onOptionsOK() {
     std::string playername = nameTextBox.getText();
-    if(playername.empty()) {
+    if(playername.empty() && playername != settings.general.playerName) {
+        showPage(0);
         openWindow(MsgBox::create(_("Please enter a Player Name.")));
         return;
     }
 
-    int serverport;
-    if(!parseString(portTextBox.getText(), serverport) || serverport <= 0 || serverport > 65535) {
+    int serverport = settings.network.serverPort;
+    if(portTextBox.getText() != std::to_string(settings.network.serverPort)
+       && (!parseString(portTextBox.getText(), serverport) || serverport <= 0 || serverport > 65535)) {
+        showPage(4);
         openWindow(MsgBox::create(fmt::sprintf(_("Server Port must be between 1 and 65535!\nDefault Server Port is %d!"), DEFAULT_PORT)));
         return;
     }
 
     std::string metaserver = metaServerTextBox.getText();
-    if(metaserver.empty()) {
+    if(metaserver.empty() && metaserver != settings.network.metaServer) {
+        showPage(4);
         openWindow(MsgBox::create(_("Please enter a MetaServer.")));
         return;
     }
 
+    settings.general.scrollSpeed = scrollSpeedDropDownBox.getSelectedEntryIntData();
     settings.general.playerName = playername;
     std::string languageFilename = (languageDropDownBox.getSelectedEntryIntData() < 0) ? "English.en.po" : availLanguages[languageDropDownBox.getSelectedEntryIntData()];
     settings.general.language = languageFilename.substr(languageFilename.size()-5,2);
@@ -487,6 +547,17 @@ void OptionsMenu::onOptionsOK() {
     if(settings.video.height < SCREEN_MIN_HEIGHT) settings.video.height = SCREEN_MIN_HEIGHT;
 #endif
 
+    settings.video.interfaceHeight = interfaceSizeDropDownBox.getSelectedEntryIntData();
+#if defined(__ANDROID__) || defined(__EMSCRIPTEN__)
+    const bool widescreen = aspectDropDownBox.getSelectedEntryIntData() == 1;
+#ifdef __EMSCRIPTEN__
+    settings.video.physicalWidth = interfaceWidthForHeight(settings.video.physicalHeight, widescreen);
+#endif
+    if(settings.video.interfaceHeight > 0) {
+        settings.video.width = interfaceWidthForHeight(settings.video.interfaceHeight, widescreen);
+        settings.video.height = settings.video.interfaceHeight;
+    }
+#endif
     settings.video.preferredZoomLevel = zoomlevelDropDownBox.getSelectedEntryIntData();
     settings.video.scaler = scalerDropDownBox.getSelectedEntry();
     settings.video.fullscreen = fullScreenCheckbox.isChecked();
@@ -501,7 +572,7 @@ void OptionsMenu::onOptionsOK() {
     settings.audio.playMusic = playMusicCheckbox.isChecked();
     settings.audio.playCreditsSFX = playCreditsSFXCheckbox.isChecked();
 
-    saveGameOptionsAsDefaults(currentGameOptions);
+    if(currentGameOptions != effectiveGameOptions) saveGameOptionsAsDefaults(currentGameOptions);
 
     settings.network.serverPort = serverport;
     settings.network.metaServer = metaserver;
@@ -565,6 +636,7 @@ void OptionsMenu::onRestoreDefaults() {
 void OptionsMenu::saveConfiguration2File() {
     INIFile myINIFile(getConfigFilepath());
 
+    myINIFile.setIntValue("General","Scroll Speed",settings.general.scrollSpeed);
     myINIFile.setBoolValue("General","Play Intro",settings.general.playIntro);
     myINIFile.setBoolValue("General","Show Tutorial Hints",settings.general.showTutorialHints);
     myINIFile.setBoolValue("General","Multiple Players Per House",settings.general.multiplePlayersPerHouse);

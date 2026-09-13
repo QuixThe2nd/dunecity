@@ -90,6 +90,7 @@ private:
     HBox            maxHarvestersOverrideHBox;      ///< The HBox containing the override option for the maximum number of harvesters
     Checkbox        maxHarvestersOverrideCheckbox;  ///< If checked the maximum number of harvesters is set directly, otherwise it is determined by map size from ObjectData.ini
     DigitsTextBox   maxHarvestersOverrideTextBox;   ///< The maximum number of harvesters
+    Checkbox rememberDefaults;
     TextButton okbutton;                            ///< the ok button
 };
 

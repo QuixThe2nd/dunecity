@@ -1,3 +1,279 @@
+## Release authorization — 1.0.674, 13 September 2026
+
+Stefan explicitly requested shipping after being told that different-network,
+two-device multiplayer and multiplayer save/resume remained unverified. Release
+1.0.674 with those limits recorded in releases/desktop/1.0.674.md. This authorizes
+normal stable-tag desktop, browser, website and SourceForge publication; keep the
+current local human co-op session running. Source is a fast-forward of public
+main b7db719. Publication outcome must be checked separately from local builds.
+
+## Classic player setup restored — 1.0.674 local, 13 September 2026
+
+Stefan rejected the sparse left-aligned player setup and requested the original
+custom-player UI for both Offline and Online. The classic centered roster/map
+composition, full player labels and dropdown widths (where space permits),
+wide-screen button margins, and optional Bonus palette selector are restored.
+The unified map/mod/connection/rules setup and 673 hosting validation remain;
+private/public visibility appears only online. Compact shared-house rows fit
+640 pixels. Simulation, saves and transport are unchanged.
+
+Native Release and all seven CTest groups pass; after the final narrow Bonus
+label adjustment, the menu probe passes again. It now asserts actual rendering
+at 640×480, 854×480 and 1280×720, including six-house Offline/Online, shared
+houses, campaign lobby and Tornie bonus colors. The test-only main bypasses
+SDL dummy desktop clamping, which otherwise silently reduced 1280 to 1024.
+The final web Release build and dependency audit also pass. Native/web 674
+artifacts are separate from the running 673 session. See docs/menu-acceptance.md.
+
+Stefan also personally hosted and started a private 673 Ordos campaign in the
+browser. Codex joined as MenuHost using the matching native client; both rosters
+were visible before Start, both entered the mission, and Stefan's unit movement
+and exploration appeared natively. Peer reports passed cycle 27,749 without a
+reported desync/disconnect in inspected diagnostics. This passes the human
+hosting/start check locally; it does not establish WAN or a completed campaign.
+
+IMPORTANT: Stefan is still playing. Keep browser tab 3, localhost:8769, the
+private service localhost:60458, and the running 673 Dune Menu Host test copy
+untouched. Do not close/reload the browser, replace its served play folder, stop
+the test client, or overwrite its executable/profile. The 674 build belongs in
+build/bin and a separate play-674 package; switch only after the current game.
+No install, push, PR or public deployment performed.
+
+## Hosting fixes — 1.0.673 local, 13 September 2026
+
+Create Campaign/Custom from Join Online now commits the entered name before
+building the roster. Custom online setup requires an explicit open guest slot;
+existing AI choices survive the Offline → Online switch. Admission progress no
+longer says Joined before receiving the host setup, and receipt/roster timestamps
+make the transition observable. The source-controlled web Release link uses -O2
+with O3 C++ compilation; the local linker override is cleared and normal native
+and web Release builds pass.
+
+All seven CTest groups and dependency/version/signature audits pass. Real 673
+native-host/browser-guest public campaign and browser-host/native-guest private
+custom games reached gameplay. Guest rosters were visible before Start; campaign
+receipt-to-roster took 20–25 ms on two joins, peer traffic passed cycle 12,374,
+and a browser infantry command appeared natively. Custom peer reports passed
+2,249. No reported desync in inspected diagnostics. The older browser waiting
+observation was not reproduced; do not invent a transport root cause or claim
+one was repaired. The suspected native keyboard trap was input-testing trouble;
+actual keyboard Start and a production-menu focus test pass.
+
+Stefan's crash screenshot was traced to temporary host PID 30706 rejected by
+macOS after replacing its executable without re-signing the copied app. Re-sign
+fixed it. A separate menu-probe crash was corrected test setup (network callback
+without a manager). Exact reports/evidence and scope: docs/menu-acceptance.md.
+The playable delivery app passes strict codesign verification. Applications still
+held 1.0.653; the 673 test candidate is build/bin/dunecity.app. No install, push or
+deployment performed. Human hosting / second-device or network check remains
+before release; no new saved-session, WAN, mobile or campaign-completion claim.
+
+## Menu acceptance — 1.0.672 local, 13 September 2026
+
+Stefan requested actual verification. Commit 2f440b5 fixes a live-discovered
+Home keyboard trap: hidden legacy buttons participated in Tab navigation.
+Only visible destinations now register in screen order, and initial focus is
+assigned after registration. The production-menu probe checks a complete cycle.
+Native Release, dependency/version/signature checks and all seven CTest groups
+pass. A live cycle with Continue visible also passed.
+
+Isolated native clients exercised all four core routes into actual gameplay:
+offline Campaign and Custom, private-code online Custom (670), and public
+Campaign co-op (672). Campaign retained Ordos/level 4 through cancellation and
+hosting and loaded SCENO008.INI. Real directory filters distinguished campaign
+from custom. Custom peer traffic reached cycle 11,999; campaign passed 2,600;
+neither inspected log reported desync. Offline save → Home → Continue resumed
+the mission. Online custom saves route into hosting lobbies in 670 and 672.
+Mods and Map Editor opened from Extras; unified Graphics was inspected.
+
+Exact evidence and scope are in `docs/menu-acceptance.md`, with logs and isolated
+profiles under `../outputs/dunecity-menu-acceptance`. The browser test build
+joined a fresh public native campaign, passed the start barrier, and ran to
+cycle 14,624 with no reported desync. A browser unit command appeared on the
+host. Browser Home/Join/Graphics/Audio mouse navigation passed. The browser
+initial lobby display remains open: it could show Join Online's waiting screen
+until the host started, despite the host recognizing the browser. Saved co-op
+admission was checked, but actual saved-session resumption is not claimed.
+
+Default web Release linking was stopped after over 20 minutes in Binaryen's
+local2Stack optimizer (12.2 GB sampled footprint). The successful browser test
+used existing Release objects with CMAKE_EXE_LINKER_FLAGS_RELEASE=-O2; default
+project flags are unchanged. This does not validate the default O3 web release.
+No WAN/mobile or completed-campaign claim. Nothing was pushed or deployed.
+Existing Game Rules/New Map keyboard dismissal remains a follow-up; native
+pointer automation was unreliable. The candidate is not fully signed off.
+
+## Menu navigation — 1.0.670 local, 13 September 2026
+
+Stefan approved implementing the menu review, including Mods and Map Editor in
+Extras. This candidate starts from campaign-controls commit 81ff90a (1.0.669).
+Home now goes directly to Campaign, Custom Game, Join Online, Load Game,
+Settings and Extras. Campaign has explicit Start, Offline/Online, full campaign
+or single mission; online hosting carries the selected setup into the lobby.
+Custom combines map/mod/connection/rules/player choices, preserving the roster
+when changing connection mode. Join Online has mode/mod filters, invitation
+codes, separate public chat, and secondary legacy LAN/direct connections.
+
+Graphics and interface controls share Settings > Graphics. Audio, Controls and
+Advanced are separate tabs. Unchanged legacy network fields no longer block
+unrelated settings changes. Setup rules persist globally only when requested.
+Continue detects eligible recent offline saves; Load Game routes by saved type.
+See `docs/menu-navigation.md` for the exact flow and remaining follow-ups.
+
+Native Release and dependency audits pass. All six existing CTest targets pass;
+the new real-menu probe verifies setup preservation, filters and settings
+validation, and renders at 640×480 and 854×480 with isolated profiles. Its images
+are in `build/menu-probe`. Small-screen player rows were corrected after visual
+inspection, including shared-house controls. The app is in `build/bin`.
+No public deployment, browser/mobile verification or live two-peer game test
+is claimed for this menu candidate.
+
+## Campaign difficulty implementation — 1.0.669 local, 13 September 2026
+
+Stefan authorized implementing the matrix. `CampaignDifficultyPolicy.h` and
+`QuantBotCampaign.cpp` now enforce alliance-wide campaign assaults. Easy/Medium
+allow one attacking house, Hard two, Brutal all. Combined troop caps scale by
+tech stage to 3–5 / 6–8 / 10–14 / 16–24 with simultaneous combat-value caps.
+There are post-wave recovery periods and no continual top-ups. Timed sorties
+withdraw survivors; authored HUNT arrivals wait outside an authorized wave.
+Defensive pursuit and air interception are bounded around owned bases and nearby
+harvesters. Offensive aircraft consume wave allowance. Easy/Medium share one
+base objective; Hard/Brutal split targets and use a lateral approach when usable.
+
+Easy/Medium campaign builders, including human-house partners and economy
+support, queue Windtraps for actual/committed/planned power demand. Default
+Vanilla power consequences are unchanged. Full campaign partners keep useful
+economy/Starport behavior and 25/15/10/5 percent home reserves, without enemy wave
+caps. Easy full partners can use the existing damage-triggered repair path.
+Campaign setup descriptions explain partner and enemy behavior.
+
+Save format 9838 adds QuantBot opening/launch/activity times, shared-front target
+and member IDs; pre-9838 saves initialize that state safely. The real-engine
+pressure fixture verifies slots at all tiers, combined count/value limits,
+no repeated-check top-ups, serialized bot state, legacy loading, held HUNT
+arrivals, sortie expiration/recovery, and actual Windtrap production for two
+enemy tiers plus the human partner. Four menu states rendered; Easy/Brutal
+screens inspected without clipping.
+
+Native Release, dependency/signature audits and all six CTest targets pass.
+Final-source level-9 runs (seed 486409243, no human commands or skip, continuous
+budget assertions) won: Easy/Easy at 89,669 cycles (23.91 game minutes), Hard/Hard
+at 108,599 cycles (28.96). Evidence under
+`/tmp/dunecity-campaign-balance/{pressure,easy9,hard-hard9}-669-verified`.
+Browser build is being packaged; do not infer a public deployment. This is a
+local candidate. Human accessibility and broad seed/house coverage are not yet
+established. See `docs/campaign-ai-difficulty-matrix.md` for exact values.
+
+## Campaign difficulty design matrix — 13 September 2026 (superseded by implementation above)
+
+`docs/campaign-ai-difficulty-matrix.md` records current and proposed behaviour
+for all four difficulties, separately for enemies and the full QuantBot sharing
+the human house. No balance implementation or deployment accompanies this doc.
+Stefan requests Easy/Medium enemies take turns attacking and build Windtraps to
+cover demand. Proposal adds combined assault budgets/recovery intervals; Hard
+may overlap two houses, Brutal all. Trial sizes/timings remain unvalidated.
+Vanilla general power is currently disabled for humans and AI alike; building
+Windtraps does not itself restore shortage consequences. Corrected prior audit:
+Easy has reactive on-hit evasion, but lacks proactive ranged spacing. Structure
+and RETREAT repairs mean Easy/Medium do not lack every repair path.
+
+## Campaign score attribution — 1.0.668 local, 13 September 2026
+
+Game-source commit `f3c5cd1` on `fix/campaign-ai-attack-limits` fixes
+`CampaignStatsMenu::calculateScore`: classify houses, surviving structures and
+loaded harvester spice by the local team's ID instead of `House::isAI()`. A
+human house shared with QuantBot sets that AI flag, so previous versions put its
+harvests/kills under Enemy, subtracted its destroyed value and omitted its cash
+and surviving-building score. The score formula itself and gameplay are unchanged.
+Human opponents stay on Enemy; AI allies count with the local team.
+
+`tests/ai/run-campaign-balance.py --level 9 --stats-probe --output-dir <new-dir>`
+instantiates the actual results menu against a real shared-house campaign. It
+checks ordinary-human versus AI-assisted score/rank parity, known kills and
+harvest totals including carried spice, an AI ally and a human enemy. Fixture
+screenshot verified: You 1,300 spice / 7 units / 3 buildings; Enemy 775 / 5 / 2;
+score 567, Warlord. These are controlled test totals, not a played mission.
+Evidence: `/tmp/dunecity-campaign-balance/stats-668-render-v2`. Native Release,
+dependency and signature audits and all six CTest targets pass. Full Emscripten
+build also passes; local preview packaging uses 668. The already-running 667
+browser tab requires a fresh load to pick up this results-screen fix.
+
+Stefan also asked why campaign difficulties look similar. Audit in
+`docs/campaign-ai-balance.md` distinguishes enemy and shared-house partner paths:
+enemy ground-HUNT budgets are 25/40/50/60%; initial attack delay and much planning
+are shared. Partner uses Custom growth and has no enemy wave cap; its configured
+harvester difficulty caps are overwritten by common dynamic map limits. Several
+legacy defender-count/aircraft-threshold knobs are loaded but unused. No further
+AI tuning was made. Public deployment remains 665; user's existing browser game
+uses 667 and has not been restarted.
+
+## Campaign economy and selection — 1.0.667 local candidate, 13 September 2026
+
+Branch `fix/campaign-ai-attack-limits` in the campaign-controls worktree. Building
+clicks now replace all previous building/unit selections, including Shift-click;
+Shift-clicking a unit also removes selected buildings. The real SDL command
+probe passes this regression on campaign levels 4 and 9.
+
+Needed Starport harvesters and the first carryall can now spend Vanilla's reserved
+economy cash. They already bypassed the cheap-price filter; the reserve was the
+actual barrier. Purchases check availability, stock, affordability and accepted
+queues, and stop at the sustainable worker target. A real Starport fixture bought
+a 1,500-credit carryall and 1,200-credit harvester with exactly 2,700 credits,
+placed the order and left zero credits. Other imports retain their existing rules.
+
+Stefan raised the balance target: Easy should survive level 9 against Easy,
+even if it cannot win. Four real-game simulations with a 60-minute cutoff all
+**won** using the existing 25% enemy attack budget: seeds 486409243 / 1 / 42 /
+257913089 finished in 31.95 / 30.60 / 29.81 / 26.59 game minutes. Hard also won
+seed 486409243 in 22.21 minutes. These runs used 667's combined economy/selection
+changes, with no human orders or skip. No further wave reduction is justified by
+these samples; other houses, map variants and human play remain untested.
+
+In the visible 666 browser campaign, Stefan explicitly confirmed the level-8
+victory screen and continuation (Hard partner / Easy enemies, seed 493337323).
+He subsequently closed the browser campaigns. Codex did not capture a final
+level-9 browser victory screen; native wins are recorded separately.
+
+Native Release, post-build dependency audit, signature verification, all six
+CTest targets, real SDL selection probe, above-price Starport probe and full
+Emscripten build pass. See `docs/campaign-ai-balance.md` for reproducible commands
+and evidence. Version 667 is local only; installed app and public 665 unchanged.
+
+## Campaign AI balance — 1.0.666 local candidate, 13 September 2026
+
+Worktree `/Users/stefan/Documents/projects/dunecity-campaign-controls`, branch
+`fix/campaign-ai-attack-limits`; original dev checkout remains untouched.
+Game-source commit `05979ae` implements campaign enemy ground-hunt budgets from
+existing QuantBot difficulty settings: Easy 25%, Medium 40%, Hard 50%, Brutal 60%.
+Already committed hunters consume the budget; deterministic selection preserves
+reserves. A lone cheapest unit may exceed an otherwise empty small-army budget.
+The full-control human partner remains uncapped. No save-format, economy,
+reinforcement, opening timer or skirmish changes.
+
+Stefan's acceptance target: Easy partner should win or hold through levels 4–5;
+Hard partner should beat Easy enemies on level 9. In two fixed-seed real-game
+simulation sets, Easy won levels 4/5 and Hard won level 9. The local browser
+level-4 Easy-versus-Easy run won in about 15 minutes. Its first enemy wave was
+8 units / 1,050 value, versus 31 / 4,360 in public 1.0.665. All six CTest targets,
+native Release and Emscripten builds pass. Native app signature and version 666
+were verified. `build/bin/dunecity.app` is rebuilt; installed app not replaced.
+
+See [campaign AI balance](docs/campaign-ai-balance.md) for measured outcomes,
+repeatable diagnostic commands, limitations and source-verified Dune Dynasty
+comparison. Dynasty gates team scripts on enemy contact and recruits small
+scenario-defined teams; its reinforcement schedule is separate. QuantBot still
+uses its existing 8–12 minute opening wait. Importing contact activation could
+start attacks sooner and is not part of the demonstrated size fix.
+
+**Release status:** 1.0.665 is merged and fully public (GitHub, SourceForge and
+browser), source `b7db7199455d9b756043118b7412c1d1e9359d06`. Browser artifacts were
+hash-verified. Website deployment `6042d82f9780e37474bbc7624e9b8f76ef817729` and
+anonymous feedback service are live; no server sudo/package install is needed.
+The Mac mini runner and caffeinate wrapper are restored; temporary Air builder
+label removed. Original branch protection restored after PR26 merge.
+**1.0.666 balance changes are committed locally, not pushed, merged, tagged or
+publicly deployed.** Earlier dated entries below describe historical states.
+
 ## Campaign controls release integration — 13 September 2026
 
 Version 1.0.665 combines campaign controls, map-selection repair, AI partner choices
