@@ -1,3 +1,40 @@
+## 1.0.679 published and verified — 14 September 2026 (Sydney)
+
+The missing browser mods fix and menu release are live. PR 31 merged as
+49d58edeb3e0710188305eb754c15843d856d21b, tagged v1.0.679. Stable release CI
+34760679530 passed version checks, relay/signaling tests, native tests and
+Windows/Linux/macOS/Emscripten builds. All six GitHub packages were downloaded
+and verified against their release metadata. The Mac DMG has version 1.0.679,
+a valid strict signature, both bundled mods and all 769 Tornie checksum files.
+
+SourceForge run 34761805560 verified every uploaded checksum, published
+`dunecity-v1.0.679`, advanced `dunecity` from b7db719 to 49d58ed and confirmed
+Windows/macOS/Linux defaults. The original v1.0.674 tag remains immutable and
+unpublished after cancellation; 679 supersedes it.
+
+To avoid an unnecessary browser rebuild, the successful stable run's exact
+DuneCity-Emscripten artifact was validated and packaged with production signaling
+origin https://dunelegacy.com. Automatic browser rebuild 34761805565 was cancelled
+before publication. Website commit d38c374 includes that package, matching private
+service SOURCE.json, 679 download references and the revised menu/co-op guide.
+Deploy to Droplet 34761923903 and Web security passed. Live build.json reports
+version 1.0.679 and source 49d58ed; all seven downloaded browser artifact hashes
+match. Live payload validation verifies 769 Tornie entries, six Dune2R files and
+38,455,774 data bytes. The public browser Mods screen visibly lists Dune City,
+Vanilla, Tornie and Dune2R. /p2p/v1/health reports status=ok, protocol=1.
+
+Local fresh and upgraded browser profiles both have all four mods. Tornie and
+Dune2R activation survive reload; Tornie custom reaches gameplay. Different-network
+two-device multiplayer and multiplayer save/resume remain unverified as previously
+disclosed and accepted by Stefan. No running human test game was interrupted or
+local installed application replaced. The local native build is 679; the separate
+running 673 guest copy was preserved.
+
+Verification artifacts are in ../outputs/dunecity-menu-acceptance: live-679/
+verification.json, release-679-assets, sourceforge-679.log, ctest-679.log and
+ci-679-macos-verification.json. This section supersedes the publication-pending
+statements in the historical entries below.
+
 ## 2026-09-14 — Integrated campaign release candidate 1.0.680
 
 Merged main 49d58ed (menu navigation and reproducible browser/mod packaging)
