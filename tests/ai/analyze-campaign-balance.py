@@ -75,6 +75,26 @@ def analyze(path):
         sides[side] = {k:round(sum(d[k] for d in members), 2) for k in
             ('spice', 'hp_damage', 'damage_value', 'lost_value', 'sorties', 'defence_orders', 'retaliations')}
         sides[side]['first_attack_min'] = min((d['first_attack_min'] for d in members if d['first_attack_min'] is not None), default=None)
+    # One observer snapshot contains all house ledgers at the same cycle.
+    # Never sum duplicate ledgers emitted by separate controllers.
+    checkpoints = []
+    observer = snapshots.get(str(human), [])
+    for minute in (5, 10, 15, 20, 30, 45, 60):
+        eligible = [e for e in observer if e['cycle'] <= minute * 3750]
+        if not eligible or minute * 3750 > int(match[4]):
+            continue
+        e = eligible[-1]
+        checkpoint = {'minute': minute, 'sample_minute': round(e['cycle']/3750, 2), 'sides': {}}
+        for side, own in [('player', True), ('enemy', False)]:
+            members = [(h, d) for h, d in e['data']['house_comparison'].items()
+                       if (d['team'] == team) == own]
+            totals = {k: round(sum(ledger(d)[k] for h, d in members), 2)
+                      for k in ('spice', 'hp_damage', 'damage_value', 'lost_value')}
+            totals['army'] = sum(d.get('military', 0) for h, d in members)
+            totals['harvesters'] = sum(d.get('harvesters', 0) for h, d in members)
+            totals['sorties'] = sum(sum(a['cycle'] <= e['cycle'] for a in attacks.get(h, [])) for h, d in members)
+            checkpoint['sides'][side] = totals
+        checkpoints.append(checkpoint)
     ratios = {k:round(sides['enemy'][k]/sides['player'][k], 3) if sides['player'][k] else None
               for k in ('spice','hp_damage','damage_value','lost_value')}
     return dict(case=path.parent.name, level=int(match[1]), partner=match[2], enemy=match[3],
@@ -82,7 +102,7 @@ def analyze(path):
         seed=summary['metadata']['seed'], source=summary['metadata']['source'],
         version=summary['metadata']['version'], sourceCommit=summary['sourceCommit'],
         workingTreeModified=summary['workingTreeModified'], player_team=team, local_house=human, sides=sides, enemy_player_ratios=ratios,
-        houses=per_house, evidence=str(events_path))
+        houses=per_house, checkpoints=checkpoints, evidence=str(events_path))
 
 
 def main():
