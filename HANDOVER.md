@@ -1,3 +1,12 @@
+## Release authorization — 1.0.674, 13 September 2026
+
+Stefan explicitly requested shipping after being told that different-network,
+two-device multiplayer and multiplayer save/resume remained unverified. Release
+1.0.674 with those limits recorded in releases/desktop/1.0.674.md. This authorizes
+normal stable-tag desktop, browser, website and SourceForge publication; keep the
+current local human co-op session running. Source is a fast-forward of public
+main b7db719. Publication outcome must be checked separately from local builds.
+
 ## Classic player setup restored — 1.0.674 local, 13 September 2026
 
 Stefan rejected the sparse left-aligned player setup and requested the original
