@@ -1,3 +1,16 @@
+## 2026-09-14 — Direct-P2P Discord announcements repaired (server-only)
+
+Custom lobbies bypass the legacy metaserver, which was the only Discord notification
+path. The signaling service now calls a trusted local deployment hook after host
+seating and match start, with a bounded snapshot that excludes all invitation and
+transport credentials. Retries/recovered seating do not duplicate events; hook
+errors cannot break hosting. The website owns delivery using the existing webhook.
+Stefan requested both public and private announcements, omitting private codes.
+166 real-HTTP signaling tests pass, including custom/coop, public/private,
+recovery/start deduplication and notification failure isolation. No client protocol,
+C++ source, simulation or browser binary changes; server infrastructure is deployed
+separately from game releases. Publication is recorded in the website deployment.
+
 ## 2026-09-14 — Combined release candidate renumbered 1.0.682
 
 Main advanced to 72ef00f (1.0.681 restored Custom Game map browser) while

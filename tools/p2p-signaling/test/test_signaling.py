@@ -410,10 +410,16 @@ class ServiceFixture:
         # way Apache would rather than being serialised by a single-threaded dev server.
         env = dict(os.environ, DUNECITY_P2P_CONFIG=self.config, PHP_CLI_SERVER_WORKERS="4")
         self.server_log = open(os.path.join(self.tmp, "php-server.log"), "w+b")
+        self.notification_log = os.path.join(self.tmp, "notifications.jsonl")
+        router = os.path.join(self.tmp, "router.php")
+        Path(router).write_text("<?php\nfunction dunecityP2PNotifyLobby($kind, $event) {\n"
+            "file_put_contents(" + php_literal(self.notification_log) + ", json_encode([$kind,$event]).\"\\n\", FILE_APPEND|LOCK_EX);\n"
+            "if (file_exists(" + php_literal(os.path.join(self.tmp, "fail-notifications")) + ")) throw new RuntimeException('fixture');\n"
+            "}\nrequire " + php_literal(os.path.join(ROOT, "bin", "router.php")) + ";\n")
         self.proc = subprocess.Popen(
             [PHP_BIN, "-d", "error_log=" + os.path.join(self.tmp, "php-error.log"),
              "-S", "127.0.0.1:%d" % self.port, "-t", os.path.join(ROOT, "public"),
-             os.path.join(ROOT, "bin", "router.php")],
+             router],
             env=env, stdout=subprocess.DEVNULL, stderr=self.server_log, start_new_session=(os.name == "posix"))
         self._wait()
 
@@ -633,6 +639,44 @@ class SignalingTestCase(unittest.TestCase):
 
 
 # ------------------------------------------------------------------------------------------
+class NotificationTests(SignalingTestCase):
+    def test_lobby_notifications_follow_committed_host_and_start_only(self):
+        for visibility in ["public", "private"]:
+            for mode in ["custom", "coop"]:
+                Path(self.service.notification_log).write_text("")
+                admission = self.host(visibility=visibility, mode=mode)
+                self.assertEqual("", Path(self.service.notification_log).read_text())
+                form = claims(grant=admission.fields["grant"], name="Host".encode().hex(), nonce="b"*32)
+                host = self.service.request("POST", "/v1/p2p/session", form)
+                self.assertEqual(200, host.status)
+                self.assertEqual(200, self.service.request("POST", "/v1/p2p/session", form).status)
+                guest = self.seat_guest(admission)
+                self.assertEqual(403, self.phase(guest.fields["session"], "match").status)
+                self.assertEqual(200, self.phase(host.fields["session"], "match").status)
+                self.assertEqual(200, self.phase(host.fields["session"], "match").status)
+                events = [json.loads(x) for x in Path(self.service.notification_log).read_text().splitlines()]
+                self.assertEqual(["hosted", "started"], [x[0] for x in events])
+                self.assertEqual(visibility, events[0][1]["visibility"])
+                self.assertEqual(mode, events[0][1]["mode"])
+                self.assertEqual(1, events[0][1]["players"])
+                self.assertEqual(2, events[1][1]["players"])
+                self.assertEqual({"room_log_id", "mode", "visibility", "host", "version", "players", "max_players"}, set(events[0][1]))
+                self.assertNotIn(admission.fields["room"], json.dumps(events))
+                self.assertNotIn(host.fields["session"], json.dumps(events))
+                for response in [host, self.poll(host.fields["session"])]:
+                    self.assertNotIn("notification", response.body)
+
+    def test_notification_failure_cannot_break_hosting_or_start(self):
+        marker = Path(self.service.tmp)/"fail-notifications"
+        marker.touch()
+        try:
+            admission, host = self.seat()
+            self.seat_guest(admission)
+            self.assertEqual(200, self.phase(host.fields["session"], "match").status)
+        finally:
+            marker.unlink()
+
+
 class AdmissionTests(SignalingTestCase):
     def test_host_answer_matches_the_shipped_parser(self):
         response = self.host()
