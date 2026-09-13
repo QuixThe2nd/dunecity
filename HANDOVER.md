@@ -1,3 +1,17 @@
+## 2026-09-13 — Advanced helper economy, 1.0.679
+
+Stefan closed his level-9 game before inspection. Native reproduction found a
+15-worker-cap Brutal helper reducing its target to six with 41k map spice left.
+`83f6264` makes Hard/Brutal vanilla campaign helpers invest toward their allowed
+capacity without dividing spice equally with enemies; prioritizes their Starport
+and factory workers; fixes all-role double reservation of already-paid Starport
+cargo. Enemy worker limits and Easy/Medium investment unchanged. Native build,
+audits/signature, six CTest targets and final helper/Starport/pacing fixtures pass.
+Six complete level-9 matches all reached 15 workers at 10.64–11.65 game minutes;
+five defeats, one win show economy alone does not fix combat balance. Source,
+ratios, comparison and fixture caveats: [679 validation](docs/campaign-ai-validation-679.md).
+No push or deployment; browser unchanged. Readiness/ineffective routes remain open.
+
 ## 2026-09-13 — Hard/Brutal campaign commitment, 1.0.678
 
 Stefan requested most-in Hard and all-in Brutal enemies. `063a7f5` implements
