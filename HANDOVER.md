@@ -15,7 +15,9 @@ harvest totals including carried spice, an AI ally and a human enemy. Fixture
 screenshot verified: You 1,300 spice / 7 units / 3 buildings; Enemy 775 / 5 / 2;
 score 567, Warlord. These are controlled test totals, not a played mission.
 Evidence: `/tmp/dunecity-campaign-balance/stats-668-render-v2`. Native Release,
-dependency and signature audits and all six CTest targets pass.
+dependency and signature audits and all six CTest targets pass. Full Emscripten
+build also passes; local preview packaging uses 668. The already-running 667
+browser tab requires a fresh load to pick up this results-screen fix.
 
 Stefan also asked why campaign difficulties look similar. Audit in
 `docs/campaign-ai-balance.md` distinguishes enemy and shared-house partner paths:
