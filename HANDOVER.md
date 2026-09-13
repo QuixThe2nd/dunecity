@@ -1,3 +1,37 @@
+## Browser bundled mods restored — 1.0.679, 13 September 2026
+
+Stefan reported that public browser 1.0.665 only listed Dune City and Vanilla.
+Emscripten preloaded data/config/sprites but omitted mods/Tornie and mods/Dune2R.
+Native packaging already included both. The pending 1.0.674 tag and duplicate
+main CI runs (34759208672, 34759197806) were force-cancelled before publication;
+GitHub latest remained 1.0.665. Keep the existing v1.0.674 tag immutable.
+
+Version 1.0.679 adds both managed mod payloads to browser preloads, excluding
+Dune2R optional downloadable art as native packaging does. Managed reseeding
+recreates the empty Dune2R asset directories omitted by file-only archives,
+preventing fallback to Vanilla on the next launch. Existing downloaded art is
+preserved. The build and production web workflows validate the actual JS/data
+archive for both mods and Tornie's SHA256 manifest. Six regression tests cover
+metadata forms (including minified exponent offsets), missing mods, corruption,
+truncated data and accidental art. The actual 679 archive verifies all 769
+Tornie checksum entries and six Dune2R files in 38,455,774 bytes.
+The check correctly rejects the previous CI 674 artifact for missing Tornie.
+Native Release, dependency audit and all seven CTest groups pass.
+
+Shipping authorization persists for 679, with the already disclosed WAN and
+multiplayer save/resume limits. Keep Stefan's running local 673 game untouched.
+Local browser acceptance passes on the existing 674 preview profile upgraded
+to 679: all four mods appear in Extras, Custom Game and Campaign. Tornie and
+Dune2R activate and remain active after individual reloads; an offline Tornie
+custom game reaches gameplay. Public publication must be verified separately.
+
+Stefan explicitly requested a GitHub administrator exception for ggtothemax.
+Ruleset 23003149 now permits User 325456832 in pull_request bypass mode; all
+other rules are preserved. Readback confirmed pull_requests_only. PR 30 merged
+with that exception after checks passed, producing 72bae344. Do not broaden the
+exception to other admins or direct pushes. The website copy is staged separately
+in dunelegacy-release-674 and must be updated for 679 before publication.
+
 ## Release authorization — 1.0.674, 13 September 2026
 
 Stefan explicitly requested shipping after being told that different-network,

@@ -29,7 +29,11 @@ confuse pushing website source with publishing it to SourceForge web hosting.
    Preserve the old app, stage the new bundle, verify its signature, replace it,
    and compare version/binary SHA256 against `build/bin/dunecity.app`. Do not
    interrupt a running game or launch it merely for verification.
-3. Push the authorized release and its `vX.Y.Z` tag. **Build Dune Legacy** in
+3. Merge through a pull request. As of 2026-09-13, the owner-authorized exception
+   in main ruleset 23003149 is User 325456832 (`ggtothemax`) with `pull_request`
+   bypass mode; it does not permit direct pushes. After checks pass, an authorized
+   release can use `gh pr merge --merge --admin --match-head-commit SHA`.
+   Push the authorized release and its `vX.Y.Z` tag. **Build Dune Legacy** in
    `.github/workflows/build.yml` gates publication on tests and Windows, Linux
    and macOS success. Verify all six assets: ZIP, DMG, AppImage, DEB, RPM, tar.gz.
 4. The release job updates version/download links in the separate website repo's
@@ -108,6 +112,7 @@ For an authorized browser hotfix, build current committed source locally:
 source /path/to/emsdk/emsdk_env.sh
 emcmake cmake -S . -B build-web -G Ninja -DCMAKE_BUILD_TYPE=Release -DDUNECITY_BUILD_TESTS=OFF -DDUNECITY_ENABLE_PCH=OFF
 cmake --build build-web --parallel 8
+python3 scripts/check-web-mods.py --build-root build-web
 python3 scripts/package-web.py --build-root build-web --play-root ../dunelegacy.com/website/play
 python3 ../dunelegacy.com/deploy/check-web-security.py
 node --test scripts/tests/test-web-shell.cjs

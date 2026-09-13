@@ -566,7 +566,18 @@ if(EMSCRIPTEN)
         "SHELL:--preload-file ${CMAKE_SOURCE_DIR}/data@/"
         "SHELL:--preload-file ${CMAKE_SOURCE_DIR}/config@/config"
         "SHELL:--preload-file ${CMAKE_SOURCE_DIR}/imported_sprites@/imported_sprites"
+        "SHELL:--preload-file ${CMAKE_SOURCE_DIR}/mods/Tornie@/mods/Tornie"
+        "SHELL:--preload-file ${CMAKE_SOURCE_DIR}/mods/Dune2R@/mods/Dune2R"
+        # Keep the Dune2R mod/catalog available; its optional art downloads
+        # separately, just as in the native packages.
+        "SHELL:--exclude-file ${CMAKE_SOURCE_DIR}/mods/Dune2R/graphics_hd/units"
+        "SHELL:--exclude-file ${CMAKE_SOURCE_DIR}/mods/Dune2R/graphics_compact/objpics"
     )
+    file(GLOB_RECURSE WEB_MOD_FILES CONFIGURE_DEPENDS
+        "${CMAKE_SOURCE_DIR}/mods/Tornie/*"
+        "${CMAKE_SOURCE_DIR}/mods/Dune2R/*")
+    list(FILTER WEB_MOD_FILES EXCLUDE REGEX "/graphics_hd/units/|/graphics_compact/objpics/")
+    set_property(TARGET dunecity APPEND PROPERTY LINK_DEPENDS ${WEB_MOD_FILES})
 else()
     # vcpkg provides modern CMake targets for SDL2.
     target_link_libraries(dunecity

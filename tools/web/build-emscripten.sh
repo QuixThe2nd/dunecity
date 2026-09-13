@@ -112,6 +112,7 @@ if [[ -f "${OUT_DIR}/dunecity.worker.js" ]]; then
 fi
 
 node "${ROOT}/tools/web/verify-dunecity-js.mjs" --built "${JS}"
+python3 "${ROOT}/scripts/check-web-mods.py" --build-root "${BUILD_DIR}"
 
 echo ""
 echo "==> Build succeeded"
