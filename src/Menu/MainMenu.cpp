@@ -184,8 +184,9 @@ MainMenu::MainMenu()
         windowWidget.addWidget(&buttonBorder, borderBounds);
 
     }
-    TextButton* allButtons[] = {&continueButton, &customButton, &onlineButton, &loadButton, &campaignButton, &modesButton, &optionsButton, &displayButton, &howToPlayButton,
-                                &dune2rEditorButton, &aboutButton, &quitButton};
+    // Only visible destinations participate in keyboard navigation, in screen order.
+    TextButton* allButtons[] = {&continueButton, &campaignButton, &customButton, &onlineButton,
+                                &loadButton, &optionsButton, &modesButton, &quitButton};
     for(TextButton* button : allButtons) {
         windowWidget.addWidget(button, Point(0, 0), Point(1, 1));
     }
@@ -208,6 +209,8 @@ MainMenu::MainMenu()
     } else {
         windowWidget.addWidget(&modVersionLabel, Point(12, getSize().y - 58), Point(220, 50));
     }
+    if(canContinue) continueButton.setActive();
+    else campaignButton.setActive();
 }
 
 void MainMenu::refreshModVersionLabel()
@@ -374,6 +377,10 @@ void MainMenu::onDune2REditor() const
 
 void MainMenu::refreshContextButtons()
 {
+    dune2rEditorButton.setEnabled(false);
+    howToPlayButton.setEnabled(false);
+    aboutButton.setEnabled(false);
+    displayButton.setEnabled(false);
     dune2rEditorButton.setVisible(false);
     howToPlayButton.setVisible(false);
     aboutButton.setVisible(false);

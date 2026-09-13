@@ -35,6 +35,11 @@ int runMenuProbe() {
         menuRequire(menu.campaignButton.isVisible() && menu.customButton.isVisible() && menu.onlineButton.isVisible(), "Home play actions missing");
         menuRequire(!menu.displayButton.isVisible(),"Duplicate Display entry remains");
         menuCapture(menu,"home");
+        SDL_Event tab{}; tab.type=SDL_KEYDOWN; tab.key.keysym.sym=SDLK_TAB;
+        for(auto* expected : {&menu.customButton,&menu.onlineButton,&menu.loadButton,&menu.optionsButton,&menu.modesButton,&menu.quitButton,&menu.campaignButton}) {
+            menu.handleInput(tab);
+            menuRequire(menu.windowWidget.pActiveChildWidget==expected,"Home Tab order reaches a hidden destination or disagrees with screen order");
+        }
     }
     {
         HouseChoiceMenu menu;
