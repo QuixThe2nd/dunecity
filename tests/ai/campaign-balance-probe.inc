@@ -99,6 +99,21 @@ int runCampaignBalanceProbe() {
     }
     SDL_Log("CAMPAIGN_BALANCE_RESULT: level=%d seed=%u attack_percent=%d partner=%s enemy=%s cycle=%u outcome=%s",
         level, seed, percent, partner.c_str(), enemy.c_str(), game->getGameCycleCount(), game->finished ? (game->won ? "won" : "lost") : "time_limit");
+    if (!game->finished) {
+        for (const auto* unit:unitList) {
+            const auto* target=unit->getTarget();
+            SDL_Log("CAMPAIGN_UNIT_AUDIT: house=%d id=%u item=%u hp=%d/%d active=%d moving=%d forced=%d mode=%d pos=%d,%d dest=%d,%d guard=%d,%d target=%u target_item=%u target_pos=%d,%d",
+                unit->getOwner()->getHouseID(),unit->getObjectID(),unit->getItemID(),unit->getHealth().lround(),unit->getMaxHealth(),
+                unit->isActive(),unit->isMoving(),unit->wasForced(),int(unit->getAttackMode()),
+                unit->getLocation().x,unit->getLocation().y,unit->getDestination().x,unit->getDestination().y,
+                unit->getGuardPoint().x,unit->getGuardPoint().y,target?target->getObjectID():NONE_ID,
+                target?target->getItemID():NONE_ID,target?target->getLocation().x:-1,target?target->getLocation().y:-1);
+        }
+        for (const auto* building:structureList)
+            SDL_Log("CAMPAIGN_BUILDING_AUDIT: house=%d item=%u hp=%d/%d pos=%d,%d",
+                building->getOwner()->getHouseID(),building->getItemID(),building->getHealth().lround(),building->getMaxHealth(),
+                building->getLocation().x,building->getLocation().y);
+    }
     game.reset();
     currentGame = nullptr;
     pLocalPlayer = nullptr;
