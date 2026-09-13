@@ -1,3 +1,19 @@
+## 2026-09-14 — Native release assessment, local AI 1.0.679
+
+Tested clean source `552a59f`: 71 scenarios (59 matrix +12 other-house level-9
+cases), 48 wins/22 losses/one 60-minute cutoff. Same-binary extended replay of
+Ordos9 Brutal/Hard seed1 ended naturally in defeat at85.44 game minutes; all71
+scenarios therefore resolved, no crashes. All13 Easy/Easy won, all6 Medium/Medium
+won; every enemy attacked. All21 advanced-helper level9 cases reached >=15workers.
+Eight cases overshot to16: pending refinery-supplied workers are missing from
+vanilla AI commitment counts and can overlap factory/paid Starport arrivals.
+Fix planning, not paid delivery or existing units. Native checks/fixtures pass.
+Fetched main `49d58ed` has separate menu/browser changes ALSO numbered1.0.679;
+read-only merge assessment reports HANDOVER conflict only. Need worker fix,
+integration, new version and web validation before production. No code changes,
+merge or push this turn. Full evidence and ratios:
+[release assessment](docs/campaign-ai-release-readiness-679.md).
+
 ## 2026-09-13 — Advanced helper economy, 1.0.679
 
 Stefan closed his level-9 game before inspection. Native reproduction found a
