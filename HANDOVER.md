@@ -1,3 +1,18 @@
+## 2026-09-13 — Hard/Brutal campaign commitment, 1.0.678
+
+Stefan requested most-in Hard and all-in Brutal enemies. `063a7f5` implements
+80%/100% commitment without count/value caps for those tiers, retaining two/all
+simultaneous houses respectively. Easy/Medium and human-side helpers unchanged.
+Native build, audits, signature, six CTest targets and pressure/defense/pacing
+fixtures pass. Four 40-tank armies verify Hard sends 32 each from two houses,
+Brutal 40 each from all four; manual/repair/damage exclusions remain effective.
+Harness commit `4d77832` updates the old unconditional live cap assertion.
+Six final native level-5/8/9 matches (Hard helper, Hard/Brutal enemy, seed 42)
+completed: five player defeats, one victory (level 8 Hard), no timeouts. This is
+much stronger pressure, not a finished balance claim. See
+[678 validation](docs/campaign-ai-validation-678.md). No push/deployment; browser
+remains unchanged. Helper readiness and ineffective attack routes remain open.
+
 ## 2026-09-13 — Native campaign resistance validation, 1.0.677
 
 Local branch `fix/campaign-ai-attack-limits`, game commit `0861fba`, diagnostic snapshot `a6c54ef`. Added Hard/Brutal repair-yard and prerequisite priority for both roles, removed the repair-yard attack prerequisite, retired army readiness goals after spice exhaustion, and gave idle dispatched campaign attackers real scouting/visible-base reacquisition. Human orders, home defenders and shared enemy wave limits remain protected.
