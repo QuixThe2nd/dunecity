@@ -1,5 +1,6 @@
 #include <Menu/PlaySetup.h>
 #include <Menu/CustomGamePlayers.h>
+#include <Menu/CustomGameMenu.h>
 #include <Menu/CrossplayMenu.h>
 #include <Menu/MenuBase.h>
 #include <FileClasses/GFXManager.h>
@@ -140,7 +141,13 @@ void playCustomGame(bool online) {
     for(size_t i = 0; i < setup.mods.size(); ++i)
         if(setup.mods[i].name == ModManager::instance().getActiveModName()) setup.mod = static_cast<int>(i);
     if(setup.maps.empty()) { PlayError(_("No custom maps found. Create a map in Extras > Map Editor, then return here.")).showMenu(); return; }
+    bool chooseMap = true;
     for(;;) {
+        if(chooseMap) {
+            CustomGameMenu browser(false, false, &setup);
+            if(browser.showMenu() != MENU_SETUP_PLAYERS) return;
+            chooseMap = false;
+        }
         auto& mods = ModManager::instance();
         const auto oldMod = mods.getActiveModName();
         if(!setup.mods.empty() && setup.mods[setup.mod].name != oldMod) {
@@ -155,6 +162,7 @@ void playCustomGame(bool online) {
             result = menu.showMenu();
         }
         if(result == MENU_SETUP_CHANGED) continue;
+        if(result == MENU_SETUP_MAP || result == MENU_QUIT_DEFAULT) { chooseMap = true; continue; }
         if(result != MENU_SETUP_HOST) return;
         GameInitSettings networkInit(getBasename(path, true), readCompleteFile(path), settings.general.playerName + "'s custom game", setup.sharedHouse, setup.rules);
         if(CrossplayMenu(networkInit, setup.publicGame, setup.players).showMenu() == MENU_QUIT_GAME_FINISHED) return;

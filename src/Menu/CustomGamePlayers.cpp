@@ -187,6 +187,9 @@ CustomGamePlayers::CustomGamePlayers(const GameInitSettings& newGameInitSettings
         setupMap.setSelectedItem(setup->map);
         setupMap.setOnSelectionChange([this](bool interactive) { if(interactive) { setup->map = setupMap.getSelectedIndex(); rebuildSetup(false); } });
         setupMapRow.addWidget(&setupMap, 1.0);
+        setupBrowseMaps.setText(_("Browse Maps"));
+        setupBrowseMaps.setOnClick([this]() { onCancel(); });
+        setupMapRow.addWidget(&setupBrowseMaps, 110);
         setupMapRow.addWidget(Label::create(_("Mod")), 40);
         for(size_t i = 0; i < setup->mods.size(); ++i) setupMod.addEntry(setup->mods[i].displayName, static_cast<int>(i));
         setupMod.setSelectedItem(setup->mod);
@@ -715,6 +718,15 @@ CustomGamePlayers::~CustomGamePlayers()
             }
         }
     }
+}
+
+int CustomGamePlayers::showMenu() {
+    const int result = MenuBase::showMenu();
+    if(setup && result == MENU_QUIT_DEFAULT) {
+        setup->players = getChangeEventList();
+        return MENU_SETUP_MAP;
+    }
+    return result;
 }
 
 void CustomGamePlayers::rebuildSetup(bool keepPlayers) {
@@ -1715,6 +1727,11 @@ bool CustomGamePlayers::addPlayerToHouseInfo(GameInitSettings::HouseInfo& newHou
 
 void CustomGamePlayers::onCancel()
 {
+    if(setup) {
+        setup->players = getChangeEventList();
+        quit(MENU_SETUP_MAP);
+        return;
+    }
     quit();
 }
 

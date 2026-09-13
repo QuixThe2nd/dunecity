@@ -1,3 +1,27 @@
+## Original custom map browser restored — 1.0.681 local, 14 September 2026
+
+Stefan correctly reported that restoring the classic player layout had left
+custom map selection reduced to a dropdown. The original CustomGameMenu was
+still present but bypassed by playCustomGame. The unified custom flow now starts
+with that scrolling map list, five original categories, preview, metadata and
+mod/rule controls. Offline/Online and visibility are available before Players.
+The existing classic player setup, explicit open-seat hosting and direct-P2P
+lobby flow are preserved. Back, Escape and Browse Maps return to map selection
+with the roster retained; choosing a different map/mod resets incompatible seats.
+The current selected map is restored, falling back to All Maps if a quick player
+screen selection is outside the previous category. Mod defaults update before
+editing Game Rules. Uppercase map extensions resolve through the legacy helper.
+
+The native probe now checks map-browser presence and rendering at 640×480,
+854×480 and 1280×720, both connection modes, selected-map preservation and the
+roster round trip. All seven CTest groups pass. The final isolated browser build passes dependency and bundled-mod audits.
+Interactive checks confirm Custom Game opens the full browser, MP Maps filters
+the list, preview follows selection, Online carries into Players, and Browse
+Maps/Escape preserve the selected map and Atreides roster choice. Publication
+outcome must be verified separately. Do not interrupt any running human game; use a
+separate preview. Version 1.0.680 belongs to the independent campaign worktree
+and is not included in this change.
+
 ## 1.0.679 published and verified — 14 September 2026 (Sydney)
 
 The missing browser mods fix and menu release are live. PR 31 merged as
