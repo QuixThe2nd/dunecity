@@ -26,6 +26,7 @@ jobs:
         run: |
           node --test scripts/tests/test-web-shell.cjs
           python3 -m unittest discover -s scripts/tests -p 'test_package_web.py'
+          python3 -m unittest discover -s scripts/tests -p 'test_check_web_mods.py'
       - name: Select latest published release
         run: |
           TAG=$(gh release view --json tagName --jq .tagName)
@@ -42,6 +43,7 @@ jobs:
           source "$RUNNER_TEMP/emsdk/emsdk_env.sh"
           emcmake cmake -S . -B build-web -G Ninja -DCMAKE_BUILD_TYPE=Release -DDUNECITY_BUILD_TESTS=OFF -DDUNECITY_ENABLE_PCH=OFF
           cmake --build build-web --parallel 4
+          python3 scripts/check-web-mods.py --build-root build-web
       - name: Package and publish website
         env:
           WEBSITE_DEPLOY_KEY: ${{ secrets.WEBSITE_DEPLOY_KEY }}
