@@ -1,0 +1,154 @@
+// Test-only entry point, linked against the real menu objects by run-menu-probe.py.
+#include <Menu/HouseChoiceMenu.h>
+#include <Menu/CustomGamePlayers.h>
+#include <Menu/CrossplayMenu.h>
+#include <Menu/OptionsMenu.h>
+#include <Menu/PlaySetup.h>
+#include <mod/ModManager.h>
+#include <misc/FileSystem.h>
+#include <FileClasses/LoadSavePNG.h>
+#include <players/PlayerFactory.h>
+
+void menuRequire(bool value, const char* message) {
+    if(!value) throw std::runtime_error(message);
+}
+void menuCapture(MenuBase& menu, const std::string& name) {
+    SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+    SDL_RenderClear(renderer);
+    menu.draw();
+    int w, h;
+    SDL_GetRendererOutputSize(renderer, &w, &h);
+    auto surface = sdl2::surface_ptr(SDL_CreateRGBSurfaceWithFormat(0,w,h,32,SDL_PIXELFORMAT_ARGB8888));
+    menuRequire(SDL_RenderReadPixels(renderer,nullptr,SDL_PIXELFORMAT_ARGB8888,surface->pixels,surface->pitch)==0,"Capture failed");
+    const auto path = std::string(std::getenv("MENU_PROBE_OUT"))+"/"+std::getenv("MENU_PROBE_WIDTH")+"-"+name+".bmp";
+    menuRequire(SDL_SaveBMP(surface.get(),path.c_str())==0,"Screenshot write failed");
+}
+int runMenuProbe() {
+    settings.general.playerName = "Menu tester";
+    settings.network.relayUseDevelopmentEndpoint = true;
+    // Disable online discovery in this fixture; admission and transport have separate tests.
+    settings.network.directDevelopmentEndpoint = "";
+    ModManager::instance().setActiveMod("vanilla");
+    effectiveGameOptions = ModManager::instance().loadEffectiveGameOptions(settings.gameOptions);
+    {
+        MainMenu menu;
+        menuRequire(menu.campaignButton.isVisible() && menu.customButton.isVisible() && menu.onlineButton.isVisible(), "Home play actions missing");
+        menuRequire(!menu.displayButton.isVisible(),"Duplicate Display entry remains");
+        menuCapture(menu,"home");
+    }
+    {
+        HouseChoiceMenu menu;
+        menu.onHouseButton(1);
+        menuRequire(!menu.isQuiting(),"Selecting a house starts the game");
+        HouseChoiceMenu::s_startLevel = 7;
+        HouseChoiceMenu::s_singleMission = false;
+        menu.populateLevels();
+        menuRequire(menu.startLevelDropDown.getNumEntries()==9,"Campaign level range wrong");
+        menuCapture(menu,"campaign-offline");
+        HouseChoiceMenu::s_currentGameOptions.fogOfWar = !effectiveGameOptions.fogOfWar;
+    }
+    {
+        HouseChoiceMenu menu(true,true);
+        menuRequire(HouseChoiceMenu::getStartLevel()==7,"Retry lost campaign level");
+        menuRequire(HouseChoiceMenu::getGameOptions().fogOfWar != effectiveGameOptions.fogOfWar,"Retry lost game rules");
+        menuRequire(!menu.supportBotDropDown.isEnabled(),"Online campaign AI selector should defer to lobby");
+        menuCapture(menu,"campaign-online");
+        HouseChoiceMenu::s_singleMission = true;
+        menu.populateLevels();
+        menuRequire(menu.startLevelDropDown.getNumEntries()==22,"Single mission range wrong");
+    }
+    CustomPlaySetup setup;
+    auto files = getFileNamesList(getDuneLegacyDataDir()+"/maps/multiplayer/","ini",true);
+    auto dir = getDuneLegacyDataDir()+"/maps/multiplayer/";
+    if(files.empty()) { dir = getDuneLegacyDataDir()+"/data/maps/multiplayer/"; files=getFileNamesList(dir,"ini",true); }
+    menuRequire(!files.empty(),"No bundled custom maps");
+    for(const auto& file : files) setup.maps.push_back(dir+file);
+    setup.mods = ModManager::instance().listMods();
+    for(size_t i=0;i<setup.mods.size();++i) if(setup.mods[i].name=="vanilla") setup.mod=i;
+    setup.rules = effectiveGameOptions;
+    const auto map = setup.maps.front();
+    GameInitSettings init(getBasename(map,true),readCompleteFile(map),false,setup.rules);
+    ChangeEventList original;
+    {
+        CustomGamePlayers menu(init,true,false,&setup);
+        original=menu.getChangeEventList();
+        menuRequire(menu.numHouses>=2,"Fixture needs two houses");
+        menu.update();
+        menuRequire(menu.mainVBox.getMinimumSize().x<=menu.mainVBox.getSize().x,"Custom controls exceed menu width");
+        menuCapture(menu,"custom-offline");
+        menu.rebuildSetup(true);
+        menuRequire(!setup.players.changeEventList.empty(),"Custom setup lost roster");
+    }
+    setup.online=true;
+    {
+        CustomGamePlayers menu(init,true,false,&setup);
+        auto restored=menu.getChangeEventList();
+        menuRequire(restored.changeEventList.size()==original.changeEventList.size(),"Roster shape changed across online toggle");
+        auto restoredEvent=restored.changeEventList.begin();
+        for(const auto& a : original.changeEventList) {
+            const auto& b=*restoredEvent++;
+            menuRequire(a.eventType==b.eventType && a.slot==b.slot && a.newValue==b.newValue && a.newStringValue==b.newStringValue,"Online toggle changed player choices");
+        }
+        menu.update();
+        menuCapture(menu,"custom-online");
+        menu.onNext();
+        menuRequire(menu.retVal==MENU_SETUP_HOST,"Create Lobby did not return prepared setup");
+    }
+    {
+        setup.sharedHouse=true;
+        setup.players=ChangeEventList{};
+        GameInitSettings sharedInit(getBasename(map,true),readCompleteFile(map),true,setup.rules);
+        CustomGamePlayers menu(sharedInit,true,false,&setup);
+        menuRequire(menu.mainVBox.getMinimumSize().x<=menu.mainVBox.getSize().x,"Shared house controls exceed menu width");
+        menu.update(); menuCapture(menu,"custom-shared");
+    }
+    for(const auto& candidate : setup.maps) {
+        if(getBasename(candidate).find("6P - 64x64") == std::string::npos) continue;
+        auto sixSetup=setup;
+        sixSetup.map=static_cast<int>(std::distance(setup.maps.begin(), std::find(setup.maps.begin(), setup.maps.end(), candidate)));
+        sixSetup.players=ChangeEventList{};
+        GameInitSettings sixInit(getBasename(candidate,true),readCompleteFile(candidate),true,setup.rules);
+        CustomGamePlayers menu(sixInit,true,false,&sixSetup);
+        menuRequire(menu.numHouses==6,"Six-house fixture not loaded");
+        menuRequire(menu.mainVBox.getMinimumSize().y<=menu.mainVBox.getSize().y,"Six-house controls exceed menu height");
+        menuCapture(menu,"custom-six-houses");
+        break;
+    }
+    setup.players=original;
+    {
+        CrossplayMenu menu;
+        menu.stage=CrossplayMenu::Stage::Choosing;
+        PublicRelayGame coop, custom;
+        coop.mode="coop"; coop.hostName="Campaign host"; coop.roomCode="AAAA-BBBB-CCCC"; coop.players=1; coop.maxPeers=2;
+        custom.mode="custom"; custom.hostName="Custom host"; custom.roomCode="DDDD-EEEE-FFFF"; custom.players=2; custom.maxPeers=4;
+        menu.allPublicGames={coop,custom}; menu.refreshDirectory();
+        menu.modeFilter.setSelectedItem(1); menu.refreshDirectory();
+        menuRequire(menu.publicGames.size()==1 && menu.publicGames[0].mode=="coop","Campaign filter includes custom games");
+        menu.modeFilter.setSelectedItem(2); menu.refreshDirectory();
+        menuRequire(menu.publicGames.size()==1 && menu.publicGames[0].mode=="custom","Custom filter includes campaign games");
+        menu.modeFilter.setSelectedItem(0); menu.refreshDirectory();
+        menuCapture(menu,"join");
+        menu.showChat=true; menu.layoutControls(); menu.refreshControls();
+        menuCapture(menu,"public-chat");
+    }
+    {
+        GameInitSettings networkInit(getBasename(map,true),readCompleteFile(map),"Prepared custom",false,setup.rules);
+        CrossplayMenu menu(networkInit,false,setup.players);
+        menuRequire(menu.preparedGame->getFiledata()==init.getFiledata(),"Prepared hosting changed the selected map");
+        menuRequire(menu.preparedPlayers.changeEventList.size()==original.changeEventList.size(),"Prepared hosting lost the roster");
+        menuRequire(menu.visibilityChoice.getSelectedIndex()==0,"Private room is not the default");
+    }
+    {
+        OptionsMenu menu;
+        for(int page=0;page<5;++page) { menu.showPage(page); menuCapture(menu,"settings-"+std::to_string(page)); }
+        menuRequire(menu.interfaceSizeDropDownBox.getParent()==&menu.interfaceHBox,"Interface size missing from Settings");
+        menuRequire(menu.pages[1].getMinimumSize().y <= menu.pages[1].getSize().y,"Graphics controls overflow");
+        menu.showPage(2);
+        settings.network.metaServer=""; menu.metaServerTextBox.setText("");
+        menu.playSFXCheckbox.setChecked(!settings.audio.playSFX);
+        menu.onOptionsOK();
+        menuRequire(menu.isQuiting(),"Unchanged legacy network field blocked audio apply");
+    }
+    SDL_Log("MENU_PROBE_PASS: home, campaign retry, mission ranges, custom roster, online transition, settings validation and rendering");
+    return MENU_QUIT_DEFAULT;
+}

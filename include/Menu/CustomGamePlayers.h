@@ -19,6 +19,7 @@
 #define CUSTOMGAMEPLAYERS_H
 
 #include <GameInitSettings.h>
+#include <Menu/PlaySetup.h>
 #include <Menu/LobbyAuthorization.h>
 
 #include <GUI/StaticContainer.h>
@@ -50,7 +51,7 @@ class INIFile;
 class CustomGamePlayers : public MenuBase
 {
 public:
-    CustomGamePlayers(const GameInitSettings& newGameInitSettings, bool server = true, bool LANServer = true);
+    CustomGamePlayers(const GameInitSettings& newGameInitSettings, bool server = true, bool LANServer = true, CustomPlaySetup* setup = nullptr, const ChangeEventList* initialPlayers = nullptr);
     virtual ~CustomGamePlayers();
 
     /**
@@ -76,6 +77,15 @@ public:
 
 private:
     ChangeEventList getChangeEventList();
+    void onChildWindowClose(Window* child) override;
+    void rebuildSetup(bool keepPlayers);
+    CustomPlaySetup* setup = nullptr;
+    bool restoringSetup = false;
+    HBox setupMapRow, setupModeRow;
+    DropDownBox setupMap, setupMod, setupConnection, setupVisibility;
+    Checkbox setupShared;
+    TextButton setupRules;
+    Label readinessLabel;
 
     void onReceiveChatMessage(const std::string& name, const std::string& message);
     void onConfigMismatch(const std::string& errorMessage);

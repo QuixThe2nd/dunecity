@@ -28,6 +28,7 @@
 #include <GUI/Spacer.h>
 #include <GUI/GUIStyle.h>
 #include <GUI/MsgBox.h>
+#include <GUI/dune/GameOptionsWindow.h>
 #include <GUI/dune/DuneStyle.h>
 
 #include <players/PlayerFactory.h>
@@ -155,8 +156,9 @@ int resolveSelectedColorSlot(int selectedColor, int selectedHouse) {
 }
 
 
-CustomGamePlayers::CustomGamePlayers(const GameInitSettings& newGameInitSettings, bool server, bool LANServer)
+CustomGamePlayers::CustomGamePlayers(const GameInitSettings& newGameInitSettings, bool server, bool LANServer, CustomPlaySetup* newSetup, const ChangeEventList* initialPlayers)
  : MenuBase(), gameInitSettings(newGameInitSettings), bServer(server), bLANServer(LANServer), startGameTime(0), bConfigMismatchDetected(false), bModDownloadInProgress(false), bWaitingForModAcks(false), brainEqHumanSlot(-1) {
+    setup = newSetup;
 
     // set up window
     SDL_Texture *pBackground = pGFXManager->getUIGraphic(UI_MenuBackground);
@@ -175,26 +177,55 @@ CustomGamePlayers::CustomGamePlayers(const GameInitSettings& newGameInitSettings
     copyCodeButton.setEnabled(false);
     captionHBox.addWidget(&copyCodeButton, 130);
     mainVBox.addWidget(&captionHBox, 24);
-    mainVBox.addWidget(VSpacer::create(24));
+    mainVBox.addWidget(VSpacer::create(8));
+    if(setup) {
+        captionLabel.setText(_("Custom Game"));
+        setupMapRow.addWidget(Label::create(_("Map")), 40);
+        for(size_t i = 0; i < setup->maps.size(); ++i)
+            setupMap.addEntry(getBasename(setup->maps[i], true), static_cast<int>(i));
+        setupMap.setSelectedItem(setup->map);
+        setupMap.setOnSelectionChange([this](bool interactive) { if(interactive) { setup->map = setupMap.getSelectedIndex(); rebuildSetup(false); } });
+        setupMapRow.addWidget(&setupMap, 1.0);
+        setupMapRow.addWidget(Label::create(_("Mod")), 40);
+        for(size_t i = 0; i < setup->mods.size(); ++i) setupMod.addEntry(setup->mods[i].displayName, static_cast<int>(i));
+        setupMod.setSelectedItem(setup->mod);
+        setupMod.setOnSelectionChange([this](bool interactive) { if(interactive) { setup->mod = setupMod.getSelectedIndex(); rebuildSetup(false); } });
+        setupMapRow.addWidget(&setupMod, 155);
+        mainVBox.addWidget(&setupMapRow, 28);
+        setupConnection.addEntry(_("Offline"), 0);
+        setupConnection.addEntry(_("Online"), 1);
+        setupConnection.setSelectedItem(setup->online ? 1 : 0);
+        setupConnection.setOnSelectionChange([this](bool interactive) { if(interactive) { setup->online = setupConnection.getSelectedIndex() == 1; rebuildSetup(true); } });
+        setupModeRow.addWidget(&setupConnection, 120);
+        setupVisibility.addEntry(_("Private - invite code"), 0);
+        setupVisibility.addEntry(_("Public - anyone"), 1);
+        setupVisibility.setSelectedItem(setup->publicGame ? 1 : 0);
+        setupVisibility.setEnabled(setup->online);
+        setupVisibility.setOnSelectionChange([this](bool) { setup->publicGame = setupVisibility.getSelectedIndex() == 1; });
+        setupModeRow.addWidget(&setupVisibility, 180);
+        setupShared.setText(_("Shared house"));
+        setupShared.setChecked(setup->sharedHouse);
+        setupShared.setOnClick([this]() { setup->sharedHouse = setupShared.isChecked(); rebuildSetup(true); });
+        setupModeRow.addWidget(&setupShared, 1.0);
+        setupRules.setText(_("Game Rules"));
+        setupRules.setOnClick([this]() { openWindow(GameOptionsWindow::create(setup->rules)); });
+        setupModeRow.addWidget(&setupRules, 110);
+        mainVBox.addWidget(VSpacer::create(6));
+        mainVBox.addWidget(&setupModeRow, 28);
+    }
+    readinessLabel.setTextFontSize(12);
+    mainVBox.addWidget(&readinessLabel, 22);
 
     mainVBox.addWidget(Spacer::create(), 0.04);
 
     mainVBox.addWidget(&mainHBox, 0.6);
 
-    mainHBox.addWidget(Spacer::create(), 0.05);
     leftVBox.addWidget(Spacer::create(), 0.1);
     leftVBox.addWidget(&playerListHBox);
-    playerListHBox.addWidget(Spacer::create(), 0.4);
-    playerListHBox.addWidget(&playerListVBox, 0.2);
-    playerListHBox.addWidget(Spacer::create(), 0.4);
-    mainHBox.addWidget(&leftVBox, 0.8);
-
-    mainHBox.addWidget(Spacer::create(), 0.05);
-
-    mainHBox.addWidget(HSpacer::create(8));
-
-    mainHBox.addWidget(&rightVBox, 180);
-    mainHBox.addWidget(Spacer::create(), 0.05);
+    playerListHBox.addWidget(&playerListVBox, 1.0);
+    mainHBox.addWidget(&leftVBox, 1.0);
+    mainHBox.addWidget(HSpacer::create(16));
+    mainHBox.addWidget(&rightVBox, 160);
     minimap.setSurface( GUIStyle::getInstance().createButtonSurface(130,130,_("Choose map"), true, false) );
     rightVBox.addWidget(&minimap);
 
@@ -262,16 +293,16 @@ CustomGamePlayers::CustomGamePlayers(const GameInitSettings& newGameInitSettings
 
     mainVBox.addWidget(&buttonHBox, 0.32);
 
-    buttonHBox.addWidget(HSpacer::create(70));
+    buttonHBox.addWidget(HSpacer::create(8));
 
     backButtonVBox.addWidget(Spacer::create());
     backButton.setText(_("Back"));
     backButton.setOnClick(std::bind(&CustomGamePlayers::onCancel, this));
     backButtonVBox.addWidget(&backButton, 24);
     backButtonVBox.addWidget(VSpacer::create(14));
-    buttonHBox.addWidget(&backButtonVBox, 0.1);
+    buttonHBox.addWidget(&backButtonVBox, 110);
 
-    buttonHBox.addWidget(Spacer::create(), 0.0625);
+    buttonHBox.addWidget(HSpacer::create(10));
 
     chatTextView.setTextFontSize(12);
     chatVBox.addWidget(&chatTextView, 0.77);
@@ -281,7 +312,7 @@ CustomGamePlayers::CustomGamePlayers(const GameInitSettings& newGameInitSettings
     chatTextBox.setOnReturn(std::bind(&CustomGamePlayers::onSendChatMessage, this));
     chatVBox.addWidget(&chatTextBox, 0.2);
     chatVBox.addWidget(Spacer::create(), 0.03);
-    buttonHBox.addWidget(&chatVBox, 0.675);
+    buttonHBox.addWidget(&chatVBox, 1.0);
 
     if(!isNetworkGameType(gameInitSettings.getGameType())) {
         chatVBox.setVisible(false);
@@ -292,10 +323,10 @@ CustomGamePlayers::CustomGamePlayers(const GameInitSettings& newGameInitSettings
     const bool bBonusHouseColorsAvailable = bLoadMultiplayer
         || ModManager::instance().isTornieContentActive();
 
-    buttonHBox.addWidget(Spacer::create(), 0.0625);
+    buttonHBox.addWidget(HSpacer::create(10));
 
     nextButtonVBox.addWidget(Spacer::create());
-    nextButton.setText(_("Next"));
+    nextButton.setText(setup && setup->online ? _("Create Lobby") : isCoopGameType(gameInitSettings.getGameType()) ? _("Start Campaign") : _("Start Game"));
     nextButton.setOnClick(std::bind(&CustomGamePlayers::onNext, this));
     nextButtonVBox.addWidget(&nextButton, 24);
     nextButtonVBox.addWidget(VSpacer::create(14));
@@ -303,9 +334,9 @@ CustomGamePlayers::CustomGamePlayers(const GameInitSettings& newGameInitSettings
         nextButton.setEnabled(false);
         nextButton.setVisible(false);
     }
-    buttonHBox.addWidget(&nextButtonVBox, 0.1);
+    buttonHBox.addWidget(&nextButtonVBox, 130);
 
-    buttonHBox.addWidget(HSpacer::create(90));
+    buttonHBox.addWidget(HSpacer::create(8));
 
     std::list<HOUSETYPE>  tmpBoundHousesOnMap = boundHousesOnMap;
 
@@ -316,7 +347,7 @@ CustomGamePlayers::CustomGamePlayers(const GameInitSettings& newGameInitSettings
 
         // set up header row with Label "House", DropDown for house selection and DropDown for team selection
         curHouseInfo.houseLabel.setText(_("House"));
-        curHouseInfo.houseHBox.addWidget(&curHouseInfo.houseLabel, 60);
+        curHouseInfo.houseHBox.addWidget(&curHouseInfo.houseLabel, 42);
 
         if(bLoadMultiplayer) {
             if(i < (int) houseInfoListSetup.size()) {
@@ -376,8 +407,8 @@ CustomGamePlayers::CustomGamePlayers(const GameInitSettings& newGameInitSettings
             curHouseInfo.colorDropDown.setOnClickEnabled(false);
         } else {
             curHouseInfo.bonusColorCheckbox.setText(_("Bonus"));
-            curHouseInfo.bonusColorCheckbox.setChecked(false);
-            addColorDropDownEntries(curHouseInfo.colorDropDown, HOUSE_INVALID, false);
+            curHouseInfo.bonusColorCheckbox.setChecked(bBonusHouseColorsAvailable);
+            addColorDropDownEntries(curHouseInfo.colorDropDown, HOUSE_INVALID, bBonusHouseColorsAvailable);
             curHouseInfo.bonusColorCheckbox.setEnabled(bServer && bBonusHouseColorsAvailable);
             curHouseInfo.bonusColorCheckbox.setVisible(bBonusHouseColorsAvailable);
             curHouseInfo.colorDropDown.setEnabled(bServer);
@@ -385,8 +416,8 @@ CustomGamePlayers::CustomGamePlayers(const GameInitSettings& newGameInitSettings
         curHouseInfo.bonusColorCheckbox.setOnClick(std::bind(&CustomGamePlayers::onBonusColorCheckbox, this, i));
         curHouseInfo.colorDropDown.setOnSelectionChange(std::bind(&CustomGamePlayers::onChangeColorDropDownBoxes, this, std::placeholders::_1, i));
         curHouseInfo.houseHBox.addWidget(HSpacer::create(10));
-        curHouseInfo.houseHBox.addWidget(&curHouseInfo.bonusColorCheckbox, 75);
-        curHouseInfo.houseHBox.addWidget(HSpacer::create(6));
+        // Available bonus colors live in the color list, without a second toggle.
+
         curHouseInfo.houseHBox.addWidget(&curHouseInfo.colorDropDown, 95);
 
         curHouseInfo.houseInfoVBox.addWidget(&curHouseInfo.houseHBox);
@@ -394,9 +425,9 @@ CustomGamePlayers::CustomGamePlayers(const GameInitSettings& newGameInitSettings
         // add 1. player
         curHouseInfo.player1ArrowLabel.setTexture(pGFXManager->getUIGraphic(UI_CustomGamePlayersArrowNeutral));
         curHouseInfo.playerHBox.addWidget(&curHouseInfo.player1ArrowLabel);
-        curHouseInfo.player1Label.setText(_("Player") + (gameInitSettings.isMultiplePlayersPerHouse() ? " 1" : ""));
+        curHouseInfo.player1Label.setText(gameInitSettings.isMultiplePlayersPerHouse() ? _("P1") : _("Player"));
         curHouseInfo.player1Label.setTextFontSize(12);
-        curHouseInfo.playerHBox.addWidget(&curHouseInfo.player1Label, 68);
+        curHouseInfo.playerHBox.addWidget(&curHouseInfo.player1Label, gameInitSettings.isMultiplePlayersPerHouse() ? 24 : 68);
 
         if(bLoadMultiplayer) {
             if(i < (int) houseInfoListSetup.size()) {
@@ -458,14 +489,14 @@ CustomGamePlayers::CustomGamePlayers(const GameInitSettings& newGameInitSettings
         }
         curHouseInfo.player1DropDown.setOnSelectionChange(std::bind(&CustomGamePlayers::onChangePlayerDropDownBoxes, this, std::placeholders::_1, 2*i));
         curHouseInfo.player1DropDown.setOnClick(std::bind(&CustomGamePlayers::onClickPlayerDropDownBox, this, 2*i));
-        curHouseInfo.playerHBox.addWidget(&curHouseInfo.player1DropDown, 180);
+        curHouseInfo.playerHBox.addWidget(&curHouseInfo.player1DropDown, gameInitSettings.isMultiplePlayersPerHouse() ? 145 : 180);
 
-        curHouseInfo.playerHBox.addWidget(HSpacer::create(10));
+        if(gameInitSettings.isMultiplePlayersPerHouse()) curHouseInfo.playerHBox.addWidget(HSpacer::create(8));
 
         // add 2. player
-        curHouseInfo.player2Label.setText(_("Player") + " 2");
+        curHouseInfo.player2Label.setText(_("P2"));
         curHouseInfo.player2Label.setTextFontSize(12);
-        curHouseInfo.playerHBox.addWidget(&curHouseInfo.player2Label, 68);
+        if(gameInitSettings.isMultiplePlayersPerHouse()) curHouseInfo.playerHBox.addWidget(&curHouseInfo.player2Label, 24);
 
         if(bLoadMultiplayer) {
             if(i < (int) houseInfoListSetup.size()) {
@@ -525,7 +556,7 @@ CustomGamePlayers::CustomGamePlayers(const GameInitSettings& newGameInitSettings
         }
         curHouseInfo.player2DropDown.setOnSelectionChange(std::bind(&CustomGamePlayers::onChangePlayerDropDownBoxes, this, std::placeholders::_1, 2*i + 1));
         curHouseInfo.player2DropDown.setOnClick(std::bind(&CustomGamePlayers::onClickPlayerDropDownBox, this, 2*i + 1));
-        curHouseInfo.playerHBox.addWidget(&curHouseInfo.player2DropDown, 180);
+        if(gameInitSettings.isMultiplePlayersPerHouse()) curHouseInfo.playerHBox.addWidget(&curHouseInfo.player2DropDown, 145);
 
         curHouseInfo.houseInfoVBox.addWidget(&curHouseInfo.playerHBox);
 
@@ -570,6 +601,20 @@ CustomGamePlayers::CustomGamePlayers(const GameInitSettings& newGameInitSettings
             }
         }
     }
+
+    if(setup && setup->players.changeEventList.empty() && !setup->online) {
+        const int ai = PlayerFactory::getIndexByPlayerClass("qBotEasy");
+        for(int slot = 0; slot < numHouses; ++slot) {
+            auto& box = houseInfo[slot].player1DropDown;
+            if(box.getSelectedEntryIntData() == PLAYER_OPEN)
+                for(int i = 0; i < box.getNumEntries(); ++i) if(box.getEntryIntData(i) == ai) { box.setSelectedItem(i); break; }
+        }
+        checkPlayerBoxes();
+    }
+    restoringSetup = true;
+    if(setup && !setup->players.changeEventList.empty()) onReceiveChangeEventList(setup->players);
+    if(initialPlayers) onReceiveChangeEventList(*initialPlayers);
+    restoringSetup = false;
 
     if(pNetworkManager != nullptr) {
         pNetworkManager->setOnPeerDisconnected(std::bind(&CustomGamePlayers::onPeerDisconnected, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3));
@@ -662,7 +707,29 @@ CustomGamePlayers::~CustomGamePlayers()
     }
 }
 
+void CustomGamePlayers::rebuildSetup(bool keepPlayers) {
+    setup->players = keepPlayers ? getChangeEventList() : ChangeEventList{};
+    quit(MENU_SETUP_CHANGED);
+}
+
+void CustomGamePlayers::onChildWindowClose(Window* child) {
+    if(auto* rules = dynamic_cast<GameOptionsWindow*>(child); rules && setup) {
+        setup->rules = rules->getGameOptions();
+        rebuildSetup(true);
+    }
+}
+
 void CustomGamePlayers::update() {
+    if(isCoopGameType(gameInitSettings.getGameType()) && startGameTime == 0 && bServer && !bWaitingForModAcks) {
+        const int partner = houseInfo[0].player2DropDown.getSelectedEntryIntData();
+        const bool waiting = partner == PLAYER_OPEN || partner == PLAYER_CLOSED;
+        nextButton.setEnabled(!waiting);
+        readinessLabel.setText(waiting ? _("Waiting for your co-op partner, or choose an AI partner.") : _("Your co-op partner is ready."));
+    } else if(!bServer && startGameTime == 0) readinessLabel.setText(_("Waiting for the host to start."));
+    else if(setup) readinessLabel.setText(setup->online
+        ? _("Leave an open player slot for a friend. Create Lobby when ready.")
+        : _("Choose your map and opponents, then Start Game."));
+
     if(startGameTime > 0) {
         // Check if config mismatch was detected - abort game start
         if(bConfigMismatchDetected) {
@@ -852,7 +919,7 @@ void CustomGamePlayers::onReceiveChangeEventList(const std::string& senderName,
         }
     }
 
-    if((pNetworkManager != nullptr) && bServer) {
+    if((pNetworkManager != nullptr) && bServer && !restoringSetup) {
         ChangeEventList changeEventList2 = getChangeEventList();
 
         pNetworkManager->sendChangeEventList(changeEventList2);
@@ -1369,6 +1436,11 @@ void CustomGamePlayers::updateDiscordGameStarting() {
 
 void CustomGamePlayers::onNext()
 {
+    if(setup && setup->online) {
+        setup->players = getChangeEventList();
+        quit(MENU_SETUP_HOST);
+        return;
+    }
     if(isCoopGameType(gameInitSettings.getGameType())
        && (houseInfo[0].player1DropDown.getSelectedEntryIntData() != PLAYER_HUMAN
            || houseInfo[0].player2DropDown.getSelectedEntryIntData() == PLAYER_OPEN

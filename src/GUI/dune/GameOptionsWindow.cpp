@@ -29,7 +29,7 @@ GameOptionsWindow::GameOptionsWindow(SettingsClass::GameOptionsClass& initialGam
     setWindowWidget(&vbox);
     vbox.addWidget(VSpacer::create(6));
 
-    captionlabel.setText(_("Game Options"));
+    captionlabel.setText(_("Game Rules"));
     captionlabel.setAlignment(Alignment_HCenter);
     vbox.addWidget(&captionlabel);
     vbox.addWidget(VSpacer::create(3));
@@ -154,7 +154,8 @@ GameOptionsWindow::GameOptionsWindow(SettingsClass::GameOptionsClass& initialGam
     vboxRight.addWidget(&gameSpeedHBox, 24);
     vboxRight.addWidget(VSpacer::create(6));
 
-    vboxRight.addWidget(VSpacer::create(20));
+    rememberDefaults.setText(_("Remember for new games"));
+    vboxRight.addWidget(&rememberDefaults, 22);
 
     vboxRight.addWidget(VSpacer::create(6));
 
@@ -190,6 +191,7 @@ void GameOptionsWindow::onOK() {
     gameOptions.maximumNumberOfUnitsOverride = maxUnitsOverrideCheckbox.isChecked() ? maxUnitsOverrideTextBox.getValue() : -1;
     gameOptions.maximumNumberOfHarvestersOverride = maxHarvestersOverrideCheckbox.isChecked() ? maxHarvestersOverrideTextBox.getValue() : -1;
 
+    if(rememberDefaults.isChecked()) saveGameOptionsAsDefaults(gameOptions);
     Window* pParentWindow = dynamic_cast<Window*>(getParent());
     if(pParentWindow != nullptr) {
         pParentWindow->closeChildWindow();

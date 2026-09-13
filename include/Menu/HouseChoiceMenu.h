@@ -32,18 +32,23 @@
 
 class HouseChoiceMenu : public MenuBase {
 public:
-    HouseChoiceMenu();
+    explicit HouseChoiceMenu(bool online = false, bool keepRules = false);
     virtual ~HouseChoiceMenu();
 
     void onChildWindowClose(Window* pChildWindow) override;
 
     // Static accessors for AI settings (so SinglePlayerMenu can read them)
+    static bool isOnline() { return s_online; }
+    static bool isSingleMission() { return s_singleMission; }
+    static bool isPublicGame() { return s_publicGame; }
     static int getStartLevel() { return s_startLevel; }
     static int getSupportBotIndex() { return s_supportBotIndex; }
     static int getEnemyAIIndex() { return s_enemyAIIndex; }
     static const SettingsClass::GameOptionsClass& getGameOptions() { return s_currentGameOptions; }
 
 private:
+    void updateConnection();
+    void populateLevels();
     void onHouseButton(int button);
     void onModSelectionChanged(bool interactive);
     void updateModDescription();
@@ -60,6 +65,9 @@ private:
     VBox            optionsVBox;
 
     PictureLabel    selectYourHouseLabel;
+    Label titleLabel, selectedHouseLabel;
+    DropDownBox connectionDropDown, journeyDropDown, visibilityDropDown;
+    TextButton loadButton;
 
     PictureButton   house1Button;
     PictureButton   house2Button;
@@ -83,6 +91,8 @@ private:
     int currentHouseChoiceScrollPos;
 
     // Static storage for AI settings
+    static int s_house;
+    static bool s_online, s_singleMission, s_publicGame;
     static int s_startLevel;
     static int s_supportBotIndex;
     static int s_enemyAIIndex;

@@ -1,3 +1,28 @@
+## Menu navigation — 1.0.670 local, 13 September 2026
+
+Stefan approved implementing the menu review, including Mods and Map Editor in
+Extras. This candidate starts from campaign-controls commit 81ff90a (1.0.669).
+Home now goes directly to Campaign, Custom Game, Join Online, Load Game,
+Settings and Extras. Campaign has explicit Start, Offline/Online, full campaign
+or single mission; online hosting carries the selected setup into the lobby.
+Custom combines map/mod/connection/rules/player choices, preserving the roster
+when changing connection mode. Join Online has mode/mod filters, invitation
+codes, separate public chat, and secondary legacy LAN/direct connections.
+
+Graphics and interface controls share Settings > Graphics. Audio, Controls and
+Advanced are separate tabs. Unchanged legacy network fields no longer block
+unrelated settings changes. Setup rules persist globally only when requested.
+Continue detects eligible recent offline saves; Load Game routes by saved type.
+See `docs/menu-navigation.md` for the exact flow and remaining follow-ups.
+
+Native Release and dependency audits pass. All six existing CTest targets pass;
+the new real-menu probe verifies setup preservation, filters and settings
+validation, and renders at 640×480 and 854×480 with isolated profiles. Its images
+are in `build/menu-probe`. Small-screen player rows were corrected after visual
+inspection, including shared-house controls. The app is in `build/bin`.
+No public deployment, browser/mobile verification or live two-peer game test
+is claimed for this menu candidate.
+
 ## Campaign difficulty implementation — 1.0.669 local, 13 September 2026
 
 Stefan authorized implementing the matrix. `CampaignDifficultyPolicy.h` and

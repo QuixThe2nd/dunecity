@@ -196,6 +196,7 @@ target_sources(dunecity
 
         # Menu
         Menu/MenuBase.cpp
+        Menu/PlaySetup.cpp
         Menu/MainMenu.cpp
         Menu/DisplayMenu.cpp
         Menu/SinglePlayerMenu.cpp

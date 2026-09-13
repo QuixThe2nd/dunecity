@@ -16,6 +16,10 @@
  */
 
 #include <Menu/CrossplayMenu.h>
+#include <mod/ModManager.h>
+#include <Menu/PlaySetup.h>
+#include <Menu/SinglePlayerMenu.h>
+#include <Menu/MultiPlayerMenu.h>
 
 #include <Menu/CustomGameMenu.h>
 #include <Menu/CustomGamePlayers.h>
@@ -81,146 +85,157 @@ std::string CrossplayMenu::contentFingerprint() {
 }
 
 CrossplayMenu::CrossplayMenu() : MenuBase() {
-    SDL_Texture* pBackground = pGFXManager->getUIGraphic(UI_MenuBackground);
-    setBackground(pBackground);
-    resize(getTextureSize(pBackground));
+    setBackground(pGFXManager->getUIGraphic(UI_MenuBackground));
+    resize(getTextureSize(pGFXManager->getUIGraphic(UI_MenuBackground)));
     setWindowWidget(&windowWidget);
-
-    windowWidget.addWidget(&mainVBox, Point(24, 23),
-                           Point(getRendererWidth() - 48, getRendererHeight() - 46));
-
-    captionLabel.setText(_("Online Lobby"));
+    captionLabel.setText(_("Join Online"));
+    captionLabel.setTextFontSize(22);
     captionLabel.setAlignment(Alignment_HCenter);
-    mainVBox.addWidget(&captionLabel, 24);
-    mainVBox.addWidget(VSpacer::create(8));
-
-    playerNameLabel.setText(_("Player Name:"));
-    playerNameHBox.addWidget(&playerNameLabel, 120);
+    playerNameLabel.setText(_("Player name"));
     playerNameTextBox.setText(settings.general.playerName);
     playerNameTextBox.setMaximumTextLength(20);
-    playerNameHBox.addWidget(&playerNameTextBox, 220);
-    playerNameHBox.addWidget(HSpacer::create(12));
     confirmNameButton.setText(_("Confirm name for chat"));
     confirmNameButton.setOnClick([this]() { confirmChatName(); });
-    playerNameTextBox.setOnReturn([this]() { confirmChatName(); });
-    playerNameHBox.addWidget(&confirmNameButton, 210);
-    playerNameHBox.addWidget(Spacer::create());
-    mainVBox.addWidget(&playerNameHBox, 28);
-
-    statusLabel.setAlignment(Alignment_HCenter);
-    mainVBox.addWidget(&statusLabel, 36);
-
-    directoryLabel.setText(_("Public games - no code needed"));
-    directoryHBox.addWidget(&directoryLabel, 1.0);
+    playerNameTextBox.setOnReturn([this]() { if(showChat) confirmChatName(); });
+    modeFilter.addEntry(_("All games"), 0);
+    modeFilter.addEntry(_("Campaign co-op"), 1);
+    modeFilter.addEntry(_("Custom games"), 2);
+    modeFilter.setSelectedItem(0);
+    modeFilter.setOnSelectionChange([this](bool interactive) { if(interactive) refreshDirectory(); });
+    availableMods = ModManager::instance().listMods();
+    for(size_t i = 0; i < availableMods.size(); ++i) {
+        modFilter.addEntry(availableMods[i].displayName, static_cast<int>(i));
+        if(availableMods[i].name == ModManager::instance().getActiveModName()) modFilter.setSelectedItem(i);
+    }
+    modFilter.setOnSelectionChange([this](bool interactive) {
+        const int index = modFilter.getSelectedIndex();
+        if(!interactive || stage != Stage::Choosing || index < 0 || index >= static_cast<int>(availableMods.size())) return;
+        if(ModManager::instance().setActiveMod(availableMods[index].name)) {
+            effectiveGameOptions = ModManager::instance().loadEffectiveGameOptions(settings.gameOptions);
+            directory.cancel(); directoryPending = false;
+            allPublicGames.clear(); refreshDirectory(); refreshPublicGames();
+        }
+    });
     refreshGamesButton.setText(_("Refresh"));
     refreshGamesButton.setOnClick([this]() { refreshPublicGames(); });
-    directoryHBox.addWidget(&refreshGamesButton, 90);
     moreGamesButton.setText(_("More"));
     moreGamesButton.setOnClick([this]() { refreshPublicGames(nextDirectoryPage); });
-    directoryHBox.addWidget(&moreGamesButton, 80);
-    joinPublicButton.setText(_("Join Game"));
-    joinPublicButton.setOnClick([this]() { joinPublicGame(); });
-    mainVBox.addWidget(&directoryHBox, 28);
     publicGameList.setOnSelectionChange([this](bool) { refreshControls(); });
-    mainVBox.addWidget(&publicGameList, 0.5);
-    mainVBox.addWidget(VSpacer::create(8));
-    joinPublicHBox.addWidget(Spacer::create(), 0.5);
-    joinPublicHBox.addWidget(&joinPublicButton, 260);
-    joinPublicHBox.addWidget(Spacer::create(), 0.5);
-    mainVBox.addWidget(&joinPublicHBox, 48);
-    mainVBox.addWidget(VSpacer::create(8));
-    chatLabel.setText(_("Public lobby chat - confirm your name above to chat"));
-    mainVBox.addWidget(&chatLabel, 24);
-    mainVBox.addWidget(&chatHistory, 0.5);
+    publicGameList.setOnDoubleClick([this]() { joinPublicGame(); });
+    joinPublicButton.setText(_("Join selected game"));
+    joinPublicButton.setOnClick([this]() { joinPublicGame(); });
+    joinLabel.setText(_("Invite code"));
+    joinCodeTextBox.setMaximumTextLength(16);
+    joinCodeTextBox.setOnReturn([this]() { onJoin(); });
+    joinButton.setText(_("Join with code"));
+    joinButton.setOnClick([this]() { onJoin(); });
+    hostCustomGameButton.setText(_("Create Custom Game"));
+    hostCustomGameButton.setOnClick([this]() { onHostCustomGame(); });
+    hostCoopButton.setText(_("Create Campaign"));
+    hostCoopButton.setOnClick([this]() { onHostCampaignCoop(); });
+    visibilityChoice.addEntry(_("Private - invite code"));
+    visibilityChoice.addEntry(_("Public - anyone can join"));
+    visibilityChoice.setSelectedItem(0);
+    chatToggle.setText(_("Public chat"));
+    chatToggle.setOnClick([this]() { showChat = !showChat; layoutControls(); refreshControls(); });
+    chatLabel.setText(_("Confirm your name to enter public chat."));
     chatInput.setMaximumTextLength(120);
     chatInput.setOnReturn([this]() { sendLobbyChat(); });
-    chatInputHBox.addWidget(&chatInput, 1.0);
     chatSendButton.setText(_("Send"));
     chatSendButton.setOnClick([this]() { sendLobbyChat(); });
-    chatInputHBox.addWidget(&chatSendButton, 90);
-    mainVBox.addWidget(&chatInputHBox, 28);
-    mainVBox.addWidget(VSpacer::create(8));
-
-    visibilityLabel.setText(_("Host visibility:"));
-    visibilityHBox.addWidget(&visibilityLabel, 160);
-    visibilityChoice.addEntry(_("Public - anyone can join"));
-    visibilityChoice.addEntry(_("Private - invite by code"));
-    visibilityChoice.setSelectedItem(0);
-    visibilityChoice.setOnSelectionChange([this](bool interactive) {
-        if(interactive) changeVisibility();
-    });
-    visibilityHBox.addWidget(&visibilityChoice, 300);
-    visibilityHBox.addWidget(Spacer::create());
-    privateInviteButton.setText(_("Join with invite code"));
-    privateInviteButton.setOnClick([this]() {
-        showPrivateJoin = !showPrivateJoin;
-        refreshControls();
-    });
-    visibilityHBox.addWidget(&privateInviteButton, 220);
-    mainVBox.addWidget(&visibilityHBox, 28);
-
-    roomCodeLabel.setAlignment(Alignment_HCenter);
-    roomCodeLabel.setTextFontSize(24);
-    roomCodeHBox.addWidget(Spacer::create(), 0.2);
-    roomCodeHBox.addWidget(&roomCodeLabel, 0.6);
-    copyCodeButton.setText(_("Copy code"));
-    copyCodeButton.setOnClick([this]() {
-        if(roomCode.empty()) return;
-        copyCodeButton.setText(WebRuntime::copyText(roomCode) ? _("Copied!") : _("Try again"));
-    });
-    roomCodeHBox.addWidget(&copyCodeButton, 130);
-    roomCodeHBox.addWidget(Spacer::create(), 0.2);
-
-    hostCustomGameButton.setText(_("Host a Game"));
-    hostCustomGameButton.setOnClick(std::bind(&CrossplayMenu::onHostCustomGame, this));
-    hostHBox.addWidget(Spacer::create(), 0.25);
-    hostHBox.addWidget(&hostCustomGameButton, 200);
-    hostHBox.addWidget(HSpacer::create(16));
-    hostCoopButton.setText(_("Host Campaign Co-op"));
-    hostCoopButton.setOnClick(std::bind(&CrossplayMenu::onHostCampaignCoop, this));
-    hostHBox.addWidget(&hostCoopButton, 220);
-    hostHBox.addWidget(Spacer::create(), 0.25);
-    mainVBox.addWidget(&hostHBox, 28);
-    mainVBox.addWidget(&roomCodeHBox, 34);
-
-    joinLabel.setText(_("Invite code:"));
-    joinHBox.addWidget(Spacer::create(), 0.25);
-    joinHBox.addWidget(&joinLabel, 120);
-    joinCodeTextBox.setMaximumTextLength(16);
-    joinHBox.addWidget(&joinCodeTextBox, 200);
-    joinHBox.addWidget(HSpacer::create(16));
-    joinButton.setText(_("Join Game"));
-    joinButton.setOnClick(std::bind(&CrossplayMenu::onJoin, this));
-    joinHBox.addWidget(&joinButton, 140);
-    joinHBox.addWidget(Spacer::create(), 0.25);
-    mainVBox.addWidget(&joinHBox, 28);
-
-    mainVBox.addWidget(VSpacer::create(8));
-
+    otherConnections.setText(_("LAN / direct connection"));
+    otherConnections.setOnClick([]() { MultiPlayerMenu().showMenu(); });
     backButton.setText(_("Back"));
-    backButton.setOnClick(std::bind(&CrossplayMenu::onBack, this));
-    buttonHBox.addWidget(HSpacer::create(70));
-    buttonHBox.addWidget(&backButton, 0.1);
-    buttonHBox.addWidget(Spacer::create(), 0.9);
-    mainVBox.addWidget(&buttonHBox, 24);
-
-    // Say plainly why online play is not offered, rather than failing later.
-    if(settings.network.activeDirectEndpoint().empty()) {
-        setStatus(_("Online play has not been set up in this copy of the game."));
+    backButton.setOnClick([this]() { onBack(); });
+    statusLabel.setTextFontSize(12);
+    preparedSummary.setTextFontSize(14);
+    showPrivateJoin = true;
+    layoutControls();
+    if(settings.network.activeDirectEndpoint().empty() || !isDirectPeerConnectionAvailable()) {
+        setStatus(_("Online play is unavailable in this build."));
         stage = Stage::Finished;
-    } else {
-        // Direct play needs a WebRTC backend, not a WebSocket: a build without one says so here
-        // rather than looking like it is connecting and never arriving.
-        if(!isDirectPeerConnectionAvailable()) {
-            setStatus(_("This copy of the game cannot open direct connections to other players."));
-            stage = Stage::Finished;
-        } else {
-            setStatus(_("Choose your player name, then join a public game or host your own."));
-        }
-    }
-
+    } else setStatus(_("Join a game, enter an invite code, or create your own."));
     refreshControls();
     if(stage == Stage::Choosing) refreshPublicGames();
+}
+
+CrossplayMenu::CrossplayMenu(const GameInitSettings& game, bool publicGame, const ChangeEventList& players)
+    : CrossplayMenu() {
+    directory.cancel();
+    directoryPending = false;
+    preparedGame = std::make_unique<GameInitSettings>(game);
+    preparedPlayers = players;
+    hostingCoop = isCoopGameType(game.getGameType());
+    visibilityChoice.setSelectedItem(publicGame ? 1 : 0);
+    autoHostRequested = stage == Stage::Choosing;
+    captionLabel.setText(hostingCoop ? _("Campaign co-op") : _("Custom Game"));
+    preparedSummary.setText(game.getModName() + "\n" + game.getFilename()
+        + "\n" + (publicGame ? _("Public game") : _("Private game - invite by code")));
+    layoutControls();
+    refreshControls();
+}
+
+void CrossplayMenu::layoutControls() {
+    windowWidget.removeAllChildWidgets();
+    const int x = 20, w = getSize().x - 40;
+    const int h = getSize().y;
+    auto place = [this](Widget* widget, int x, int y, int width, int height) {
+        windowWidget.addWidget(widget, Point(x,y), Point(width,height));
+    };
+    place(&captionLabel,x,12,w,30);
+    place(&playerNameLabel,x,49,95,24);
+    place(&playerNameTextBox,x+100,49,200,26);
+    if(preparedGame) {
+        place(&preparedSummary,x+20,110,w-40,150);
+        place(&refreshGamesButton,x+20,280,160,30);
+        refreshGamesButton.setText(_("Retry connection"));
+        refreshGamesButton.setOnClick([this]() { if(stage == Stage::Choosing) beginAdmission(true); });
+    } else {
+        place(&chatToggle,x+w-145,49,145,26);
+        if(showChat) {
+            place(&confirmNameButton,x,88,220,28);
+            place(&chatLabel,x,122,w,22);
+            place(&chatHistory,x,149,w,h-297);
+            place(&chatInput,x,h-140,w-95,28);
+            place(&chatSendButton,x+w-90,h-140,90,28);
+        } else {
+            place(&modeFilter,x,88,180,28);
+            place(&modFilter,x+190,88,w-370,28);
+            place(&refreshGamesButton,x+w-170,88,90,28);
+            place(&moreGamesButton,x+w-75,88,75,28);
+            place(&directoryLabel,x,119,w,22);
+            place(&publicGameList,x,145,w,h-326);
+            place(&joinPublicButton,x+w-190,h-176,190,30);
+            place(&joinLabel,x,h-137,90,26);
+            place(&joinCodeTextBox,x+95,h-137,w-245,28);
+            place(&joinButton,x+w-145,h-137,145,28);
+            place(&hostCoopButton,x,h-99,(w-10)/2,28);
+            place(&hostCustomGameButton,x+(w+10)/2,h-99,(w-10)/2,28);
+        }
+    }
+    place(&statusLabel,x,h-65,w,26);
+    place(&backButton,x,h-34,95,28);
+#ifndef __EMSCRIPTEN__
+    if(!preparedGame) place(&otherConnections,x+w-215,h-34,215,28);
+#endif
+}
+
+void CrossplayMenu::refreshDirectory() {
+    std::string selectedRoom;
+    const int selected = publicGameList.getSelectedIndex();
+    if(selected >= 0 && selected < static_cast<int>(publicGames.size())) selectedRoom = publicGames[selected].roomCode;
+    publicGameList.clearAllEntries();
+    publicGames.clear();
+    const int filter = modeFilter.getSelectedIndex();
+    for(const auto& game : allPublicGames) {
+        if((filter == 1 && game.mode != "coop") || (filter == 2 && game.mode != "custom")) continue;
+        publicGames.push_back(game);
+        publicGameList.addEntry(game.hostName + " - " + (game.mode == "coop" ? _("Campaign co-op") : _("Custom game"))
+            + " - " + std::to_string(game.players) + "/" + std::to_string(game.maxPeers));
+        if(game.roomCode == selectedRoom) publicGameList.setSelectedItem(static_cast<int>(publicGames.size())-1);
+    }
+    directoryLabel.setText(publicGames.empty() ? _("No matching games. Create one or join with a code.") : _("Available games"));
+    refreshControls();
 }
 
 CrossplayMenu::~CrossplayMenu() {
@@ -246,6 +261,8 @@ void CrossplayMenu::setStatus(const std::string& message) {
 
 void CrossplayMenu::refreshControls() {
     const bool idle = (stage == Stage::Choosing);
+    modFilter.setEnabled(idle);
+    modeFilter.setEnabled(idle);
     const bool busy = (stage == Stage::Requesting) || (stage == Stage::Connecting);
 
     hostCustomGameButton.setEnabled(idle);
@@ -290,10 +307,15 @@ void CrossplayMenu::refreshControls() {
     copyCodeButton.setEnabled(showCode);
     copyCodeButton.setText(_("Copy code"));
 
-    backButton.setEnabled(!busy);
+    backButton.setEnabled(true);
+    backButton.setText(busy ? _("Cancel") : _("Back"));
+    if(preparedGame) refreshGamesButton.setEnabled(idle);
 }
 
 void CrossplayMenu::refreshPublicGames(unsigned offset) {
+    // Returning from Create Campaign/Custom may have changed the active mod.
+    for(size_t i=0; i<availableMods.size(); ++i)
+        if(availableMods[i].name == ModManager::instance().getActiveModName()) modFilter.setSelectedItem(i);
     if((stage != Stage::Choosing && stage != Stage::HostReady && stage != Stage::ClientWaiting)
        || directoryPending) return;
     nextDirectoryRefresh = SDL_GetTicks() + 15000;
@@ -345,13 +367,13 @@ AdmissionRequest CrossplayMenu::lobbyRequest() const {
 }
 
 void CrossplayMenu::changeVisibility() {
-    if(stage == Stage::Choosing) { publicRoom = visibilityChoice.getSelectedIndex() == 0; return; }
+    if(stage == Stage::Choosing) { publicRoom = visibilityChoice.getSelectedIndex() == 1; return; }
     if(stage != Stage::HostReady || visibilityPending || grantedRoom.controlToken.empty()) return;
     auto request = lobbyRequest();
     request.operation = AdmissionOperation::Visibility;
     request.roomCode = roomCode;
     request.controlToken = grantedRoom.controlToken;
-    request.publicRoom = visibilityChoice.getSelectedIndex() == 0;
+    request.publicRoom = visibilityChoice.getSelectedIndex() == 1;
     visibilityPending = true;
     setStatus(_("Updating game visibility..."));
     visibilityUpdate.begin(request);
@@ -463,34 +485,8 @@ bool CrossplayMenu::validateAndSavePlayerName() {
     return true;
 }
 
-void CrossplayMenu::onHostCustomGame() {
-    if(stage == Stage::HostReady) {
-        // Already in a room: pick a map and carry the same session into the lobby.
-        const int result = CustomGameMenu(true, false).showMenu();
-        if(result != MENU_QUIT_DEFAULT) {
-            quit(result);
-        } else if(pNetworkManager == nullptr || !pNetworkManager->isRelaySession()) {
-            teardownSession(_("The online game ended."));
-        }
-        return;
-    }
-
-    hostingCoop = false;
-    beginAdmission(true);
-}
-
-void CrossplayMenu::onHostCampaignCoop() {
-    if(stage == Stage::HostReady) {
-        SinglePlayerSkirmishMenu(true).showMenu();
-        if(pNetworkManager == nullptr || !pNetworkManager->isRelaySession()) {
-            teardownSession(_("The online game ended."));
-        }
-        return;
-    }
-
-    hostingCoop = true;
-    beginAdmission(true);
-}
+void CrossplayMenu::onHostCustomGame() { playCustomGame(true); refreshPublicGames(); }
+void CrossplayMenu::onHostCampaignCoop() { SinglePlayerMenu::playCampaign(true); refreshPublicGames(); }
 
 void CrossplayMenu::onJoin() {
     std::string normalized;
@@ -508,8 +504,22 @@ void CrossplayMenu::onBack() {
 }
 
 void CrossplayMenu::beginAdmission(bool hosting, bool publicJoin) {
+    const auto previousName = settings.general.playerName;
     if(!validateAndSavePlayerName()) {
         return;
+    }
+    if(hosting && preparedGame && previousName != settings.general.playerName) {
+        auto houses = preparedGame->getHouseInfoList();
+        preparedGame->clearHouseInfo();
+        for(auto& house : houses) {
+            for(auto& player : house.playerInfoList)
+                if(player.playerName == previousName && player.playerClass == HUMANPLAYERCLASS)
+                    player.playerName = settings.general.playerName;
+            preparedGame->addHouseInfo(house);
+        }
+        for(auto& event : preparedPlayers.changeEventList)
+            if(event.eventType == ChangeEventList::ChangeEvent::EventType::SetHumanPlayer && event.newStringValue == previousName)
+                event.newStringValue = settings.general.playerName;
     }
     if(settings.network.activeDirectEndpoint().empty()) {
         setStatus(_("Online play has not been set up in this copy of the game."));
@@ -538,7 +548,7 @@ void CrossplayMenu::beginAdmission(bool hosting, bool publicJoin) {
     request.runtime = "native";
 #endif
     request.hosting = hosting;
-    request.publicRoom = visibilityChoice.getSelectedIndex() == 0;
+    request.publicRoom = visibilityChoice.getSelectedIndex() == 1;
     if(hosting) {
         // Co-op is a two-player arrangement; a custom game uses the lobby's own limit.
         request.mode = hostingCoop ? "coop" : "custom";
@@ -644,13 +654,21 @@ void CrossplayMenu::teardownSession(std::string reason) {
     grantedRoom = AdmissionResponse();
     stage = Stage::Choosing;
     if(!reason.empty()) setStatus(reason);
-    hostCustomGameButton.setText(_("Host a Game"));
-    hostCoopButton.setText(_("Host Campaign Co-op"));
+    hostCustomGameButton.setText(_("Create Custom Game"));
+    hostCoopButton.setText(_("Create Campaign Co-op"));
     refreshControls();
 }
 
 void CrossplayMenu::update() {
-    updateLobbyChat();
+    if(autoHostRequested) { autoHostRequested = false; beginAdmission(true); }
+    if(preparedGame && stage == Stage::HostReady) {
+        int result;
+        { CustomGamePlayers lobby(*preparedGame, true, false, nullptr, &preparedPlayers); result = lobby.showMenu(); }
+        teardownSession({});
+        quit(result);
+        return;
+    }
+    if(!preparedGame && stage == Stage::Choosing && showChat) updateLobbyChat();
     visibilityUpdate.update();
     if(visibilityPending && visibilityUpdate.status() != RoomAdmissionClient::Status::InProgress) {
         visibilityPending = false;
@@ -668,39 +686,29 @@ void CrossplayMenu::update() {
         } else {
             setStatus(_("Visibility could not be confirmed. Choose it again to confirm your game and invitation code."));
         }
-        visibilityChoice.setSelectedItem(publicRoom ? 0 : 1);
+        visibilityChoice.setSelectedItem(publicRoom ? 1 : 0);
         visibilityUpdate.cancel();
         refreshControls();
     }
     directory.update();
     if(directoryPending && (directory.status() == RoomAdmissionClient::Status::Succeeded
                             || directory.status() == RoomAdmissionClient::Status::Failed)) {
-        const int selected = publicGameList.getSelectedIndex();
-        const std::string selectedRoom = selected >= 0 && static_cast<std::size_t>(selected) < publicGames.size()
-            ? publicGames[selected].roomCode : std::string();
-        publicGameList.clearAllEntries();
-        publicGames.clear();
         nextDirectoryPage = 0;
         directoryPending = false;
         if(directory.status() == RoomAdmissionClient::Status::Succeeded) {
-            publicGames = directory.response().games;
+            allPublicGames = directory.response().games;
             nextDirectoryPage = directory.response().nextPage;
-            for(std::size_t i = 0; i < publicGames.size(); ++i) {
-                const auto& game = publicGames[i];
-                publicGameList.addEntry(game.hostName + " - "
-                    + (game.mode == "coop" ? _("Campaign co-op") : _("Custom game"))
-                    + " - " + std::to_string(game.players) + "/" + std::to_string(game.maxPeers));
-                if(game.roomCode == selectedRoom) publicGameList.setSelectedItem(static_cast<int>(i));
-            }
-            directoryLabel.setText(publicGames.empty() ? _("No open public games") : _("Public games - no code needed"));
+            refreshDirectory();
         } else {
+            allPublicGames.clear();
+            refreshDirectory();
             directoryLabel.setText(_("Public list unavailable"));
             setStatus(directory.errorMessage());
         }
         directory.cancel();
         refreshControls();
     }
-    if((stage == Stage::Choosing || stage == Stage::HostReady || stage == Stage::ClientWaiting)
+    if(!preparedGame && (stage == Stage::Choosing || stage == Stage::HostReady || stage == Stage::ClientWaiting)
        && !directoryPending
        && SDL_TICKS_PASSED(SDL_GetTicks(), nextDirectoryRefresh)) refreshPublicGames();
     // Network callbacks run inside NetworkManager::update(). Defer menu loops and
@@ -750,14 +758,14 @@ void CrossplayMenu::update() {
         if(pendingHosting) {
             stage = Stage::HostReady;
             setStatus(publicRoom
-                ? _("Your public game is listed. Choose a map or campaign while players join.")
-                : _("Your private game is open. Share the invite code, then choose what to play."));
+                ? _("Your public game is listed. Opening the lobby...")
+                : _("Your private game is open. Opening the lobby..."));
         } else {
             stage = Stage::ClientWaiting;
-            setStatus(_("Joined. Waiting for the host to choose a map..."));
+            setStatus(_("Joined. Waiting for the host's game setup..."));
         }
         refreshControls();
-        refreshPublicGames();
+        if(!preparedGame) refreshPublicGames();
         return;
     }
 
