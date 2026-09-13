@@ -11,6 +11,7 @@
 #include "starport-economy-probe.inc"
 #include "campaign-stats-probe.inc"
 #include "campaign-pressure-probe.inc"
+#include "campaign-defence-probe.inc"
 
 int runCampaignBalanceProbe() {
     const int level = std::atoi(std::getenv("BALANCE_LEVEL"));
@@ -47,6 +48,11 @@ int runCampaignBalanceProbe() {
     game->initGame(init);
     game->bReplay = false;
     game->initializeGameLoop();
+    if (std::getenv("BALANCE_DEFENCE_PROBE")) {
+        runCampaignDefenceProbe(*game);
+        game.reset();currentGame=nullptr;pLocalPlayer=nullptr;
+        return MENU_QUIT_DEFAULT;
+    }
     if (std::getenv("BALANCE_PRESSURE_PROBE")) {
         runCampaignPressureProbe(*game);
         game.reset(); currentGame=nullptr; pLocalPlayer=nullptr;

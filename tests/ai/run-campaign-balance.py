@@ -3,7 +3,7 @@
 
 Uses the existing macOS Ninja build. Access-control relaxation is restricted to
 this diagnostic executable; no test hooks are compiled into the shipped game.
---attack-percent 100 provides the previous unlimited-wave comparison. Results
+--attack-percent changes Easy's per-house fraction; alliance caps still apply. Results
 and structured AI decision logs remain in --output-dir. This is a simulation
 comparison, not a substitute for the browser playtest or human playtesting.
 """
@@ -24,6 +24,7 @@ parser.add_argument('--enemy-difficulty', choices=('easy','medium','hard','bruta
 parser.add_argument('--starport-probe', action='store_true', help='Exercise reserved cash with above-normal Starport prices')
 parser.add_argument('--stats-probe', action='store_true', help='Verify campaign results with a shared human/AI house')
 parser.add_argument('--pressure-probe', action='store_true', help='Verify campaign assault slots, recovery and save state')
+parser.add_argument('--defence-probe', action='store_true', help='Verify retaliation and base/harvester reinforcements')
 parser.add_argument('--seed', type=int, default=486409243)
 parser.add_argument('--minutes', type=int, default=20)
 parser.add_argument('--attack-percent', type=int, choices=range(101), default=25)
@@ -73,6 +74,7 @@ env = dict(os.environ,DUNECITY_USERDIR=str(out/'profile'),SDL_VIDEODRIVER='dummy
 if args.starport_probe: env['BALANCE_STARPORT_PROBE'] = '1'
 if args.stats_probe: env['BALANCE_STATS_PROBE'] = '1'
 if args.pressure_probe: env['BALANCE_PRESSURE_PROBE'] = '1'
+if args.defence_probe: env['BALANCE_DEFENCE_PROBE'] = '1'
 with (out/'run.log').open('w') as log:
     subprocess.run([str(binary),'--window','--showlog'],cwd=out,env=env,
                    stdout=log,stderr=subprocess.STDOUT,check=True,timeout=600)

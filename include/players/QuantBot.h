@@ -130,6 +130,7 @@ private:
     bool campaignCanLaunch() const;
     bool campaignCombatUnit(const UnitBase* unit) const;
     bool campaignLocalContact(const ObjectBase* target) const;
+    bool campaignDefensiveContact(const UnitBase* unit, const ObjectBase* target) const;
     bool campaignControlsUnit(const UnitBase* unit);
     void updateCampaignWave();
     void holdCampaignUnit(const UnitBase* unit);

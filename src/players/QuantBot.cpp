@@ -912,7 +912,8 @@ void QuantBot::onDamage(const ObjectBase* pObject, int damage, Uint32 damagerID)
     bool bPossiblyOwnFremen = (pObject->getOwner()->getHouseID() == HOUSE_ATREIDES) && (pObject->getItemID() == Unit_Trooper) && (currentGame->techLevel > 7);
     if(gameMode == GameMode::Campaign && !pDamager->getOwner()->isAI() && !campaignAIAttackFlag && !bPossiblyOwnFremen && (pObject->getItemID() != Unit_Saboteur)) {
         campaignAIAttackFlag = true;
-    } else if (pObject->isAStructure()) {
+    }
+    if (pObject->isAStructure()) {
         doRepair(pObject);
         // no point scrambling to defend a missile
         if(pDamager->getItemID() != Structure_Palace) {
@@ -927,6 +928,7 @@ void QuantBot::onDamage(const ObjectBase* pObject, int damage, Uint32 damagerID)
 			return;
 		}
 
+
 		// Stop him dead in his tracks if he's going to rally point
 		if (!humanControls(pGroundUnit) && pGroundUnit->wasForced() && (pGroundUnit->getItemID() != Unit_Harvester)) {
 			doMove2Pos(pGroundUnit,
@@ -934,6 +936,23 @@ void QuantBot::onDamage(const ObjectBase* pObject, int damage, Uint32 damagerID)
 				pGroundUnit->getLocation().y,
 				false);
 		}
+
+        if (isCampaignEnemy() && damage>0 && campaignCombatUnit(pGroundUnit)
+            && pGroundUnit->canAttack(pDamager) && !pGroundUnit->isBadlyDamaged()
+            && pGroundUnit->getAttackMode()!=RETREAT) {
+            // GUARD only searches its own weapon range, so a tank otherwise
+            // remains idle while an outranging launcher kills it. Retaliation
+            // is defense, independent of opening grace or offensive wave slots.
+            if (!pGroundUnit->hasATarget() || !pGroundUnit->isInWeaponRange(pGroundUnit->getTarget())) {
+                const_cast<GroundUnit*>(pGroundUnit)->setGuardPoint(pGroundUnit->getLocation());
+                doSetAttackMode(pGroundUnit,AREAGUARD);
+                doAttackObject(pGroundUnit,pDamager,!pGroundUnit->isInAttackRange(pDamager));
+                defenceAssignments[pGroundUnit->getObjectID()]=pDamager->getObjectID();
+                traceDecision("campaign_retaliation",AITelemetry::Record()
+                    .set("unit",pGroundUnit->getObjectID()).set("target",damagerID));
+            }
+            scrambleUnitsAndDefend(pDamager);
+        }
 
 		if (pGroundUnit->getItemID() == Unit_Harvester) {
 			// Always keep Harvesters away from harm
@@ -7296,7 +7315,8 @@ void QuantBot::retreatAllUnits() {
                 || unit->getItemID()==Unit_Ornithopter
                 || !target || target->getHealth()<=0 || !target->isActive()
                 || target->getOwner()->getTeamID()==getHouse()->getTeamID()
-                || unit->isBadlyDamaged() || unit->getAttackMode()==RETREAT) {
+                || unit->isBadlyDamaged() || unit->getAttackMode()==RETREAT
+                || (isCampaignEnemy() && !campaignDefensiveContact(unit,target))) {
                 if (unit && unit->getOwner()==getHouse() && !humanControls(unit)
                     && unit->getAttackMode()==AREAGUARD) const_cast<UnitBase*>(unit)->setForced(false);
                 it=defenceAssignments.erase(it);
@@ -7305,7 +7325,10 @@ void QuantBot::retreatAllUnits() {
                 // ordinary target selection and kiting within this district.
                 if (unit->isInAttackRange(target)) {
                     const_cast<UnitBase*>(unit)->setForced(false);
-                    it=defenceAssignments.erase(it);
+                    // Retain the anchored self-defense permission until the
+                    // attacker dies or leaves; wave enforcement runs each tick.
+                    if (isCampaignEnemy()) ++it;
+                    else it=defenceAssignments.erase(it);
                 } else {
                     if (unit->getTarget()!=target || !unit->wasForced())
                         doAttackObject(unit,target,true);

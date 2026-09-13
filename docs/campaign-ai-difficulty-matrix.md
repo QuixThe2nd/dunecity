@@ -1,6 +1,6 @@
 # Campaign QuantBot: current behaviour and proposed difficulty design
 
-## Implemented local candidate: 1.0.669
+## Implemented local candidate: 1.0.670
 
 Stefan authorized implementation after reviewing this matrix. The following
 settings now apply to QuantBot campaign enemies. The original audit/proposal
@@ -36,9 +36,14 @@ Easy/Medium use one shared base objective and avoid deliberate light-raider
 harassment. Hard/Brutal split base/economic targets and try a lateral approach
 for alternating ground units when terrain permits; Brutal varies sides by
 house. Existing tactical spacing/repairs and offensive-air permissions remain.
-Defensive ground/air contacts must be near owned structures, or within four
-tiles of a harvester that is itself within 12 tiles of the base on Easy/Medium
-or 20 on Hard/Brutal. Harvesters farther away retain their escape behavior.
+Defensive contacts near owned structures include the attacker's weapon range
+plus two tiles (at least 7 on Easy/Medium and 10 on Hard/Brutal). Harvesters are
+protected at remote spice fields too: at least four tiles, extended for the
+attacker's range. Waiting defenders use Area Guard. Direct hits trigger bounded
+retaliation; buildings and harvesters summon threat-sized reinforcements even
+during opening grace/recovery. Defensive pursuit remains anchored to the contact.
+Repair retreats are preserved. These corrections in 670 replace the overly
+restrictive 669 defense perimeter; pre-fix wins do not establish human balance.
 Scripted HUNT troops outside the wave are held and recalled instead of creating
 an extra assault. Ordinary local defense remains available during recovery.
 

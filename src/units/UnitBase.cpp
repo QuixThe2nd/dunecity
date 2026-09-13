@@ -1284,7 +1284,7 @@ bool UnitBase::isInWeaponRange(const ObjectBase* object) const {
         return false;
     }
 
-    Coord targetLocation = target.getObjPointer()->getClosestPoint(location);
+    Coord targetLocation = object->getClosestPoint(location);
 
     return (blockDistance(location, targetLocation) <= getWeaponRange());
 }

@@ -1,3 +1,36 @@
+## Campaign defensive response — 1.0.670 local, 13 September 2026
+
+Browser testing of 669 exposed passive enemy defenders: GUARD uses the tank's
+short weapon range, while the seven-tile Easy/Medium base perimeter rejected
+nine-tile launcher attacks. Waiting campaign troops now use AREAGUARD. Direct
+hits trigger bounded retaliation independent of offensive opening/slots; bases
+and remote harvesters summon the existing threat-sized reinforcement response.
+Contact radii include the attacker's range plus two tiles. Self-defense uses the
+existing saved defense assignment and guard point as its pursuit anchor. Orders
+survive wave checks but expire when the target leaves that area. Repair retreats
+are preserved. Campaign activation no longer consumes the first human hit without
+also defending. UnitBase::isInWeaponRange now uses its argument instead of
+incorrectly dereferencing the unit's current target (which could be null).
+
+Real-engine `--defence-probe` passes for all four tiers: outranged tank response,
+base first hit (including ordinary human activation), remote worker rescue,
+orders surviving wave checks, bounded pursuit, Area Guard and repair retreat.
+Evidence: `/tmp/dunecity-campaign-balance/defence-670-v2`. The existing pressure,
+recovery, save/load and Windtrap probe passes at `pressure-670-v1`; all six CTest
+targets, native Release, dependency audit and signature verification pass.
+Browser build and corrected full-match matrix are in progress. No push/deploy.
+
+The pre-fix 669 batch won Easy/Easy levels 4,5,9 and Hard/Easy levels 8,9 on
+seeds 1 and 42. Medium/Medium level 9 seed 42 won; Hard/Hard lost; Brutal/Brutal
+reached 60 minutes with no player base/economy remaining, not a healthy stalemate.
+Brutal/Hard levels 6,7,8 won both seeds, level 9 won seed 42 and timed out seed 1.
+All sampled shared offensive budgets passed, but these outcomes are provisional
+because of the defense bug. Full artifacts are in `669-validation` and
+`669-brutal-hard-validation` under `/tmp/dunecity-campaign-balance`.
+The visible 669 Easy/Easy Harkonnen level 9 (seed 163683417) reached the ending
+cinematic after the last telemetry read at 24.61 game minutes. The user closed
+that browser tab before final score/summary capture; do not invent exact totals.
+
 ## Campaign difficulty implementation — 1.0.669 local, 13 September 2026
 
 Stefan authorized implementing the matrix. `CampaignDifficultyPolicy.h` and
