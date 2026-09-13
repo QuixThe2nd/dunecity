@@ -22,6 +22,12 @@ needle = 'int menuResult = MainMenu().showMenu();'
 if main.count(needle) != 1:
     raise RuntimeError('Main-menu injection point changed.')
 main = main.replace(needle,'int menuResult = runMenuProbe();')
+# The dummy SDL desktop is only 1024 pixels wide. Keep the requested virtual
+# window size so wide-screen probes exercise the real 1280-pixel menu layout.
+clamp = 'clampWindowedSizeToDisplay(displayIndex, settings.video.physicalWidth, settings.video.physicalHeight);'
+if main.count(clamp) != 1: raise RuntimeError('Window-size fixture injection point changed.')
+main = main.replace(clamp, '(void)displayIndex;')
+
 main = main.replace('if(shouldPlayIntro && (bFirstInit==true))','if(false && shouldPlayIntro && (bFirstInit==true))')
 position = main.index('int main(')
 main = main[:position] + '#include "'+str(root/'tests/menu/menu-probe.inc')+'"\n' + main[position:]
@@ -49,11 +55,11 @@ link = [str(obj) if arg.endswith('/main.cpp.o') else arg for arg in link]
 with (out/'build.log').open('w') as log:
     subprocess.run(compile_command,cwd=build,stdout=log,stderr=subprocess.STDOUT,check=True)
     subprocess.run(link,cwd=build,stdout=log,stderr=subprocess.STDOUT,check=True)
-for width in (640, 854):
+for width, height in ((640, 480), (854, 480), (1280, 720)):
     profile = out / ('profile-' + str(width))
     profile.mkdir(exist_ok=True)
-    (profile/'Dune City.ini').write_text('[Video]\nPhysical Width = '+str(width)+'\nPhysical Height = 480\nWidth = '+str(width)+'\nHeight = 480\nInterface Height = 480\nFullscreen = false\n[General]\nPlay Intro = false\nPlayer Name = Menu tester\n')
-    env = dict(os.environ, DUNECITY_USERDIR=str(profile), SDL_VIDEODRIVER='dummy', SDL_AUDIODRIVER='dummy', MENU_PROBE_OUT=str(out), MENU_PROBE_WIDTH=str(width))
+    (profile/'Dune City.ini').write_text('[Video]\nPhysical Width = '+str(width)+'\nPhysical Height = '+str(height)+'\nWidth = '+str(width)+'\nHeight = '+str(height)+'\nInterface Height = '+str(height)+'\nFullscreen = false\n[General]\nPlay Intro = false\nPlayer Name = Menu tester\n')
+    env = dict(os.environ, DUNECITY_USERDIR=str(profile), SDL_VIDEODRIVER='dummy', SDL_AUDIODRIVER='dummy', MENU_PROBE_OUT=str(out), MENU_PROBE_WIDTH=str(width), MENU_PROBE_HEIGHT=str(height))
     logpath = out / ('run-' + str(width) + '.log')
     with logpath.open('w') as log:
         subprocess.run([str(binary), '--window', '--showlog'], cwd=out, env=env, stdout=log, stderr=subprocess.STDOUT, check=True, timeout=120)

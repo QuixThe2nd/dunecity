@@ -24,6 +24,9 @@ void menuCapture(MenuBase& menu, const std::string& name) {
     menuRequire(SDL_SaveBMP(surface.get(),path.c_str())==0,"Screenshot write failed");
 }
 int runMenuProbe() {
+    menuRequire(getRendererWidth()==std::atoi(std::getenv("MENU_PROBE_WIDTH"))
+                && getRendererHeight()==std::atoi(std::getenv("MENU_PROBE_HEIGHT")),
+                "Probe did not render at the requested dimensions");
     settings.general.playerName = "Menu tester";
     settings.network.relayUseDevelopmentEndpoint = true;
     // Disable online discovery in this fixture; admission and transport have separate tests.
@@ -89,6 +92,7 @@ int runMenuProbe() {
         bool reachedStart=false;
         for(int i=0;i<40;++i) { menu.handleInput(tab); if(menu.nextButton.isActive()) { SDL_Log("MENU_PROBE: campaign Start reached after %d Tabs",i+1); reachedStart=true; break; } }
         menuRequire(reachedStart,"Campaign lobby keyboard focus cannot reach Start after a partner joins");
+        menuCapture(menu,"campaign-lobby");
     }
     ChangeEventList original;
     {
@@ -133,15 +137,33 @@ int runMenuProbe() {
     }
     for(const auto& candidate : setup.maps) {
         if(getBasename(candidate).find("6P - 64x64") == std::string::npos) continue;
-        auto sixSetup=setup;
-        sixSetup.map=static_cast<int>(std::distance(setup.maps.begin(), std::find(setup.maps.begin(), setup.maps.end(), candidate)));
-        sixSetup.players=ChangeEventList{};
-        GameInitSettings sixInit(getBasename(candidate,true),readCompleteFile(candidate),true,setup.rules);
-        CustomGamePlayers menu(sixInit,true,false,&sixSetup);
-        menuRequire(menu.numHouses==6,"Six-house fixture not loaded");
-        menuRequire(menu.mainVBox.getMinimumSize().y<=menu.mainVBox.getSize().y,"Six-house controls exceed menu height");
-        menuCapture(menu,"custom-six-houses");
+        for(bool shared : {false, true}) {
+            auto sixSetup=setup;
+            sixSetup.online=shared;
+            sixSetup.sharedHouse=shared;
+            sixSetup.map=static_cast<int>(std::distance(setup.maps.begin(), std::find(setup.maps.begin(), setup.maps.end(), candidate)));
+            sixSetup.players=ChangeEventList{};
+            GameInitSettings sixInit(getBasename(candidate,true),readCompleteFile(candidate),shared,setup.rules);
+            CustomGamePlayers menu(sixInit,true,false,&sixSetup);
+            menuRequire(menu.numHouses==6,"Six-house fixture not loaded");
+            menuRequire(menu.mainVBox.getMinimumSize().y<=menu.mainVBox.getSize().y,"Six-house controls exceed menu height");
+            menu.update();
+            menuCapture(menu,shared ? "custom-six-houses" : "custom-six-offline");
+        }
         break;
+    }
+    {
+        menuRequire(ModManager::instance().setActiveMod("Tornie"),"Bonus-color fixture mod unavailable");
+        GameInitSettings modInit(getBasename(map,true),readCompleteFile(map),false,setup.rules);
+        CustomGamePlayers menu(modInit,true);
+        menuRequire(menu.mainVBox.getMinimumSize().x<=menu.mainVBox.getSize().x,"Bonus color controls exceed menu width");
+        auto& row=menu.houseInfo[0];
+        menuRequire(row.bonusColorCheckbox.isVisible() && row.bonusColorCheckbox.isEnabled(),"Classic bonus color selector is unavailable");
+        row.bonusColorCheckbox.setChecked(true);
+        menu.onBonusColorCheckbox(0);
+        menuRequire(row.colorDropDown.getNumEntries()>1,"Bonus palette has no colors");
+        menuCapture(menu,"custom-bonus-colors");
+        ModManager::instance().setActiveMod("vanilla");
     }
     setup.players=original;
     {

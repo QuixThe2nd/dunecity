@@ -1,3 +1,47 @@
+# Classic player setup and human co-op check — 1.0.674, 13 September 2026
+
+## Player setup restoration
+
+The original centered roster/map composition is restored for custom setup and
+network lobbies. Full Player 1 / Player 2 labels and 180-pixel player lists are
+used from 800 pixels wide; compact rows remain below that. Wide windows regain
+inset Back/Start buttons. Mods with bonus colors regain the original palette
+checkbox. Offline setup hides private/public visibility. Map, mod, rules,
+connection switching and explicit Start Game / Create Lobby remain together.
+The prior entered-name and open-seat hosting validation stays in place.
+
+Native Release, dependency/version/signature checks and all seven CTest groups
+pass. The final narrow Bonus-label adjustment was rebuilt and the menu probe
+rerun successfully. Actual rendering at 640×480, 854×480 and 1280×720 is asserted;
+the diagnostic main alone bypasses the dummy desktop's 1024-pixel clamp. Visual
+checks include six-house Offline/Online, shared houses and Tornie bonus colors.
+The final web Release build and dependency audit pass as well. These 674 checks
+exercise real production menu objects, not two-peer transport.
+
+## Human-hosted campaign — matching 673 clients
+
+Stefan created a private Ordos campaign in the browser and clicked Start Campaign
+after Codex joined as MenuHost natively. Both screens displayed the shared roster
+before Start. Both entered the mission. Stefan's unit movements and newly explored
+terrain appeared on the native peer. Inspected peer reports exceeded cycle 27,749;
+no desync, digest-mismatch, connection-lost or peer-disconnected diagnostic was
+found in that log snapshot. Both clients remained running afterward.
+
+This confirms human hosting, admission, starting and host-command delivery in
+this local cross-platform session. Same-Mac loopback signaling and direct peers
+do not establish WAN/NAT behavior, saved-session resumption or full campaign
+completion. The 673 gameplay observation is not a two-peer test of 674.
+
+Evidence: `../outputs/dunecity-menu-acceptance/human-campaign-673.log`,
+`build-native-674.log`, `build-native-674-final.log`, `build-web-674-final.log`,
+production-menu captures
+under `build/menu-probe`, and exported `674-*.png` images in the artifact folder.
+The running browser at localhost:8769 still serves 673. Keep that session and
+its matching native copy alive; 674 must be packaged separately. Nothing is
+installed, pushed or publicly deployed.
+
+---
+
 # Hosting fixes and acceptance — 1.0.673, 13 September 2026
 
 Local hosting acceptance now passes. The candidate is built in

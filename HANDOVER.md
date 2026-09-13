@@ -1,3 +1,35 @@
+## Classic player setup restored — 1.0.674 local, 13 September 2026
+
+Stefan rejected the sparse left-aligned player setup and requested the original
+custom-player UI for both Offline and Online. The classic centered roster/map
+composition, full player labels and dropdown widths (where space permits),
+wide-screen button margins, and optional Bonus palette selector are restored.
+The unified map/mod/connection/rules setup and 673 hosting validation remain;
+private/public visibility appears only online. Compact shared-house rows fit
+640 pixels. Simulation, saves and transport are unchanged.
+
+Native Release and all seven CTest groups pass; after the final narrow Bonus
+label adjustment, the menu probe passes again. It now asserts actual rendering
+at 640×480, 854×480 and 1280×720, including six-house Offline/Online, shared
+houses, campaign lobby and Tornie bonus colors. The test-only main bypasses
+SDL dummy desktop clamping, which otherwise silently reduced 1280 to 1024.
+The final web Release build and dependency audit also pass. Native/web 674
+artifacts are separate from the running 673 session. See docs/menu-acceptance.md.
+
+Stefan also personally hosted and started a private 673 Ordos campaign in the
+browser. Codex joined as MenuHost using the matching native client; both rosters
+were visible before Start, both entered the mission, and Stefan's unit movement
+and exploration appeared natively. Peer reports passed cycle 27,749 without a
+reported desync/disconnect in inspected diagnostics. This passes the human
+hosting/start check locally; it does not establish WAN or a completed campaign.
+
+IMPORTANT: Stefan is still playing. Keep browser tab 3, localhost:8769, the
+private service localhost:60458, and the running 673 Dune Menu Host test copy
+untouched. Do not close/reload the browser, replace its served play folder, stop
+the test client, or overwrite its executable/profile. The 674 build belongs in
+build/bin and a separate play-674 package; switch only after the current game.
+No install, push, PR or public deployment performed.
+
 ## Hosting fixes — 1.0.673 local, 13 September 2026
 
 Create Campaign/Custom from Join Online now commits the entered name before

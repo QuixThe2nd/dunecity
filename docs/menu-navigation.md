@@ -1,4 +1,4 @@
-# Menu navigation, local candidate 1.0.672
+# Menu navigation, local candidate 1.0.674
 
 This change follows Stefan's menu review and approval on 13 September 2026.
 It starts from 81ff90a (campaign controls 1.0.669), preserving the campaign AI,
@@ -16,12 +16,14 @@ Start Campaign / Start Mission is explicit. Offline permits an AI partner.
 Online creates a private or public co-op room from that exact setup, with two
 controllers sharing a house. Cancelling the online flow retains setup choices.
 
-Custom Game puts map, mod, Offline / Online, visibility, shared-house option,
+Custom Game puts map, mod, Offline / Online, online visibility, shared-house option,
 players and Game Rules on the existing player setup screen. Map/mod changes
 rebuild eligible player slots. Connection/rules changes preserve their roster.
 Offline defaults unoccupied primary slots to Easy AI. Online starts admission
 only after Create Lobby, transferring the prepared roster into the lobby.
-Existing start validation and peer/config acknowledgements remain authoritative.
+The original centered player roster/map layout is restored, including full player
+labels in wide windows and compact rows on small screens. Existing start
+validation and peer/config acknowledgements remain authoritative.
 
 Join Online provides Campaign co-op / Custom filters, active-mod selection,
 a public game list and an invitation-code field. Public chat has its own view.
@@ -55,7 +57,7 @@ explicitly checked. Settings > Advanced > Default Game Rules remains global.
 The macOS CTest menu_navigation_probe links the production menu objects with a
 test-only entry point. It uses isolated profiles and SDL's dummy driver to
 exercise campaign retry state, single-mission ranges, custom roster transfer,
-Settings validation, and render the actual widgets at 640×480 and 854×480.
+Settings validation, and render the actual widgets at 640×480, 854×480 and 1280×720.
 The final native Release build, dependency audit, and all seven CTest targets pass.
 Images and logs are in build/menu-probe. Network transport and authorization
 continue to have their dedicated CTest coverage.
@@ -66,8 +68,10 @@ offline save/Continue, online custom save routing, and Extras entry points.
 It caught and fixed Home's hidden-button keyboard trap. See
 `docs/menu-acceptance.md` for exact versions, evidence and remaining limits.
 
-This is a local implementation candidate. It has not been published. A browser
-test build passed native/browser campaign gameplay, but its initial lobby
-display remains open and the default browser Release link did not finish.
+This is a local implementation candidate. It has not been published. Matching 673 browser/native
+clients passed lobby display, hosting and campaign/custom gameplay; Stefan also
+personally hosted and started a campaign successfully. The source-controlled
+web Release link completes. The 674 restoration has separate build and menu
+checks; see the acceptance record for the exact scope.
 WAN/mobile checks, a richer save metadata list, timed display rollback, parties
 and rematch flows remain follow-up work.
