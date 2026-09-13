@@ -212,8 +212,44 @@ const ObjectBase* QuantBot::campaignObjective(const UnitBase* unit, int group) c
     return chosen;
 }
 
+bool QuantBot::scoutCampaignFront(const UnitBase* unit) {
+    // HUNT can repeatedly acquire a distant carryall, which ground units then
+    // refuse to chase. Explore terrain when there is no visible base instead
+    // of treating HUNT alone as an exploration order. No hidden objects are read.
+    if (!unit->isAGroundUnit() || !unit->isActive() || !unit->isRespondable()
+        || unit->isMoving() || unit->hasATarget() || unit->isBadlyDamaged()
+        || unit->getAttackMode()==RETREAT || humanControls(unit)) return false;
+    Coord destination=Coord::Invalid();int best=-1;
+    for (int y=0;y<getMap().getSizeY();++y) for (int x=0;x<getMap().getSizeX();++x) {
+        if (getMap().getTile(x,y)->isExploredByTeam(getHouse()->getTeamID()) || !unit->canPass(x,y)) continue;
+        const int distance=blockDistance(unit->getLocation(),Coord(x,y)).lround();
+        if (distance>best) {best=distance;destination=Coord(x,y);}
+    }
+    if (!destination.isValid()) return false;
+    doMove2Pos(unit,destination.x,destination.y,true);
+    doSetAttackMode(unit,HUNT);
+    traceDecision("campaign_scout",AITelemetry::Record().set("unit",unit->getObjectID())
+        .set("x",destination.x).set("y",destination.y));
+    return true;
+}
+
 bool QuantBot::campaignControlsUnit(const UnitBase* unit) {
-    if (!isCampaignEnemy() || !campaignCombatUnit(unit)) return false;
+    if (!campaignCombatUnit(unit)) return false;
+    if (!isCampaignEnemy()) {
+        // Only an already dispatched helper attacker can scout. Home guards,
+        // economy-only support and manual orders keep their existing roles.
+        if (isCampaignGameType(currentGame->gameType) && !supportMode
+            && unit->isActive() && unit->isRespondable() && !unit->isBadlyDamaged()
+            && !humanControls(unit) && unit->getAttackMode()==HUNT
+            && !unit->isMoving() && !unit->hasATarget()) {
+            if (const auto* objective=campaignObjective(unit,0)) {
+                doAttackObject(unit,objective,true);
+                return true;
+            }
+            return scoutCampaignFront(unit);
+        }
+        return false;
+    }
     if (!campaignWave.members.count(unit->getObjectID())) {
         if (!campaignDefensiveContact(unit,unit->getTarget())) {holdCampaignUnit(unit);return true;}
         return unit->getItemID()==Unit_Saboteur; // Other defenders retain combat micro.
@@ -232,7 +268,7 @@ bool QuantBot::campaignControlsUnit(const UnitBase* unit) {
         if (objective) {
             doSetAttackMode(unit,AREAGUARD);
             doAttackObject(unit,objective,true);
-        } else doSetAttackMode(unit,HUNT); // Explore when no enemy base is visible.
+        } else if (!scoutCampaignFront(unit)) doSetAttackMode(unit,HUNT);
     }
     return false;
 }

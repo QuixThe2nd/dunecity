@@ -104,7 +104,7 @@ int runCampaignBalanceProbe() {
             const auto* target=unit->getTarget();
             const auto* candidate=unit->findTarget();
             SDL_Log("CAMPAIGN_TARGET_AUDIT: id=%u attack_pos=%d find_timer=%d pending=%d candidate=%u candidate_item=%u",
-                unit->getObjectID(),unit->attackPos,unit->findTargetTimer,int(unit->pendingTargetRequest),
+                unit->getObjectID(),unit->attackPos.isValid(),unit->findTargetTimer,int(unit->pendingTargetRequest),
                 candidate?candidate->getObjectID():NONE_ID,candidate?candidate->getItemID():NONE_ID);
             SDL_Log("CAMPAIGN_UNIT_AUDIT: house=%d id=%u item=%u hp=%d/%d active=%d moving=%d forced=%d mode=%d pos=%d,%d dest=%d,%d guard=%d,%d target=%u target_item=%u target_pos=%d,%d",
                 unit->getOwner()->getHouseID(),unit->getObjectID(),unit->getItemID(),unit->getHealth().lround(),unit->getMaxHealth(),
