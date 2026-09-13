@@ -1,4 +1,4 @@
-# Campaign attack balance — 1.0.666
+# Campaign attack balance — 1.0.666–667
 
 ## Finding
 
@@ -73,10 +73,10 @@ the harness records that distinction in its summaries.
 
 ## Player difficulty targets
 
-Stefan clarified the acceptance target: an Easy partner should win or hold through
-campaign levels 4–5. An Easy partner need not win level 9, but a Hard partner
-should be able to beat Easy enemies there. The 25% enemy cap meets those targets
-in both tested simulation seeds:
+The initial acceptance target was Easy winning or holding through levels 4–5
+and Hard beating Easy on level 9. The 666 tests met those targets in both seeds.
+Stefan subsequently raised the Easy target to survival on level 9 (see the 667
+follow-up below):
 
 | Partner / level | Seed 486409243 | Seed 1 |
 | --- | --- | --- |
@@ -88,8 +88,63 @@ The Hard partner uses its actual Hard economy/combat settings; opponents remain
 Easy. Added evidence directories: `native-level5-easy`,
 `native-level9-hard-partner`, and `native-level{4,5,9}-seed1`.
 Reproduce Hard with `--partner-difficulty hard --level 9 --minutes 45`.
-These outcomes justify keeping the demonstrated 25% reduction while gathering
-human results, rather than weakening Easy further based on level 9 Easy-versus-Easy.
+Those initial tests did not establish long-term Easy survival on level 9; the
+follow-up below extends the runs to an outcome or a 60-minute cutoff.
+
+## 1.0.667: Easy level-9 survival and economy follow-up
+
+Stefan's current target is **Easy surviving level 9 against Easy**, even if the
+result is a stalemate. Four runs of the combined 667 changes, each with a
+60-game-minute cutoff, all reached genuine victory without human commands or
+mission skipping. Enemies retained the 25% per-house attack-value budget; no
+additional wave reduction was made.
+
+| Partner | Seed | Outcome | End cycle | Game minutes |
+| --- | --- | --- | --- | --- |
+| Easy | 486409243 | Victory | 119807 | 31.95 |
+| Easy | 1 | Victory | 114740 | 30.60 |
+| Easy | 42 | Victory | 111799 | 29.81 |
+| Easy | 257913089 | Victory | 99712 | 26.59 |
+| Hard | 486409243 | Victory | 83294 | 22.21 |
+
+Evidence is under `/tmp/dunecity-campaign-balance/`, in
+`easy9-667-60-seed{486409243,1,42,257913089}` and
+`hard9-667-60-seed486409243`. Summaries identify the previous committed HEAD and
+`workingTreeModified: true` because these measurements preceded the 667 commit.
+This is four Harkonnen scenario-22 seeds, not proof of every house/map or human
+player's experience. A reported collapse should be reproduced before lowering
+wave budgets or adding aggregate limits across enemy houses.
+
+The Starport already ignored cheap-price checks for needed harvesters and the
+first carryall. Its problem was that the economy reserve was unavailable to
+those imports. Version 667 lets them use that cash, accepts exact affordability,
+counts only accepted orders and stops buying workers at the sustainable target.
+The dedicated fixture uses real Starport ordering/payment, actual map spice and
+forced above-normal prices: first carryall 1,500, harvester 1,200, available cash
+2,700. Both are queued, order submitted, final cash zero. Evidence:
+`starport-667-v3`, marker `STARPORT_ECONOMY_PROBE_PASS`. The initial fixture omitted
+the normal AI spice survey and therefore had a zero worker target; this was a
+fixture error, corrected before the passing run.
+
+Reproduce from the built native tree:
+
+```sh
+python3 tests/ai/run-campaign-balance.py --output-dir /tmp/easy9-new-run --level 9 --minutes 60 --seed 42
+python3 tests/ai/run-campaign-balance.py --output-dir /tmp/starport-new-run --level 9 --partner-difficulty hard --starport-probe
+```
+
+In the 666 browser test, Hard on level 8 (seed 493337323, SCENH020.INI,
+session `1789280309911000-0`) destroyed both enemy construction yards by the last
+flushed snapshot at 21.7 minutes. Stefan explicitly confirmed seeing victory and
+continuing to level 9. A separate Hard level-9 browser run was strong at the last
+20.4-minute snapshot, but its final victory screen was not captured before the
+browser tabs were closed. Native victory evidence above is separate.
+
+Building selection also received a 667 regression fix: clicking a building
+clears previous units/buildings even with Shift held, so its dedicated sidebar
+can open. Real SDL click probes pass on campaign levels 4/9. Native Release,
+all six CTest targets, the command probe, dependency/signature audits and the
+full Emscripten build pass. This candidate is not publicly deployed.
 
 ## Dune Dynasty campaign activation and scripts
 

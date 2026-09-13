@@ -4652,18 +4652,32 @@ void QuantBot::build(int militaryValue) {
 							money = money - choam.getPrice(Unit_MCV);
 						}
 
-						if (money > choam.getPrice(Unit_Carryall) && choam.getNumAvailable(Unit_Carryall) > 0 && itemCount[Unit_Carryall] == 0) {
-							// Get at least one Carryall
-							produceItemWithLogging(Unit_Carryall, __LINE__);
-							itemCount[Unit_Carryall]++;
-							money = money - choam.getPrice(Unit_Carryall);
-						}
-
-						while (money > choam.getPrice(Unit_Harvester) && choam.getNumAvailable(Unit_Harvester) > 0 && itemCount[Unit_Harvester] < harvesterLimit) {
-							produceItemWithLogging(Unit_Harvester, __LINE__);
-							itemCount[Unit_Harvester]++;
-							money = money - choam.getPrice(Unit_Harvester);
-						}
+                        // Economic imports may use the cash held for the economy,
+                        // just as factory-built harvesters do. Market discounts are
+                        // irrelevant to needed workers and the first transport.
+                        const int workerTarget = vanillaEconomy ? spiceHarvesterTarget : harvesterLimit;
+                        auto buyEconomicImport = [&](Uint32 item, const char* rule) {
+                            const int price = choam.getPrice(item);
+                            const int cash = money + (vanillaEconomy ? reserve.reserved : 0);
+                            if (price <= 0 || cash < price || choam.getNumAvailable(item) <= 0
+                                || !pStarPort->isAvailableToBuild(item)) return false;
+                            traceDecision("starport_economy_purchase", AITelemetry::Record()
+                                .set("item", item).set("market_price", price)
+                                .set("normal_price", data[item][houseID].price)
+                                .set("spendable", money).set("economic_cash", cash)
+                                .set("reserved_cash", reserve.reserved).set("worker_target", workerTarget));
+                            if (!produceItemWithLogging(item, __LINE__, rule)) return false;
+                            ++itemCount[item];
+                            // The scoped reserve is restored after this builder;
+                            // deducting here charges this order exactly once.
+                            money -= price;
+                            return true;
+                        };
+                        if (itemCount[Unit_Carryall] == 0)
+                            buyEconomicImport(Unit_Carryall, "first_economic_transport");
+                        while (itemCount[Unit_Harvester] < workerTarget) {
+                            if (!buyEconomicImport(Unit_Harvester, "starport_spice_economy")) break;
+                        }
 
 						int itemCountUnits = itemCount[Unit_Tank] + itemCount[Unit_SiegeTank] + itemCount[Unit_Launcher] + itemCount[Unit_Harvester];
 

@@ -651,6 +651,23 @@ void Map::selectObjects(const House* pHouse, int x1, int y1, int x2, int y2, int
         }
 
         if((lastCheckedObject != nullptr) && (lastCheckedObject->getOwner() == pHouse)) {
+            // Buildings have a single-object sidebar. Shift must not combine a
+            // building with troops (or another building) into a troop command panel.
+            if (lastCheckedObject->isAStructure()) {
+                currentGame->unselectAll(currentGame->getSelectedList());
+                currentGame->getSelectedList().clear();
+                currentGame->selectionChanged();
+            } else if (objectARGMode) {
+                auto& selection = currentGame->getSelectedList();
+                for (auto it = selection.begin(); it != selection.end();) {
+                    auto* selected = currentGame->getObjectManager().getObject(*it);
+                    if (selected && selected->isAStructure()) {
+                        selected->setSelected(false);
+                        it = selection.erase(it);
+                        currentGame->selectionChanged();
+                    } else ++it;
+                }
+            }
             if((lastCheckedObject == lastSinglySelectedObject) && ( !lastCheckedObject->isAStructure())) {
                 for(auto i = screenborder->getTopLeftTile().x; i <= screenborder->getBottomRightTile().x; i++) {
                     for(auto j = screenborder->getTopLeftTile().y; j <= screenborder->getBottomRightTile().y; j++) {

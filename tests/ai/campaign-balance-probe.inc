@@ -8,6 +8,8 @@
 #include <memory>
 #include <cstdlib>
 
+#include "starport-economy-probe.inc"
+
 int runCampaignBalanceProbe() {
     const int level = std::atoi(std::getenv("BALANCE_LEVEL"));
     const int minutes = std::atoi(std::getenv("BALANCE_MINUTES"));
@@ -40,6 +42,11 @@ int runCampaignBalanceProbe() {
     game->initGame(init);
     game->bReplay = false;
     game->initializeGameLoop();
+    if (std::getenv("BALANCE_STARPORT_PROBE")) {
+        runStarportEconomyProbe(*game);
+        game.reset(); currentGame = nullptr; pLocalPlayer = nullptr;
+        return MENU_QUIT_DEFAULT;
+    }
     const Uint32 end = MILLI2CYCLES(minutes * 60000);
     while (!game->finished && game->getGameCycleCount() < end) game->updateGameState();
     SDL_Log("CAMPAIGN_BALANCE_RESULT: level=%d seed=%u attack_percent=%d partner=%s cycle=%u outcome=%s",

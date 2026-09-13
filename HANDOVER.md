@@ -1,3 +1,35 @@
+## Campaign economy and selection — 1.0.667 local candidate, 13 September 2026
+
+Branch `fix/campaign-ai-attack-limits` in the campaign-controls worktree. Building
+clicks now replace all previous building/unit selections, including Shift-click;
+Shift-clicking a unit also removes selected buildings. The real SDL command
+probe passes this regression on campaign levels 4 and 9.
+
+Needed Starport harvesters and the first carryall can now spend Vanilla's reserved
+economy cash. They already bypassed the cheap-price filter; the reserve was the
+actual barrier. Purchases check availability, stock, affordability and accepted
+queues, and stop at the sustainable worker target. A real Starport fixture bought
+a 1,500-credit carryall and 1,200-credit harvester with exactly 2,700 credits,
+placed the order and left zero credits. Other imports retain their existing rules.
+
+Stefan raised the balance target: Easy should survive level 9 against Easy,
+even if it cannot win. Four real-game simulations with a 60-minute cutoff all
+**won** using the existing 25% enemy attack budget: seeds 486409243 / 1 / 42 /
+257913089 finished in 31.95 / 30.60 / 29.81 / 26.59 game minutes. Hard also won
+seed 486409243 in 22.21 minutes. These runs used 667's combined economy/selection
+changes, with no human orders or skip. No further wave reduction is justified by
+these samples; other houses, map variants and human play remain untested.
+
+In the visible 666 browser campaign, Stefan explicitly confirmed the level-8
+victory screen and continuation (Hard partner / Easy enemies, seed 493337323).
+He subsequently closed the browser campaigns. Codex did not capture a final
+level-9 browser victory screen; native wins are recorded separately.
+
+Native Release, post-build dependency audit, signature verification, all six
+CTest targets, real SDL selection probe, above-price Starport probe and full
+Emscripten build pass. See `docs/campaign-ai-balance.md` for reproducible commands
+and evidence. Version 667 is local only; installed app and public 665 unchanged.
+
 ## Campaign AI balance — 1.0.666 local candidate, 13 September 2026
 
 Worktree `/Users/stefan/Documents/projects/dunecity-campaign-controls`, branch

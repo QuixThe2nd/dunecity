@@ -226,6 +226,29 @@ int runOwnershipProbe() {
         if(game->getSelectedList().count(target->getObjectID()) != 1)
             throw std::runtime_error("real game input could not select a unit after a builder");
         SDL_Log("UNIT_SELECTION_PROBE_PASS: real SDL input selects a unit after a builder on level %d", level);
+        // Even with Shift held, a building click replaces troop/building groups.
+        StructureBase* otherBuilding = nullptr;
+        for (auto* structure : structureList)
+            if (structure->getOwner() == pLocalHouse && structure != builder) { otherBuilding = structure; break; }
+        for (auto* selectedBefore : {static_cast<ObjectBase*>(target), static_cast<ObjectBase*>(otherBuilding)}) {
+            if (!selectedBefore) continue;
+            game->unselectAll(game->getSelectedList()); game->getSelectedList().clear();
+            selectedBefore->setSelected(true); game->getSelectedList().insert(selectedBefore->getObjectID());
+            game->getGameInterface().updateObjectInterface();
+            const Coord buildingCenter = builder->getCenterPoint(); screenborder->setNewScreenCenter(buildingCenter);
+            currentGameMap->getTile(builder->getLocation())->setExplored(pLocalHouse->getHouseID(), game->getGameCycleCount());
+            SDL_SetModState(KMOD_SHIFT);
+            for (auto type : {SDL_MOUSEBUTTONDOWN, SDL_MOUSEBUTTONUP}) {
+                SDL_Event click{}; click.type = type; click.button.button = SDL_BUTTON_LEFT;
+                click.button.x = screenborder->world2screenX(buildingCenter.x);
+                click.button.y = screenborder->world2screenY(buildingCenter.y); SDL_PushEvent(&click);
+            }
+            game->doInput(); SDL_SetModState(KMOD_NONE);
+            if (game->getSelectedList() != std::set<Uint32>{builder->getObjectID()} || selectedBefore->isSelected())
+                throw std::runtime_error("building click retained a previous troop/building selection");
+            game->getGameInterface().updateObjectInterface();
+        }
+        SDL_Log("BUILDING_SELECTION_PROBE_PASS: building clicks replace units and other buildings, including Shift-click");
         game.reset(); currentGame = nullptr; pLocalPlayer = nullptr;
     }
     {
