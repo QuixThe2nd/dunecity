@@ -68,5 +68,27 @@ void runCampaignPacingProbe(Game& game) {
     } catch (...) {unitList=savedUnits;throw;}
     unitList=savedUnits;
     SDL_Log("CAMPAIGN_PACING_PASS: eight 300-value tanks send four and retain four at 2400 readiness; opening and shared limits preserved");
+    UnitBase* scout=nullptr;
+    for(auto* unit:unitList) if(unit->getOwner()==partner->getHouse() && unit->isActive()
+        && unit->isAGroundUnit() && unit->canAttack()) {scout=unit;break;}
+    require(scout,"Missing helper scouting fixture unit");
+    scout->setHealth(scout->getMaxHealth());
+    for(auto* building:structureList)
+        if(building->getOwner()->getTeamID()!=partner->getHouse()->getTeamID())
+            building->setVisible(partner->getHouse()->getTeamID(),false);
+    for(int y=0;y<currentGameMap->getSizeY();++y)
+        for(int x=0;x<currentGameMap->getSizeX();++x)currentGameMap->getTile(x,y)->explored.reset();
+    partner->doMove2Pos(scout,scout->getX(),scout->getY(),false);
+    partner->doSetAttackMode(scout,AREAGUARD);
+    require(!partner->campaignControlsUnit(scout),"Home defender was reassigned to scouting");
+    partner->doSetAttackMode(scout,HUNT);
+    require(partner->campaignControlsUnit(scout),"Idle helper attacker failed to explore");
+    require(scout->getDestination().isValid() && scout->getDestination()!=scout->getLocation()
+        && !currentGameMap->getTile(scout->getDestination())->isExploredByTeam(partner->getHouse()->getTeamID()),
+        "Scout did not receive an unexplored terrain destination");
+    partner->doMove2Pos(scout,scout->getX(),scout->getY(),false);
+    partner->doSetAttackMode(scout,HUNT);partner->onHumanUnitOrder(scout->getObjectID());
+    require(!partner->campaignControlsUnit(scout),"Scouting replaced a manual unit order");
+    SDL_Log("CAMPAIGN_SCOUT_PASS: dispatched helper explores; home defender and human orders preserved");
     SDL_Log("CAMPAIGN_BALANCE_RESULT: probe=pacing outcome=passed");
 }
