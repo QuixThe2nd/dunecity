@@ -793,6 +793,33 @@ TEST_CASE("Factory safety outranks frontage preferences without banning constrai
 }
 
 #include <players/SimpleArmyPolicy.h>
+TEST_CASE("Campaign attack sizes scale with difficulty and retain a reserve", "[quantbot][combat]") {
+    std::vector<SimpleArmyPolicy::Responder> army;
+    for (unsigned i=0; i<20; ++i) army.push_back({i+1,100,0});
+    REQUIRE(SimpleArmyPolicy::limitedAttack(2000,0,25,army).size()==5);
+    REQUIRE(SimpleArmyPolicy::limitedAttack(2000,0,40,army).size()==8);
+    REQUIRE(SimpleArmyPolicy::limitedAttack(2000,0,50,army).size()==10);
+    REQUIRE(SimpleArmyPolicy::limitedAttack(2000,0,60,army).size()==12);
+    REQUIRE(SimpleArmyPolicy::limitedAttack(2000,0,0,army).empty());
+    REQUIRE(SimpleArmyPolicy::limitedAttack(2000,400,25,army).size()==1);
+    REQUIRE(SimpleArmyPolicy::limitedAttack(2000,500,25,army).empty());
+    REQUIRE(SimpleArmyPolicy::limitedAttack(2000,800,25,army).empty());
+}
+TEST_CASE("Campaign waves handle mixed costs and small armies without stacking", "[quantbot][combat]") {
+    using namespace SimpleArmyPolicy;
+    const std::vector<Responder> army{{9,300,0},{3,120,0},{1,600,0},{4,60,0}};
+    // A large first candidate cannot prevent affordable troops being chosen.
+    REQUIRE(limitedAttack(1080,0,25,army)==std::vector<uint32_t>{3,4});
+    auto reversed=army; std::reverse(reversed.begin(),reversed.end());
+    REQUIRE(limitedAttack(1080,0,25,reversed)==limitedAttack(1080,0,25,army));
+    REQUIRE(limitedAttack(300,0,25,{{7,300,0}})==std::vector<uint32_t>{7});
+    REQUIRE(limitedAttack(600,300,25,{{8,300,0}}).empty());
+    REQUIRE(limitedAttack(600,0,0,{{8,300,0}}).empty());
+    REQUIRE(limitedAttack(600,0,25,{{8,0,0}}).empty());
+    REQUIRE(attackBudget(INT32_MAX,100)==INT32_MAX);
+    REQUIRE(attackBudget(1000,150)==1000);
+    REQUIRE(attackBudget(-1000,25)==0);
+}
 TEST_CASE("Local defence scales to the enemy instead of a fixed reserve", "[quantbot][combat]") {
     using namespace SimpleArmyPolicy;
     std::vector<Responder> army;

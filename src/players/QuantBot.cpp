@@ -36,6 +36,7 @@
 #include <players/HumanPlayer.h>
 #include <players/SimpleArmyPolicy.h>
 #include <players/QuantBotConfig.h>
+#include <cmath>
 
 #include <Game.h>
 #include <GameInitSettings.h>
@@ -6536,23 +6537,46 @@ bool QuantBot::humanControls(const UnitBase* unit) const {
 
 void QuantBot::launchGroundHunt() {
     if (supportMode) return;
-    int count=0,value=0;
+    const bool limitedCampaignAttack = gameMode == GameMode::Campaign
+        && isCampaignGameType(currentGame->gameType);
+    const float ratio = getQuantBotConfig().getSettings(static_cast<int>(difficulty)).attackForceMilitaryValueRatio;
+    const int percent = std::isfinite(ratio) ? static_cast<int>(std::clamp(ratio, 0.0f, 1.0f) * 100.0f + 0.5f) : 0;
+    int armyValue = 0, committedValue = 0;
+    std::vector<SimpleArmyPolicy::Responder> candidates;
     for (const auto* unit:getUnitList()) {
         if (unit->getOwner()!=getHouse() || !unit->isActive() || !unit->isRespondable()
-            || !unit->isAGroundUnit() || !unit->canAttack() || unit->isBadlyDamaged()
-            || unit->getAttackMode()==RETREAT || humanControls(unit)
+            || !unit->isAGroundUnit() || !unit->canAttack() || humanControls(unit)
             || unit->getItemID()==Unit_Saboteur || unit->getItemID()==Unit_Harvester) continue;
+        const int price = currentGame->objectData.data[unit->getItemID()][getHouse()->getHouseID()].price;
+        armyValue += price;
+        if (unit->getAttackMode() == HUNT) committedValue += price;
+        if (unit->isBadlyDamaged() || unit->getAttackMode() == RETREAT) continue;
         // Existing fights/defensive responses finish first. There is no assembly
         // quota or forced shared object target to make idle troops ignore neighbours.
         const auto* target=unit->getTarget();
         if (target && target->getHealth()>0) continue;
-        if (unit->getAttackMode()==HUNT && !unit->wasForced()) continue;
+        if (unit->getAttackMode()==HUNT && (limitedCampaignAttack || !unit->wasForced())) continue;
+        candidates.push_back({unit->getObjectID(), price, 0});
+    }
+    std::vector<Uint32> selected;
+    if (limitedCampaignAttack) {
+        selected = SimpleArmyPolicy::limitedAttack(armyValue, committedValue, percent, candidates);
+    } else {
+        for (const auto& candidate : candidates) selected.push_back(candidate.id);
+    }
+    int count=0,value=0;
+    for (const auto id : selected) {
+        const auto* unit = dynamic_cast<const UnitBase*>(getObject(id));
+        if (!unit) continue;
         doSetAttackMode(unit,GUARD); // releases any old AI movement order
         doSetAttackMode(unit,HUNT);
         ++count;
         value+=currentGame->objectData.data[unit->getItemID()][getHouse()->getHouseID()].price;
     }
-    traceDecision("ground_hunt",AITelemetry::Record().set("members",count).set("value",value));
+    traceDecision("ground_hunt",AITelemetry::Record().set("members",count).set("value",value)
+        .set("campaign_limited", limitedCampaignAttack).set("army_value", armyValue)
+        .set("committed_value", committedValue).set("attack_percent", percent)
+        .set("attack_budget", limitedCampaignAttack ? SimpleArmyPolicy::attackBudget(armyValue, percent) : armyValue));
 }
 
 void QuantBot::releaseLegacyGroundSquad() {
