@@ -1,3 +1,24 @@
+## 2026-09-14 — Campaign AI release 1.0.682 published
+
+PR #33 merged/tagged at d2dc426. Stable CI 34764559810 passed all platform builds
+and tests; six downloaded GitHub packages match their published hashes.
+SourceForge 34765728864 verified upload readbacks, dedicated source refs and
+all three OS defaults. Website 9c82c5f publishes the exact stable browser artifact;
+Deploy 34765821210, Web security 34765821206 and CodeQL 34765821213 passed.
+Public manifest and all seven file hashes verify version 682/source d2dc426.
+Combined campaign/map-browser release copy and the co-op guide are retained.
+
+71 native scenarios finished naturally (46 wins, 25 losses): zero crashes,
+no worker-cap overshoots, every enemy launched an attack, and all 21 advanced
+level-9 helpers reached 15 workers. This is not a human win-rate assessment.
+The tagged browser artifact also won Atreides level 4 Easy/Easy naturally in
+15 game minutes, score 446; player/enemy kills 54/18. The player's house receives
+the statistics. Earlier combined-build level-1 browser victory also verified.
+
+Full evidence and publication links: [campaign-ai-release-682.md](docs/campaign-ai-release-682.md).
+The subsequent Discord signaling work in PR #37 is server-only; preserve that
+newer service on future browser publications. No installed app was replaced.
+
 ## 2026-09-14 — Direct-P2P Discord announcements repaired (server-only)
 
 Custom lobbies bypass the legacy metaserver, which was the only Discord notification
