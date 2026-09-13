@@ -84,6 +84,15 @@ if [[ -f "${OUT_DIR}/dunecity.worker.js" ]]; then
     exit 1
 fi
 
+# Prepend the vendored p2pkit IIFE so globalThis.P2PKIT_IIFE exists before
+# dunecity.js runs (webrtc_glue.js resolves it lazily at runtime).
+P2PKIT_IIFE="${ROOT}/platform/web/p2pkit/dist/p2pkit.iife.js"
+if [[ -s "${P2PKIT_IIFE}" ]]; then
+    echo "==> prepending p2pkit IIFE to ${JS}"
+    cat "${P2PKIT_IIFE}" "${JS}" > "${JS}.tmp"
+    mv "${JS}.tmp" "${JS}"
+fi
+
 node "${ROOT}/tools/web/verify-dunecity-js.mjs" --built "${JS}"
 
 echo ""
