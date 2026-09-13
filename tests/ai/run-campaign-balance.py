@@ -21,6 +21,7 @@ parser.add_argument('--output-dir', type=Path, required=True)
 parser.add_argument('--level', type=int, choices=range(1,10), default=4)
 parser.add_argument('--partner-difficulty', choices=('easy','medium','hard','brutal'), default='easy')
 parser.add_argument('--starport-probe', action='store_true', help='Exercise reserved cash with above-normal Starport prices')
+parser.add_argument('--stats-probe', action='store_true', help='Verify campaign results with a shared human/AI house')
 parser.add_argument('--seed', type=int, default=486409243)
 parser.add_argument('--minutes', type=int, default=20)
 parser.add_argument('--attack-percent', type=int, choices=range(101), default=25)
@@ -68,6 +69,7 @@ env = dict(os.environ,DUNECITY_USERDIR=str(out/'profile'),SDL_VIDEODRIVER='dummy
            BALANCE_LEVEL=str(args.level),BALANCE_PARTNER=args.partner_difficulty,BALANCE_SEED=str(args.seed),BALANCE_MINUTES=str(args.minutes),
            BALANCE_ATTACK_PERCENT=str(args.attack_percent))
 if args.starport_probe: env['BALANCE_STARPORT_PROBE'] = '1'
+if args.stats_probe: env['BALANCE_STATS_PROBE'] = '1'
 with (out/'run.log').open('w') as log:
     subprocess.run([str(binary),'--window','--showlog'],cwd=out,env=env,
                    stdout=log,stderr=subprocess.STDOUT,check=True,timeout=600)

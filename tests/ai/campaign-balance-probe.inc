@@ -9,6 +9,7 @@
 #include <cstdlib>
 
 #include "starport-economy-probe.inc"
+#include "campaign-stats-probe.inc"
 
 int runCampaignBalanceProbe() {
     const int level = std::atoi(std::getenv("BALANCE_LEVEL"));
@@ -42,6 +43,11 @@ int runCampaignBalanceProbe() {
     game->initGame(init);
     game->bReplay = false;
     game->initializeGameLoop();
+    if (std::getenv("BALANCE_STATS_PROBE")) {
+        runCampaignStatsProbe(*game, level);
+        game.reset(); currentGame = nullptr; pLocalPlayer = nullptr;
+        return MENU_QUIT_DEFAULT;
+    }
     if (std::getenv("BALANCE_STARPORT_PROBE")) {
         runStarportEconomyProbe(*game);
         game.reset(); currentGame = nullptr; pLocalPlayer = nullptr;

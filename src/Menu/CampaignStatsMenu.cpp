@@ -436,10 +436,13 @@ void CampaignStatsMenu::calculateScore(int level)
     totalScore = level*45;
 
     float totalHumanCredits = 0.0f;
+    // A campaign house can have both a human and an AI partner. Controller
+    // type does not identify the enemy; use the same teams as campaign victory.
+    const int localTeam = pLocalHouse->getTeamID();
     for(int i=0; i < NUM_HOUSES; i++) {
         House* pHouse = currentGame->getHouse(i);
         if(pHouse != nullptr) {
-            if(pHouse->isAI() == true) {
+            if(pHouse->getTeamID() != localTeam) {
                 unitsDestroyedByAI += pHouse->getNumDestroyedUnits();
                 structuresDestroyedByAI += pHouse->getNumDestroyedStructures();
                 spiceHarvestedByAI += pHouse->getHarvestedSpice().toFloat();
@@ -460,7 +463,7 @@ void CampaignStatsMenu::calculateScore(int level)
     totalScore += ((int) totalHumanCredits) / 100;
 
     for(const StructureBase* pStructure : structureList) {
-        if(pStructure->getOwner()->isAI() == false) {
+        if(pStructure->getOwner()->getTeamID() == localTeam) {
             totalScore += currentGame->objectData.data[pStructure->getItemID()][pStructure->getOriginalHouseID()].price / 100;
         }
     }
@@ -470,7 +473,7 @@ void CampaignStatsMenu::calculateScore(int level)
     for(const UnitBase* pUnit : unitList) {
         if(pUnit->getItemID() == Unit_Harvester) {
             const Harvester* pHarvester = static_cast<const Harvester*>(pUnit);
-            if(pHarvester->getOwner()->isAI() == true) {
+            if(pHarvester->getOwner()->getTeamID() != localTeam) {
                 spiceHarvestedByAI += pHarvester->getAmountOfSpice().toFloat();
             } else {
                 spiceHarvestedByHuman += pHarvester->getAmountOfSpice().toFloat();
