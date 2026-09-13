@@ -1,3 +1,11 @@
+## 2026-09-14 — Combined release candidate renumbered 1.0.682
+
+Main advanced to 72ef00f (1.0.681 restored Custom Game map browser) while
+campaign PR #33 was testing. Integrated that change and bumped to 1.0.682.
+The campaign engine/AI is unchanged from the 71-scenario 680 validation.
+Rebuilding native/browser and rerunning the combined menu tests before merge.
+The separate 1.0.681 publication is not cancelled.
+
 ## Original custom map browser restored — 1.0.681 local, 14 September 2026
 
 Stefan correctly reported that restoring the classic player layout had left
@@ -21,6 +29,15 @@ Maps/Escape preserve the selected map and Atreides roster choice. Publication
 outcome must be verified separately. Do not interrupt any running human game; use a
 separate preview. Version 1.0.680 belongs to the independent campaign worktree
 and is not included in this change.
+## 2026-09-14 — 1.0.680 validation complete; publication in progress
+
+71 native scenarios resolved naturally: 46 wins, 25 losses, no crash/timeout.
+All enemies attacked; all 21 advanced level-9 helpers reached 15 workers; zero
+over-cap cases (679 had eight). Seven CTest groups and eight real-engine
+behavioral fixtures pass. Browser build, bundled mods and 18 shell/packaging
+checks pass; actual level-9 launch and selection after feedback pass.
+See [680 validation](docs/campaign-ai-validation-680.md) for evidence and limits.
+PR #33 is undergoing release checks. No production completion claimed yet.
 
 ## 1.0.679 published and verified — 14 September 2026 (Sydney)
 
@@ -59,6 +76,178 @@ verification.json, release-679-assets, sourceforge-679.log, ctest-679.log and
 ci-679-macos-verification.json. This section supersedes the publication-pending
 statements in the historical entries below.
 
+## 2026-09-14 — Integrated campaign release candidate 1.0.680
+
+Merged main 49d58ed (menu navigation and reproducible browser/mod packaging)
+with the campaign AI changes. Worker planning now reserves pending refinery
+workers in every mode and only after a successful construction order. New
+refineries wait when paid/queued workers already fill the engine cap, until
+those workers arrive. This preserves paid deliveries and capacity expansion.
+Validation and publication are in progress; see the preceding 679 assessment
+for the eight over-cap scenarios being rerun.
+
+## 2026-09-14 — Native release assessment, local AI 1.0.679
+
+Tested clean source `552a59f`: 71 scenarios (59 matrix +12 other-house level-9
+cases), 48 wins/22 losses/one 60-minute cutoff. Same-binary extended replay of
+Ordos9 Brutal/Hard seed1 ended naturally in defeat at85.44 game minutes; all71
+scenarios therefore resolved, no crashes. All13 Easy/Easy won, all6 Medium/Medium
+won; every enemy attacked. All21 advanced-helper level9 cases reached >=15workers.
+Eight cases overshot to16: pending refinery-supplied workers are missing from
+vanilla AI commitment counts and can overlap factory/paid Starport arrivals.
+Fix planning, not paid delivery or existing units. Native checks/fixtures pass.
+Fetched main `49d58ed` has separate menu/browser changes ALSO numbered1.0.679;
+read-only merge assessment reports HANDOVER conflict only. Need worker fix,
+integration, new version and web validation before production. No code changes,
+merge or push this turn. Full evidence and ratios:
+[release assessment](docs/campaign-ai-release-readiness-679.md).
+
+## 2026-09-13 — Advanced helper economy, 1.0.679
+
+Stefan closed his level-9 game before inspection. Native reproduction found a
+15-worker-cap Brutal helper reducing its target to six with 41k map spice left.
+`83f6264` makes Hard/Brutal vanilla campaign helpers invest toward their allowed
+capacity without dividing spice equally with enemies; prioritizes their Starport
+and factory workers; fixes all-role double reservation of already-paid Starport
+cargo. Enemy worker limits and Easy/Medium investment unchanged. Native build,
+audits/signature, six CTest targets and final helper/Starport/pacing fixtures pass.
+Six complete level-9 matches all reached 15 workers at 10.64–11.65 game minutes;
+five defeats, one win show economy alone does not fix combat balance. Source,
+ratios, comparison and fixture caveats: [679 validation](docs/campaign-ai-validation-679.md).
+No push or deployment; browser unchanged. Readiness/ineffective routes remain open.
+
+## 2026-09-13 — Hard/Brutal campaign commitment, 1.0.678
+
+Stefan requested most-in Hard and all-in Brutal enemies. `063a7f5` implements
+80%/100% commitment without count/value caps for those tiers, retaining two/all
+simultaneous houses respectively. Easy/Medium and human-side helpers unchanged.
+Native build, audits, signature, six CTest targets and pressure/defense/pacing
+fixtures pass. Four 40-tank armies verify Hard sends 32 each from two houses,
+Brutal 40 each from all four; manual/repair/damage exclusions remain effective.
+Harness commit `4d77832` updates the old unconditional live cap assertion.
+Six final native level-5/8/9 matches (Hard helper, Hard/Brutal enemy, seed 42)
+completed: five player defeats, one victory (level 8 Hard), no timeouts. This is
+much stronger pressure, not a finished balance claim. See
+[678 validation](docs/campaign-ai-validation-678.md). No push/deployment; browser
+remains unchanged. Helper readiness and ineffective attack routes remain open.
+
+## 2026-09-13 — Native campaign resistance validation, 1.0.677
+
+Local branch `fix/campaign-ai-attack-limits`, game commit `0861fba`, diagnostic snapshot `a6c54ef`. Added Hard/Brutal repair-yard and prerequisite priority for both roles, removed the repair-yard attack prerequisite, retired army readiness goals after spice exhaustion, and gave idle dispatched campaign attackers real scouting/visible-base reacquisition. Human orders, home defenders and shared enemy wave limits remain protected.
+
+Final native matrix: 59 real matches, 49 player wins, 10 losses, no timeouts. Six CTest targets, dependency audit, signature and five native fixture invocations passed. Detailed ratios, checkpoints, reproduction and limitations: [campaign-ai-validation-677](docs/campaign-ai-validation-677.md). Two individual enemy no-damage spells remain; early difficulty overlap and inconsistent Brutal-helper performance mean this is not a claim of finished human balance. The browser remains on validated 672; 677 is committed/built locally only, with no push or deployment.
+
+## Campaign defensive reserve refinement — 1.0.672 local, 13 September 2026
+
+Stefan refined readiness: a level-4 Easy wave may be four 300-value units, so
+2,400 army value should permit four attackers and four defenders. Readiness is
+now min(legacy threshold, twice the shared wave value cap). Easy/Medium campaign
+enemy selection uses at most 50 percent army value, still within shared count/
+value caps, and does not use the depleted-army exception that could send its last
+unit. Hard/Brutal retain configured fractions and their previous exception.
+Zero configured attack fraction still disables dispatch. The 671 worker-limit
+fix and 670 Area Guard/defensive response fixes remain included.
+
+The actual eight-tank fixture passes: 2,399 is below readiness, 2,400 sends exactly
+four tanks, opening is respected, and repeated checks cannot top up the wave.
+The earlier 671 batch was interrupted on this refinement; do not describe its
+partial results as final-672 validation. The 671 web optimizer was also stopped.
+Final native defense/pressure/pacing fixtures pass, as do all six CTest targets,
+dependency audit and native signature verification. The clean-source `27f14ff`
+matrix completed 22 matches: 17 wins, four 60-minute time limits, one defeat.
+Easy/Easy levels 4,5,9 and Hard/Easy levels 8,9 won both seeds (1 and 42).
+Brutal/Hard levels 6 and 7 won both seeds; level 8 won seed 1 but timed out seed
+42; level 9 timed out both. Medium/Medium level 9 seed 42 won, Hard/Hard timed
+out, Brutal/Brutal lost. The reported Atreides level-4 settings reproduced in
+ordinary campaign won at 15.94 minutes; Easy bought no extra workers and sent
+four troops at 13.00 minutes. This is not a co-op transport reproduction.
+
+The late time limits expose an unchanged human-partner readiness problem:
+Brutal can wait for 16,000 army value after spice exhaustion (level 8 seed 42
+had 15,080 and no enemy combat army left), Hard for 8,000 (7,950 remaining in
+Hard/Hard level 9). These are not proof of healthy stalemates or human balance.
+See `docs/campaign-ai-validation-672.md` and the full evidence under
+`/tmp/dunecity-campaign-balance/672-validation`.
+
+Fresh visible browser Harkonnen level 4, seed 1701707512, Easy/Easy completed
+normally with victory briefing and score screen: 427 points, 16 minutes displayed.
+No Skip or player combat/economy commands; maximum speed 4. Ordos sent one
+four-unit/550-value wave at cycle 48,798 (13.01 minutes), recorded 24 defense
+responses and 44 retaliations, and never exceeded one harvester in snapshots.
+Last telemetry cycle is 59,270; do not call this the exact victory cycle (the
+score screen remains open, before final game-summary teardown). Browser tab 12
+is preserved on the score screen at `http://127.0.0.1:18766/play/`.
+
+The local web build uses Release C++ objects with link override
+`-O2 -sBINARYEN_EXTRA_PASSES=--no-stack-ir`; all seven served hashes match the
+672 manifest, packaging commit `63e166f` (docs only after game-source `27f14ff`).
+The stock O3 final StackIR pass was cancelled after over 30 wall minutes; an O1
+experiment crashed browser startup and was replaced. The O2 artifact opens in
+both Chrome and the in-app browser and completed the above mission. This does
+not validate the cancelled stock O3 artifact. Details are in the validation doc.
+No public push or deployment.
+
+## Campaign worker caps and small-wave readiness — 1.0.671 local, 13 September 2026
+
+Stefan reported excess enemy workers and no attacks in a closed match. Latest
+local telemetry was Atreides level 4 SCENA008.INI, seed 1237721204, co-op campaign,
+Medium partner/Easy Harkonnen enemy, harvester override 100. Harkonnen bought seven
+workers, had six remaining, and repeatedly deferred below a 4,600-value readiness
+threshold. The active native window/Brave tab no longer contained that match;
+Stefan confirmed he had closed it and requested both fixes regardless.
+
+Easy/Medium/Hard campaign enemy update now reconstructs the configured worker
+limit from initial refinery allowance and difficulty multiplier; the game-wide
+override can lower it but cannot raise it. Full human partners retain their
+separate economy development; Brutal keeps its broader economy policy. Existing
+excess workers are not deleted. Enemy readiness is capped at the shared sortie
+value allowance (level-4 Easy 1,200 rather than 4,600 in the reported example).
+Fair turn allocation uses the same threshold. Under-strength campaign enemies
+recheck in at most 15 game seconds. Opening grace, recovery, percentage selection
+and combined wave budgets remain enforced. Empty readiness checks no longer log
+fake zero-unit ground_hunt events.
+
+Native Release and six CTest targets pass. Real-engine `--pacing-probe --level 4`
+passes with override 100: enemy limits 2/4/4 for two initial refineries, override
+1 still lowers them, partner can exceed 2, and 1,500 army value can launch a
+budgeted Easy sortie below the former 4,600 threshold without bypassing opening
+or topping up an active wave. Evidence: `/tmp/dunecity-campaign-balance/pacing-671-v2`.
+Defense/pressure fixtures and full match matrix are being rerun. The 670 web
+build was cancelled in its optimizer after these additional user requests;
+671 full browser build is in progress. No public deployment or push.
+
+## Campaign defensive response — 1.0.670 local, 13 September 2026
+
+Browser testing of 669 exposed passive enemy defenders: GUARD uses the tank's
+short weapon range, while the seven-tile Easy/Medium base perimeter rejected
+nine-tile launcher attacks. Waiting campaign troops now use AREAGUARD. Direct
+hits trigger bounded retaliation independent of offensive opening/slots; bases
+and remote harvesters summon the existing threat-sized reinforcement response.
+Contact radii include the attacker's range plus two tiles. Self-defense uses the
+existing saved defense assignment and guard point as its pursuit anchor. Orders
+survive wave checks but expire when the target leaves that area. Repair retreats
+are preserved. Campaign activation no longer consumes the first human hit without
+also defending. UnitBase::isInWeaponRange now uses its argument instead of
+incorrectly dereferencing the unit's current target (which could be null).
+
+Real-engine `--defence-probe` passes for all four tiers: outranged tank response,
+base first hit (including ordinary human activation), remote worker rescue,
+orders surviving wave checks, bounded pursuit, Area Guard and repair retreat.
+Evidence: `/tmp/dunecity-campaign-balance/defence-670-v2`. The existing pressure,
+recovery, save/load and Windtrap probe passes at `pressure-670-v1`; all six CTest
+targets, native Release, dependency audit and signature verification pass.
+Browser build and corrected full-match matrix are in progress. No push/deploy.
+
+The pre-fix 669 batch won Easy/Easy levels 4,5,9 and Hard/Easy levels 8,9 on
+seeds 1 and 42. Medium/Medium level 9 seed 42 won; Hard/Hard lost; Brutal/Brutal
+reached 60 minutes with no player base/economy remaining, not a healthy stalemate.
+Brutal/Hard levels 6,7,8 won both seeds, level 9 won seed 42 and timed out seed 1.
+All sampled shared offensive budgets passed, but these outcomes are provisional
+because of the defense bug. Full artifacts are in `669-validation` and
+`669-brutal-hard-validation` under `/tmp/dunecity-campaign-balance`.
+The visible 669 Easy/Easy Harkonnen level 9 (seed 163683417) reached the ending
+cinematic after the last telemetry read at 24.61 game minutes. The user closed
+that browser tab before final score/summary capture; do not invent exact totals.
 ## Browser bundled mods restored — 1.0.679, 13 September 2026
 
 Stefan reported that public browser 1.0.665 only listed Dune City and Vanilla.
@@ -255,8 +444,12 @@ Final-source level-9 runs (seed 486409243, no human commands or skip, continuous
 budget assertions) won: Easy/Easy at 89,669 cycles (23.91 game minutes), Hard/Hard
 at 108,599 cycles (28.96). Evidence under
 `/tmp/dunecity-campaign-balance/{pressure,easy9,hard-hard9}-669-verified`.
-Browser build is being packaged; do not infer a public deployment. This is a
-local candidate. Human accessibility and broad seed/house coverage are not yet
+Full Emscripten Release build passes. Local preview serves 669, game-source
+commit `81ff90afa4cda8f8acffe768f194d4ee205aee36`; all seven served artifact hashes
+match `play/build.json`. Browser tab 8 at `http://127.0.0.1:18766/play/` was opened
+fresh, displayed v1.0.669, and reached the updated campaign setup successfully.
+All four native menu descriptions were inspected without clipping. No public
+deployment or push was performed. Human accessibility and broad seed/house coverage are not yet
 established. See `docs/campaign-ai-difficulty-matrix.md` for exact values.
 
 ## Campaign difficulty design matrix — 13 September 2026 (superseded by implementation above)

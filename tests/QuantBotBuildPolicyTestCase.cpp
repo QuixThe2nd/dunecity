@@ -812,6 +812,14 @@ TEST_CASE("Campaign alliance gates overlapping houses and recovery independently
     REQUIRE_FALSE(canLaunch(easy,{},1100,1200,100));
     REQUIRE_FALSE(fits(easy,{1,4,1400,0},300)); // Value cap, even with a troop slot.
     REQUIRE_FALSE(fits(easy,{1,5,500,0},50)); // Count cap, even with cheap infantry.
+    // A large first army cannot consume the second Hard house's attack slot.
+    const Pressure largeArmy{1,40,30000,1000};
+    REQUIRE(canLaunch(hard,largeArmy,10000,0,100));
+    REQUIRE(canLaunch(brutal,largeArmy,10000,0,100));
+    REQUIRE(fits(hard,largeArmy,1000));
+    REQUIRE(fits(brutal,largeArmy,1000));
+    REQUIRE_FALSE(canLaunch(hard,{},1100,1200,100));
+    REQUIRE_FALSE(canLaunch(brutal,ended,1099,0,100));
 }
 TEST_CASE("Campaign wave membership and deadlines survive stream round trips", "[quantbot][campaign][save]") {
     using namespace CampaignDifficultyPolicy;

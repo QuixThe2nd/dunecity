@@ -67,6 +67,19 @@ CampaignDifficultyPolicy::Pressure QuantBot::campaignPressure() const {
     return result;
 }
 
+int QuantBot::campaignRequiredArmy(int configuredThreshold) const {
+    int required = isCampaignEnemy()
+        ? CampaignDifficultyPolicy::requiredArmy(campaignProfile(), configuredThreshold)
+        : configuredThreshold;
+    // Once the map is depleted, stop waiting for a larger army. A leftover
+    // cash balance or a few cheap survivors must not keep the game idle.
+    // Dispatch still enforces home reserves, opening and enemy wave limits.
+    // Delay this fallback beyond the initial spice scan and opening phase.
+    if (getGameCycleCount() >= MILLI2CYCLES(15 * 60000) && lastCalculatedSpice == 0)
+        required = 0;
+    return required;
+}
+
 bool QuantBot::campaignCanLaunch() const {
     if (!isCampaignEnemy()) return true;
     if (!campaignWave.initialized || !campaignWave.members.empty()) return false;
@@ -79,8 +92,7 @@ bool QuantBot::campaignCanLaunch() const {
     for (const auto* bot : campaignAlliance()) {
         if (bot==this || !bot->campaignWave.initialized || !bot->campaignWave.members.empty()
             || getGameCycleCount()<bot->campaignWave.opening || bot->attackTimer>0
-            || !getQuantBotConfig().getSettings(static_cast<int>(bot->difficulty)).attackEnabled
-            || (currentGame->techLevel>4 && !bot->getHouse()->hasRepairYard())) continue;
+            || !getQuantBotConfig().getSettings(static_cast<int>(bot->difficulty)).attackEnabled) continue;
         int value=0; bool usable=false;
         for (const auto* unit : getUnitList()) if (bot->campaignCombatUnit(unit)) {
             value+=currentGame->objectData.data[unit->getItemID()][unit->getOriginalHouseID()].price;
@@ -88,7 +100,9 @@ bool QuantBot::campaignCanLaunch() const {
                 && unit->getAttackMode()!=RETREAT && !unit->hasATarget();
         }
         const auto& settings=getQuantBotConfig().getSettings(static_cast<int>(bot->difficulty));
-        if (!usable || value < static_cast<int>(bot->militaryValueLimit*settings.attackThresholdPercent)) continue;
+        const int ready=bot->campaignRequiredArmy(
+            (bot->militaryValueLimit * (FixPoint(static_cast<int>(settings.attackThresholdPercent*100))/100)).lround());
+        if (!usable || value < ready) continue;
         if (std::make_pair(bot->campaignWave.launched,bot->getHouse()->getHouseID())
             < std::make_pair(campaignWave.launched,getHouse()->getHouseID())) return false;
     }
@@ -97,24 +111,34 @@ bool QuantBot::campaignCanLaunch() const {
 
 bool QuantBot::campaignLocalContact(const ObjectBase* target) const {
     if (!target || target->getHealth()<=0 || !target->isActive()) return false;
-    const int radius=difficulty<=Difficulty::Medium ? 7 : 10;
+    // Artillery can fire from beyond the old seven-tile perimeter. Include its
+    // firing range so a base cannot be shelled without its defenders responding.
+    const int radius=std::max(difficulty<=Difficulty::Medium ? 7 : 10,target->getWeaponRange()+2);
     for (const auto* building : getStructureList())
         if (building->getOwner()==getHouse() && building->getHealth()>0
             && blockDistance(target->getLocation(),building->getClosestPoint(target->getLocation()))<=radius) return true;
-    // Harvesters get close protection, not a whole army pursuing across the map.
+    // Workers need protection wherever the spice field is. The contact remains
+    // bounded around the worker, including an artillery attacker's firing range.
     for (const auto* worker : getUnitList())
         if (worker->getOwner()==getHouse() && worker->getItemID()==Unit_Harvester && worker->isActive()
-            && blockDistance(target->getLocation(),worker->getLocation())<=4) {
-            for (const auto* building : getStructureList())
-                if (building->getOwner()==getHouse() && building->getHealth()>0
-                    && blockDistance(worker->getLocation(),building->getClosestPoint(worker->getLocation()))
-                        <= (difficulty<=Difficulty::Medium ? 12 : 20)) return true;
-        }
+            && blockDistance(target->getLocation(),worker->getLocation())<=std::max(4,target->getWeaponRange()+2)) return true;
     return false;
 }
 
+bool QuantBot::campaignDefensiveContact(const UnitBase* unit, const ObjectBase* target) const {
+    if (!target || target->getHealth()<=0 || !target->isActive()) return false;
+    if (campaignLocalContact(target)) return true;
+    // A lone defender also fights back when shot outside the base perimeter.
+    // Anchor this response to where it was hit, rather than authorizing a chase
+    // across the map. Existing assignment/guard-point state survives save/load.
+    const auto assigned=defenceAssignments.find(unit->getObjectID());
+    return assigned!=defenceAssignments.end() && assigned->second==target->getObjectID()
+        && blockDistance(target->getLocation(),unit->getGuardPoint())
+            <= std::max(unit->getWeaponRange(),target->getWeaponRange())+2;
+}
+
 void QuantBot::holdCampaignUnit(const UnitBase* unit) {
-    if (!unit->isActive() || !unit->isRespondable()) return;
+    if (!unit->isActive() || !unit->isRespondable() || unit->getAttackMode()==RETREAT) return;
     const StructureBase* home=nullptr; int distance=INT32_MAX;
     for (const auto* building : getStructureList()) {
         if (building->getOwner()!=getHouse() || building->getHealth()<=0) continue;
@@ -123,7 +147,8 @@ void QuantBot::holdCampaignUnit(const UnitBase* unit) {
     }
     const Coord point=home ? home->getClosestPoint(unit->getLocation()) : unit->getLocation();
     defenceAssignments.erase(unit->getObjectID());
-    if (unit->hasATarget() || unit->getAttackMode()!=GUARD) doSetAttackMode(unit,GUARD);
+    if (unit->hasATarget()) doMove2Pos(unit,unit->getX(),unit->getY(),false);
+    if (unit->hasATarget() || unit->getAttackMode()!=AREAGUARD) doSetAttackMode(unit,AREAGUARD);
     const_cast<UnitBase*>(unit)->setGuardPoint(point);
     if (home && distance>6 && (!unit->isMoving() || !unit->wasForced()))
         doMove2Pos(unit,point.x,point.y,true);
@@ -167,7 +192,7 @@ void QuantBot::updateCampaignWave() {
     for (const auto* unit : getUnitList()) if (campaignCombatUnit(unit) && unit->isActive()
         && !campaignWave.members.count(unit->getObjectID())) {
         // Covers authored HUNT reinforcements and autonomous defensive pursuit.
-        if (unit->getAttackMode()==HUNT || (unit->hasATarget() && !campaignLocalContact(unit->getTarget())))
+        if (unit->getAttackMode()==HUNT || (unit->hasATarget() && !campaignDefensiveContact(unit,unit->getTarget())))
             holdCampaignUnit(unit);
     }
 }
@@ -187,10 +212,46 @@ const ObjectBase* QuantBot::campaignObjective(const UnitBase* unit, int group) c
     return chosen;
 }
 
+bool QuantBot::scoutCampaignFront(const UnitBase* unit) {
+    // HUNT can repeatedly acquire a distant carryall, which ground units then
+    // refuse to chase. Explore terrain when there is no visible base instead
+    // of treating HUNT alone as an exploration order. No hidden objects are read.
+    if (!unit->isAGroundUnit() || !unit->isActive() || !unit->isRespondable()
+        || unit->isMoving() || unit->hasATarget() || unit->isBadlyDamaged()
+        || unit->getAttackMode()==RETREAT || humanControls(unit)) return false;
+    Coord destination=Coord::Invalid();int best=-1;
+    for (int y=0;y<getMap().getSizeY();++y) for (int x=0;x<getMap().getSizeX();++x) {
+        if (getMap().getTile(x,y)->isExploredByTeam(getHouse()->getTeamID()) || !unit->canPass(x,y)) continue;
+        const int distance=blockDistance(unit->getLocation(),Coord(x,y)).lround();
+        if (distance>best) {best=distance;destination=Coord(x,y);}
+    }
+    if (!destination.isValid()) return false;
+    doMove2Pos(unit,destination.x,destination.y,true);
+    doSetAttackMode(unit,HUNT);
+    traceDecision("campaign_scout",AITelemetry::Record().set("unit",unit->getObjectID())
+        .set("x",destination.x).set("y",destination.y));
+    return true;
+}
+
 bool QuantBot::campaignControlsUnit(const UnitBase* unit) {
-    if (!isCampaignEnemy() || !campaignCombatUnit(unit)) return false;
+    if (!campaignCombatUnit(unit)) return false;
+    if (!isCampaignEnemy()) {
+        // Only an already dispatched helper attacker can scout. Home guards,
+        // economy-only support and manual orders keep their existing roles.
+        if (isCampaignGameType(currentGame->gameType) && !supportMode
+            && unit->isActive() && unit->isRespondable() && !unit->isBadlyDamaged()
+            && !humanControls(unit) && unit->getAttackMode()==HUNT
+            && !unit->isMoving() && !unit->hasATarget()) {
+            if (const auto* objective=campaignObjective(unit,0)) {
+                doAttackObject(unit,objective,true);
+                return true;
+            }
+            return scoutCampaignFront(unit);
+        }
+        return false;
+    }
     if (!campaignWave.members.count(unit->getObjectID())) {
-        if (!campaignLocalContact(unit->getTarget())) {holdCampaignUnit(unit);return true;}
+        if (!campaignDefensiveContact(unit,unit->getTarget())) {holdCampaignUnit(unit);return true;}
         return unit->getItemID()==Unit_Saboteur; // Other defenders retain combat micro.
     }
     if (!unit->isActive() || !unit->isRespondable() || unit->isBadlyDamaged()) return true;
@@ -207,7 +268,7 @@ bool QuantBot::campaignControlsUnit(const UnitBase* unit) {
         if (objective) {
             doSetAttackMode(unit,AREAGUARD);
             doAttackObject(unit,objective,true);
-        } else doSetAttackMode(unit,HUNT); // Explore when no enemy base is visible.
+        } else if (!scoutCampaignFront(unit)) doSetAttackMode(unit,HUNT);
     }
     return false;
 }

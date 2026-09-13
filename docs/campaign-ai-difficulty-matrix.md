@@ -1,6 +1,6 @@
 # Campaign QuantBot: current behaviour and proposed difficulty design
 
-## Implemented local candidate: 1.0.669
+## Implemented local candidate: 1.0.672
 
 Stefan authorized implementation after reviewing this matrix. The following
 settings now apply to QuantBot campaign enemies. The original audit/proposal
@@ -16,11 +16,21 @@ below remains the design history, not the current release status.
 | Maximum sortie duration before withdrawal | 150 seconds | 180 seconds | 240 seconds | 300 seconds |
 | Human partner's home reserve by army value | 25% | 15% | 10% | 5% |
 
+Campaign enemy readiness is the smaller of its legacy army threshold and
+twice the combined sortie value cap. This lets Easy retain a defensive reserve without first
+amassing an oversized reserve; failed readiness checks retry within 15 game
+seconds. Turn selection uses the same criterion. The opening/recovery gates
+still apply. Easy/Medium/Hard enemy worker limits retain their configured initial
+refinery multipliers even under a higher game-wide maximum. A lower user ceiling
+still applies. Human-house partners retain their growth policy; Brutal keeps its
+broader economy policy. Existing excess workers are not removed.
+
 All times are game time. Combat value uses purchase value with a minimum of 100
-for free/cheap scripted troops. House-level configured attack percentages still
-apply within the combined allowance. Multiple eligible houses share the troop
-and value allowance. A depleted house may send one unit above its percentage
-allowance, but never above the shared count/value ceiling. An active wave cannot
+for free/cheap scripted troops. Easy/Medium enemies can commit at most half their army value; Hard/Brutal keep
+their configured fractions. The shared allowance applies in addition. Multiple eligible houses share the troop
+and value allowance. A depleted Hard/Brutal house may send one unit above its percentage
+allowance, but never above the shared count/value ceiling; Easy/Medium keep their
+half-army reserve. An active wave cannot
 be topped up; one house's aircraft and ground troops occupy the same saved slot.
 Mixed-difficulty enemy alliances use their lowest active difficulty's pressure
 profile. Eligible houses rotate by oldest launch, with deterministic house ties.
@@ -36,9 +46,14 @@ Easy/Medium use one shared base objective and avoid deliberate light-raider
 harassment. Hard/Brutal split base/economic targets and try a lateral approach
 for alternating ground units when terrain permits; Brutal varies sides by
 house. Existing tactical spacing/repairs and offensive-air permissions remain.
-Defensive ground/air contacts must be near owned structures, or within four
-tiles of a harvester that is itself within 12 tiles of the base on Easy/Medium
-or 20 on Hard/Brutal. Harvesters farther away retain their escape behavior.
+Defensive contacts near owned structures include the attacker's weapon range
+plus two tiles (at least 7 on Easy/Medium and 10 on Hard/Brutal). Harvesters are
+protected at remote spice fields too: at least four tiles, extended for the
+attacker's range. Waiting defenders use Area Guard. Direct hits trigger bounded
+retaliation; buildings and harvesters summon threat-sized reinforcements even
+during opening grace/recovery. Defensive pursuit remains anchored to the contact.
+Repair retreats are preserved. These corrections in 670 replace the overly
+restrictive 669 defense perimeter; pre-fix wins do not establish human balance.
 Scripted HUNT troops outside the wave are held and recalled instead of creating
 an extra assault. Ordinary local defense remains available during recovery.
 
@@ -51,12 +66,17 @@ above; Easy full partners can now use the normal damage-triggered repair path.
 The game menu describes these implemented behaviors. Further expansion/micro
 ideas in the proposal are future tuning, not a claim of a new economy planner.
 
-Validation: all six CTest targets pass; real-engine pressure/save/legacy-load/
-reinforcement/recovery/Windtrap fixture passes; menu rendered at all four tiers.
-Final-source level-9 seed 486409243: Easy partner/Easy enemies won in 23.91 game
-minutes, Hard/Hard won in 28.96. Both continuously assert shared limits. These
-are AI regression samples, not proof of human difficulty. Logs and screenshots:
-`/tmp/dunecity-campaign-balance/{pressure,easy9,hard-hard9}-669-verified`.
+Validation on clean 672 source `27f14ff`: all six CTest targets and the real-engine
+defense, pressure and pacing fixtures pass. Twenty-two full native matches
+completed with 17 wins, four time limits and one defeat. Easy/Easy levels 4,5,9
+and Hard/Easy levels 8,9 won both seeds. Late Hard/Brutal partner thresholds can
+still stall an army after spice exhaustion; these time limits do not establish
+healthy balance. See [the full results](campaign-ai-validation-672.md) for the
+matrix, exact conditions and limitations. A fresh 672 browser Easy/Easy level-4
+match also won normally, with 427 points and 16 minutes displayed. The local
+preview serves that tested build with an O2/no-StackIR link override, documented
+in the validation report; stock O3 optimization was cancelled. This candidate
+has not been pushed or publicly deployed.
 
 ## Original audit and proposal
 

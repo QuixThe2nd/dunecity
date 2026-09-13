@@ -128,9 +128,12 @@ private:
     CampaignDifficultyPolicy::Profile campaignProfile() const;
     CampaignDifficultyPolicy::Pressure campaignPressure() const;
     bool campaignCanLaunch() const;
+    int campaignRequiredArmy(int configuredThreshold) const;
     bool campaignCombatUnit(const UnitBase* unit) const;
     bool campaignLocalContact(const ObjectBase* target) const;
+    bool campaignDefensiveContact(const UnitBase* unit, const ObjectBase* target) const;
     bool campaignControlsUnit(const UnitBase* unit);
+    bool scoutCampaignFront(const UnitBase* unit);
     void updateCampaignWave();
     void holdCampaignUnit(const UnitBase* unit);
     const ObjectBase* campaignObjective(const UnitBase* unit, int group) const;
