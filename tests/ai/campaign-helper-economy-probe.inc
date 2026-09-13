@@ -39,7 +39,10 @@ void runCampaignHelperEconomyProbe(Game& game) {
     yard->updateBuildList();
     yard->doProduceItem(Structure_Refinery);
     require(yard->getCurrentProducedItem()==Structure_Refinery,"Pending refinery setup failed");
-    bot->build(4200);
+    auto initialStructures=structureList;
+    structureList.clear();structureList.push_back(port);structureList.push_back(yard);
+    try {bot->build(4200);}catch(...){structureList=initialStructures;throw;}
+    structureList=initialStructures;
     auto queuedWorkers=[&]() {
         int count=0;for(const auto& item:port->currentProductionQueue)count+=item.itemID==Unit_Harvester;
         return count;
@@ -61,6 +64,9 @@ void runCampaignHelperEconomyProbe(Game& game) {
     require(house->getCredits()==900,"One worker import was not charged exactly once");
     // Another refinery would finish before paid cargo and create a sixteenth
     // worker. Capacity expansion must wait until those workers have arrived.
+    require(place(Structure_LightFactory),"Light factory setup failed");
+    require(place(Structure_Radar),"Radar setup failed");
+    require(place(Structure_RepairYard),"Repair yard setup failed");
     auto* capacityYard=dynamic_cast<BuilderBase*>(place(Structure_ConstructionYard));
     require(capacityYard,"Capacity yard placement failed");
     capacityYard->updateBuildList();
