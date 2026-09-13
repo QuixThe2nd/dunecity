@@ -51,4 +51,42 @@ Brutal/Brutal level 9 seed 42 lost at 47.56 minutes without a player offensive s
 
 ## Browser validation
 
-Final 672 Emscripten build and visible mission validation are pending at this checkpoint. Earlier 669 browser observations do not validate the final 672 changes.
+The served 672 browser build uses the same game source, with Release C++ objects
+and a local link override:
+`CMAKE_EXE_LINKER_FLAGS=-O2 -sBINARYEN_EXTRA_PASSES=--no-stack-ir`.
+Packaging source is `63e166f` (documentation-only changes after game commit
+`27f14ff`). All seven served artifact hashes match `play/build.json`.
+
+The stock `-O3` final StackIR optimization was stopped after over 30 wall minutes;
+a sampled stack showed `StackIROptimizer::local2Stack` / `LazyLocalGraph`
+destruction during binary writing. Two concurrent builds on this 16 GB Mac
+also drove swap usage to about 20 GB. An experimental `-O1 --no-stack-ir` link
+compiled but crashed both embedded Chromium and a fresh Chrome renderer during
+startup. Its 31 MB wasm validated and compiled separately in Node. The `-O2`
+link produced a 14 MB wasm and opened successfully in both browsers. The
+underlying Chromium failure was not fully diagnosed; the failed `-O1` artifact
+has been replaced. These local link overrides are not a release configuration
+change or validation of the cancelled stock `-O3` build.
+
+A fresh visible embedded-browser run completed normally: Harkonnen level 4,
+SCENH008.INI, seed 1701707512, Vanilla, Easy full partner/Easy enemies,
+normal campaign, default harvester ceiling, maximum speed (4 ms cycle delay).
+No player combat/economy commands or Skip mission were used. The victory
+briefing and completed score screen were observed: **427 points, Base Commander,
+16 minutes displayed**, 57 enemy units and 21 enemy buildings destroyed versus
+14 player units and zero player buildings destroyed. The score screen remains
+open as the user-facing result (in-app tab 12).
+
+Ordos launched one four-unit/550-value wave at cycle 48,798 (13.01 game minutes),
+with 5,900 total army value at dispatch. Its telemetry records 24
+`defence_response` and 44 `campaign_retaliation` events. It never exceeded one
+harvester in the 32 enemy state snapshots. The partner launched three sorties.
+The exact eight-tank/2,400-value boundary is covered by the separate native
+pacing fixture; this browser wave is not that synthetic fixture.
+
+Browser telemetry session: `1789299110607000-0`, under
+`/home/web_user/.config/DuneCity/ai-decisions/` in the browser's persistent FS.
+The last recorded cycle is 59,270 (15.805 game minutes); it is a telemetry
+snapshot, not an asserted exact victory cycle. `game_summary` has not yet been
+written because the score screen remains open before game teardown. Victory
+was verified from the actual result UI, not inferred from remaining armies.

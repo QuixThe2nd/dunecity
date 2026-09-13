@@ -72,9 +72,11 @@ completed with 17 wins, four time limits and one defeat. Easy/Easy levels 4,5,9
 and Hard/Easy levels 8,9 won both seeds. Late Hard/Brutal partner thresholds can
 still stall an army after spice exhaustion; these time limits do not establish
 healthy balance. See [the full results](campaign-ai-validation-672.md) for the
-matrix, exact conditions and limitations. Final 672 browser validation remains
-pending; the preview still serves 669 until the new build is packaged. This
-candidate has not been pushed or publicly deployed.
+matrix, exact conditions and limitations. A fresh 672 browser Easy/Easy level-4
+match also won normally, with 427 points and 16 minutes displayed. The local
+preview serves that tested build with an O2/no-StackIR link override, documented
+in the validation report; stock O3 optimization was cancelled. This candidate
+has not been pushed or publicly deployed.
 
 ## Original audit and proposal
 

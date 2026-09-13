@@ -28,8 +28,25 @@ Brutal can wait for 16,000 army value after spice exhaustion (level 8 seed 42
 had 15,080 and no enemy combat army left), Hard for 8,000 (7,950 remaining in
 Hard/Hard level 9). These are not proof of healthy stalemates or human balance.
 See `docs/campaign-ai-validation-672.md` and the full evidence under
-`/tmp/dunecity-campaign-balance/672-validation`. Browser build/visible mission
-validation remains pending at this checkpoint. No public push or deployment.
+`/tmp/dunecity-campaign-balance/672-validation`.
+
+Fresh visible browser Harkonnen level 4, seed 1701707512, Easy/Easy completed
+normally with victory briefing and score screen: 427 points, 16 minutes displayed.
+No Skip or player combat/economy commands; maximum speed 4. Ordos sent one
+four-unit/550-value wave at cycle 48,798 (13.01 minutes), recorded 24 defense
+responses and 44 retaliations, and never exceeded one harvester in snapshots.
+Last telemetry cycle is 59,270; do not call this the exact victory cycle (the
+score screen remains open, before final game-summary teardown). Browser tab 12
+is preserved on the score screen at `http://127.0.0.1:18766/play/`.
+
+The local web build uses Release C++ objects with link override
+`-O2 -sBINARYEN_EXTRA_PASSES=--no-stack-ir`; all seven served hashes match the
+672 manifest, packaging commit `63e166f` (docs only after game-source `27f14ff`).
+The stock O3 final StackIR pass was cancelled after over 30 wall minutes; an O1
+experiment crashed browser startup and was replaced. The O2 artifact opens in
+both Chrome and the in-app browser and completed the above mission. This does
+not validate the cancelled stock O3 artifact. Details are in the validation doc.
+No public push or deployment.
 
 ## Campaign worker caps and small-wave readiness — 1.0.671 local, 13 September 2026
 
