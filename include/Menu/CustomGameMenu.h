@@ -36,10 +36,12 @@
 
 #include "MenuBase.h"
 
+struct CustomPlaySetup;
+
 class CustomGameMenu : public MenuBase
 {
 public:
-    CustomGameMenu(bool multiplayer, bool LANServer = true);
+    CustomGameMenu(bool multiplayer, bool LANServer = true, CustomPlaySetup* setup = nullptr);
     virtual ~CustomGameMenu();
 
     /**
@@ -62,6 +64,10 @@ private:
     /// directory modes this is just `currentMapDirectory + entry + ".ini"`;
     /// in "All Maps" mode the source directory varies per entry.
     std::string getSelectedMapPath() const;
+
+    CustomPlaySetup* setup = nullptr;
+    HBox connectionRow;
+    DropDownBox connectionChoice, visibilityChoice;
 
     bool bMultiplayer;
     bool bLANServer;
