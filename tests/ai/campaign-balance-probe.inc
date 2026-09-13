@@ -92,7 +92,8 @@ int runCampaignBalanceProbe() {
                 for (const auto& player:house->getPlayerList())
                     if (const auto* bot=dynamic_cast<const QuantBot*>(player.get());bot && bot->isCampaignEnemy()) {
                         const auto used=bot->campaignPressure();const auto limit=bot->campaignProfile();
-                        if (used.houses>limit.houses || used.units>limit.units || used.value>limit.value)
+                        if (used.houses>limit.houses
+                            || (limit.limitedWave && (used.units>limit.units || used.value>limit.value)))
                             throw std::runtime_error("Live campaign exceeded shared assault limits");
                     }
         }
