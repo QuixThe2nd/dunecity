@@ -6584,11 +6584,11 @@ void QuantBot::attack(int militaryValue) {
 	int requiredMilitary = vanillaCustom
         ? DuneCity::vanillaAttackThreshold((militaryValueLimit * attackThreshold).lround(), static_cast<int>(difficulty))
         : (militaryValueLimit * attackThreshold).lround();
-    if (isCampaignEnemy())
-        requiredMilitary=CampaignDifficultyPolicy::requiredArmy(campaignProfile(),requiredMilitary);
+    const bool campaign = isCampaignGameType(currentGame->gameType);
+    if (campaign) requiredMilitary=campaignRequiredArmy(requiredMilitary);
     if (militaryValue < requiredMilitary) {
         // Recheck readiness promptly; do not miss a short-lived strength window.
-        if (isCampaignEnemy() || (vanillaCustom && difficulty == Difficulty::Brutal))
+        if (campaign || (vanillaCustom && difficulty == Difficulty::Brutal))
             attackTimer = std::min(attackTimer, static_cast<int>(MILLI2CYCLES(15000)));
 		traceDecision("attack_deferred", AITelemetry::Record().set("reason", "army_threshold").set("military", militaryValue).set("limit", militaryValueLimit)
             .set("required_military", requiredMilitary));
@@ -6597,8 +6597,9 @@ void QuantBot::attack(int militaryValue) {
 		return;
 	}
 
-	// Don't attack if you don't yet have a repair yard, if you are at least tech 5
-	if (getHouse()->getNumItems(Structure_RepairYard) == 0 && currentGame->techLevel > 4) {
+	// Campaign attacks must remain possible after losing a repair yard, or on
+    // scenarios where it cannot be built. Repair remains useful, not mandatory.
+	if (!campaign && getHouse()->getNumItems(Structure_RepairYard) == 0 && currentGame->techLevel > 4) {
 		traceDecision("attack_deferred", AITelemetry::Record().set("reason", "repair_prerequisite"));
 		logDebug("Don't attack. Wait until you have a repair yard.");
 		return;

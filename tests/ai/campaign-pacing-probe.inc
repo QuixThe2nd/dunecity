@@ -52,6 +52,21 @@ void runCampaignPacingProbe(Game& game) {
     require(bot->campaignWave.members==first,"Readiness change topped up an active wave");
     const auto used=bot->campaignPressure();const auto limit=bot->campaignProfile();
     require(used.houses<=limit.houses && used.units<=limit.units && used.value<=limit.value,"Small wave exceeded assault limits");
+    // Late-game threshold regressions: the same readiness calculation serves
+    // enemy fairness and dispatch; a full partner also escapes a depleted map.
+    game.gameCycleCount=MILLI2CYCLES(16*60000);game.techLevel=9;
+    bot->lastCalculatedSpice=0;partner->lastCalculatedSpice=0;
+    const int oldCredits=owner->getCredits();owner->takeCredits(oldCredits);
+    auto* playerHouse=const_cast<House*>(partner->getHouse());
+    const int playerCredits=playerHouse->getCredits();playerHouse->takeCredits(playerCredits);
+    require(bot->campaignRequiredArmy(16000)==600,"Exhausted enemy still demands an unaffordable army");
+    require(partner->campaignRequiredArmy(16000)==600,"Exhausted partner still waits for 16000 army value");
+    partner->lastCalculatedSpice=1000;
+    require(partner->campaignRequiredArmy(8000)==8000,"Live economy lost its normal readiness goal");
+    bot->campaignWave={};bot->campaignWave.initialized=true;
+    require(!owner->hasRepairYard(),"Fixture must lack a repair yard");
+    bot->attack(2400);
+    require(!bot->campaignWave.members.empty(),"Late-game survivors did not attack without a repair yard");
     } catch (...) {unitList=savedUnits;throw;}
     unitList=savedUnits;
     SDL_Log("CAMPAIGN_PACING_PASS: eight 300-value tanks send four and retain four at 2400 readiness; opening and shared limits preserved");

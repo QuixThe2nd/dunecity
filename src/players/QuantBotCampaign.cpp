@@ -67,6 +67,19 @@ CampaignDifficultyPolicy::Pressure QuantBot::campaignPressure() const {
     return result;
 }
 
+int QuantBot::campaignRequiredArmy(int configuredThreshold) const {
+    int required = isCampaignEnemy()
+        ? CampaignDifficultyPolicy::requiredArmy(campaignProfile(), configuredThreshold)
+        : configuredThreshold;
+    // A depleted map cannot finance a fixed army goal. Use surviving forces,
+    // while dispatch still enforces home reserves and enemy wave limits.
+    // Delay this fallback beyond the opening and the initial spice scan.
+    if (getGameCycleCount() >= MILLI2CYCLES(15 * 60000)
+        && lastCalculatedSpice == 0 && getHouse()->getCredits() < 300)
+        required = std::min(required, 600);
+    return required;
+}
+
 bool QuantBot::campaignCanLaunch() const {
     if (!isCampaignEnemy()) return true;
     if (!campaignWave.initialized || !campaignWave.members.empty()) return false;
@@ -79,8 +92,7 @@ bool QuantBot::campaignCanLaunch() const {
     for (const auto* bot : campaignAlliance()) {
         if (bot==this || !bot->campaignWave.initialized || !bot->campaignWave.members.empty()
             || getGameCycleCount()<bot->campaignWave.opening || bot->attackTimer>0
-            || !getQuantBotConfig().getSettings(static_cast<int>(bot->difficulty)).attackEnabled
-            || (currentGame->techLevel>4 && !bot->getHouse()->hasRepairYard())) continue;
+            || !getQuantBotConfig().getSettings(static_cast<int>(bot->difficulty)).attackEnabled) continue;
         int value=0; bool usable=false;
         for (const auto* unit : getUnitList()) if (bot->campaignCombatUnit(unit)) {
             value+=currentGame->objectData.data[unit->getItemID()][unit->getOriginalHouseID()].price;
@@ -88,8 +100,8 @@ bool QuantBot::campaignCanLaunch() const {
                 && unit->getAttackMode()!=RETREAT && !unit->hasATarget();
         }
         const auto& settings=getQuantBotConfig().getSettings(static_cast<int>(bot->difficulty));
-        const int ready=CampaignDifficultyPolicy::requiredArmy(profile,
-            static_cast<int>(bot->militaryValueLimit*settings.attackThresholdPercent));
+        const int ready=bot->campaignRequiredArmy(
+            (bot->militaryValueLimit * (FixPoint(static_cast<int>(settings.attackThresholdPercent*100))/100)).lround());
         if (!usable || value < ready) continue;
         if (std::make_pair(bot->campaignWave.launched,bot->getHouse()->getHouseID())
             < std::make_pair(campaignWave.launched,getHouse()->getHouseID())) return false;
