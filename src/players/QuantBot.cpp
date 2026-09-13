@@ -6660,9 +6660,9 @@ void QuantBot::launchGroundHunt() {
     auto pressure = limited ? campaignPressure() : CampaignDifficultyPolicy::Pressure{};
     const float ratio = getQuantBotConfig().getSettings(static_cast<int>(difficulty)).attackForceMilitaryValueRatio;
     int percent = std::isfinite(ratio) ? static_cast<int>(std::clamp(ratio,0.0f,1.0f)*100.0f+0.5f) : 0;
-    // Beginner-facing campaign waves can use half the army, bounded by their
-    // small shared sortie cap. The other half remains available to defend.
-    if (limited && difficulty<=Difficulty::Medium && percent>0) percent=50;
+    // Campaign roles define commitment even with older saved config defaults.
+    // Keep an explicit zero as the opt-out, and use the alliance's easiest tier.
+    if (limited && percent>0) percent=profile.enemyCommitPercent;
     int armyValue=0, committedValue=0;
     std::vector<SimpleArmyPolicy::Responder> candidates;
     for (const auto* unit : getUnitList()) {
@@ -6686,8 +6686,8 @@ void QuantBot::launchGroundHunt() {
     std::vector<Uint32> selected;
     if (limited) {
         const int sharing=std::min<int>(profile.houses,campaignAlliance().size());
-        const int houseUnits=(profile.units+sharing-1)/sharing;
-        const int houseValue=(profile.value+sharing-1)/sharing;
+        const int houseUnits=profile.limitedWave ? (profile.units+sharing-1)/sharing : INT32_MAX;
+        const int houseValue=profile.limitedWave ? (profile.value+sharing-1)/sharing : INT32_MAX;
         const int budget=std::min(houseValue,SimpleArmyPolicy::attackBudget(armyValue,percent));
         int value=0;
         for (const auto& candidate : candidates) {
@@ -6748,7 +6748,8 @@ void QuantBot::launchGroundHunt() {
         .set("campaign_limited",limited).set("army_value",armyValue).set("committed_value",committedValue)
         .set("attack_percent",percent).set("attack_budget",limited ? SimpleArmyPolicy::attackBudget(armyValue,percent) : armyValue)
         .set("alliance_units",pressure.units).set("alliance_value",pressure.value)
-        .set("alliance_unit_cap",profile.units).set("alliance_value_cap",profile.value)
+        .set("alliance_unit_cap",profile.limitedWave ? profile.units : -1)
+        .set("alliance_value_cap",profile.limitedWave ? profile.value : -1)
         .set("alliance_house_cap",profile.houses));
 }
 

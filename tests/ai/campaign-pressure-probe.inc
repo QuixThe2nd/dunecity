@@ -36,10 +36,55 @@ void runCampaignPressureProbe(Game& game) {
         enemies[1]->launchGroundHunt();
         require(enemies[1]->campaignWave.members.empty()==(tier<=QuantBot::Difficulty::Medium),"Incorrect simultaneous-house rule");
         const auto profile=enemies[0]->campaignProfile();const auto used=enemies[0]->campaignPressure();
-        require(used.units<=profile.units && used.value<=profile.value,"Alliance exceeded count/value cap");
+        require(!profile.limitedWave || (used.units<=profile.units && used.value<=profile.value),"Alliance exceeded count/value cap");
         require(used.houses<=profile.houses,"Alliance exceeded house cap");
         SDL_Log("PRESSURE_TIER_PASS: tier=%d houses=%d units=%d value=%d",int(tier),used.houses,used.units,used.value);
     }
+    // Large real armies must not be cut back to the former alliance caps.
+    // Each house gets 40 tanks: Hard sends 32, Brutal sends all 40.
+    std::vector<UnitBase*> assaultArmy;
+    for (auto* bot:enemies) {
+        int spawned=0;
+        for(int y=1;y<currentGameMap->getSizeY()-1 && spawned<40;++y)
+            for(int x=1;x<currentGameMap->getSizeX()-1 && spawned<40;++x)
+                if(!currentGameMap->getTile(x,y)->hasAGroundObject() && !currentGameMap->getTile(x,y)->isMountain()) {
+                    auto* unit=const_cast<House*>(bot->getHouse())->createUnit(Unit_Tank);
+                    require(unit,"Assault tank creation failed");
+                    unit->deploy(Coord(x,y));assaultArmy.push_back(unit);++spawned;
+                }
+        require(spawned==40,"Insufficient space for assault fixture");
+    }
+    const auto allUnits=unitList;
+    unitList.clear();for(auto* unit:assaultArmy)unitList.push_back(unit);
+    try {
+        game.techLevel=9;
+        for (auto tier:{QuantBot::Difficulty::Hard,QuantBot::Difficulty::Brutal}) {
+            reset(tier);
+            for(size_t i=0;i<enemies.size();++i) {
+                auto* bot=enemies[i];bot->launchGroundHunt();
+                const size_t expected=tier==QuantBot::Difficulty::Hard ? (i<2 ? 32 : 0) : 40;
+                require(bot->campaignWave.members.size()==expected,"Hard/Brutal failed army commitment or house concurrency");
+                const auto members=bot->campaignWave.members;
+                bot->launchGroundHunt();
+                require(bot->campaignWave.members==members,"Large assault topped up on repeat dispatch");
+            }
+            SDL_Log("CAMPAIGN_COMMITMENT_PASS: tier=%d tanks_per_house=40 sent_per_house=%d houses=%d",
+                int(tier),tier==QuantBot::Difficulty::Hard ? 32 : 40,enemies[0]->campaignPressure().houses);
+        }
+        reset(QuantBot::Difficulty::Brutal);
+        auto* bot=enemies[0];
+        auto* manual=assaultArmy[0];auto* repairing=assaultArmy[1];auto* damaged=assaultArmy[2];
+        bot->onHumanUnitOrder(manual->getObjectID());
+        bot->doSetAttackMode(repairing,RETREAT);damaged->setHealth(1);
+        bot->launchGroundHunt();
+        require(bot->campaignWave.members.size()==37,"All-in included unavailable troops or left ready troops home");
+        require(!bot->campaignWave.members.count(manual->getObjectID())
+            && !bot->campaignWave.members.count(repairing->getObjectID())
+            && !bot->campaignWave.members.count(damaged->getObjectID()),"All-in overrode manual orders or repair");
+        bot->manualUnitOrders.clear();
+    } catch (...) {unitList=allUnits;throw;}
+    unitList=allUnits;
+    game.techLevel=3;
     reset(QuantBot::Difficulty::Easy);enemies[0]->launchGroundHunt();
     auto* first=enemies[0];auto* second=enemies[1];
     // Serialize an actual QuantBot, not just the extracted policy object.
