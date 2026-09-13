@@ -1,4 +1,40 @@
-## Campaign difficulty design matrix — 13 September 2026
+## Campaign difficulty implementation — 1.0.669 local, 13 September 2026
+
+Stefan authorized implementing the matrix. `CampaignDifficultyPolicy.h` and
+`QuantBotCampaign.cpp` now enforce alliance-wide campaign assaults. Easy/Medium
+allow one attacking house, Hard two, Brutal all. Combined troop caps scale by
+tech stage to 3–5 / 6–8 / 10–14 / 16–24 with simultaneous combat-value caps.
+There are post-wave recovery periods and no continual top-ups. Timed sorties
+withdraw survivors; authored HUNT arrivals wait outside an authorized wave.
+Defensive pursuit and air interception are bounded around owned bases and nearby
+harvesters. Offensive aircraft consume wave allowance. Easy/Medium share one
+base objective; Hard/Brutal split targets and use a lateral approach when usable.
+
+Easy/Medium campaign builders, including human-house partners and economy
+support, queue Windtraps for actual/committed/planned power demand. Default
+Vanilla power consequences are unchanged. Full campaign partners keep useful
+economy/Starport behavior and 25/15/10/5 percent home reserves, without enemy wave
+caps. Easy full partners can use the existing damage-triggered repair path.
+Campaign setup descriptions explain partner and enemy behavior.
+
+Save format 9838 adds QuantBot opening/launch/activity times, shared-front target
+and member IDs; pre-9838 saves initialize that state safely. The real-engine
+pressure fixture verifies slots at all tiers, combined count/value limits,
+no repeated-check top-ups, serialized bot state, legacy loading, held HUNT
+arrivals, sortie expiration/recovery, and actual Windtrap production for two
+enemy tiers plus the human partner. Four menu states rendered; Easy/Brutal
+screens inspected without clipping.
+
+Native Release, dependency/signature audits and all six CTest targets pass.
+Final-source level-9 runs (seed 486409243, no human commands or skip, continuous
+budget assertions) won: Easy/Easy at 89,669 cycles (23.91 game minutes), Hard/Hard
+at 108,599 cycles (28.96). Evidence under
+`/tmp/dunecity-campaign-balance/{pressure,easy9,hard-hard9}-669-verified`.
+Browser build is being packaged; do not infer a public deployment. This is a
+local candidate. Human accessibility and broad seed/house coverage are not yet
+established. See `docs/campaign-ai-difficulty-matrix.md` for exact values.
+
+## Campaign difficulty design matrix — 13 September 2026 (superseded by implementation above)
 
 `docs/campaign-ai-difficulty-matrix.md` records current and proposed behaviour
 for all four difficulties, separately for enemies and the full QuantBot sharing

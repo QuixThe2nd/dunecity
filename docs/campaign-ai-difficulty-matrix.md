@@ -1,9 +1,69 @@
 # Campaign QuantBot: current behaviour and proposed difficulty design
 
+## Implemented local candidate: 1.0.669
+
+Stefan authorized implementation after reviewing this matrix. The following
+settings now apply to QuantBot campaign enemies. The original audit/proposal
+below remains the design history, not the current release status.
+
+| Setting | Easy | Medium | Hard | Brutal |
+| --- | --- | --- | --- | --- |
+| Simultaneous assaulting houses | 1 | 1 | 2 | All |
+| Combined troops: tech ≤3 / 4–6 / ≥7 | 3 / 4 / 5 | 6 / 7 / 8 | 10 / 12 / 14 | 16 / 20 / 24 |
+| Combined combat value: same stages | 900 / 1,200 / 1,500 | 2,550 / 2,975 / 3,400 | 5,500 / 6,600 / 7,700 | 11,200 / 14,000 / 16,800 |
+| Recovery seconds: same stages | 180 / 150 / 120 | 120 / 105 / 90 | 75 / 60 / 45 | 40 / 30 / 20 |
+| Extra opening grace | 120 seconds | 60 seconds | None | None |
+| Maximum sortie duration before withdrawal | 150 seconds | 180 seconds | 240 seconds | 300 seconds |
+| Human partner's home reserve by army value | 25% | 15% | 10% | 5% |
+
+All times are game time. Combat value uses purchase value with a minimum of 100
+for free/cheap scripted troops. House-level configured attack percentages still
+apply within the combined allowance. Multiple eligible houses share the troop
+and value allowance. A depleted house may send one unit above its percentage
+allowance, but never above the shared count/value ceiling. An active wave cannot
+be topped up; one house's aircraft and ground troops occupy the same saved slot.
+Mixed-difficulty enemy alliances use their lowest active difficulty's pressure
+profile. Eligible houses rotate by oldest launch, with deterministic house ties.
+
+The opening uses the previous tech-based 8–12-minute anchor, extended toward the
+house's first scheduled combat reinforcement when later, capped at 12 minutes,
+then adds tier grace. It preserves reinforcement arrival times. This consumes
+mission reinforcement metadata; it does not emulate Dynasty's TEAM.EMC/contact
+activation engine. Save 9838 stores opening, launch, last activity, front target
+and member IDs; earlier saves initialize these conservatively on first update.
+
+Easy/Medium use one shared base objective and avoid deliberate light-raider
+harassment. Hard/Brutal split base/economic targets and try a lateral approach
+for alternating ground units when terrain permits; Brutal varies sides by
+house. Existing tactical spacing/repairs and offensive-air permissions remain.
+Defensive ground/air contacts must be near owned structures, or within four
+tiles of a harvester that is itself within 12 tiles of the base on Easy/Medium
+or 20 on Hard/Brutal. Harvesters farther away retain their escape behavior.
+Scripted HUNT troops outside the wave are held and recalled instead of creating
+an extra assault. Ordinary local defense remains available during recovery.
+
+Easy/Medium campaign builders now cover actual power deficits, queued demand and
+the next planned structure with Windtraps. This includes economy support and the
+full partner; city mode keeps its existing generator planner. No general Vanilla
+power penalty was enabled. Needed Starport imports remain unchanged. Partners
+retain the existing growth and army-target differences plus the home reserves
+above; Easy full partners can now use the normal damage-triggered repair path.
+The game menu describes these implemented behaviors. Further expansion/micro
+ideas in the proposal are future tuning, not a claim of a new economy planner.
+
+Validation: all six CTest targets pass; real-engine pressure/save/legacy-load/
+reinforcement/recovery/Windtrap fixture passes; menu rendered at all four tiers.
+Final-source level-9 seed 486409243: Easy partner/Easy enemies won in 23.91 game
+minutes, Hard/Hard won in 28.96. Both continuously assert shared limits. These
+are AI regression samples, not proof of human difficulty. Logs and screenshots:
+`/tmp/dunecity-campaign-balance/{pressure,easy9,hard-hard9}-669-verified`.
+
+## Original audit and proposal
+
 13 September 2026. Audited against local source `6aaa634` (1.0.668) and the
 shipped Vanilla QuantBot configuration, also checked in the running browser.
 The running 667 game has the same AI behaviour; 668 changes score attribution.
-This is a design proposal, not an implemented or deployed balance change.
+This section records the original design proposal before the 669 implementation above.
 Player config overrides and other mods can change the baseline.
 
 Stefan's requirements: Easy self-play success does not demonstrate accessibility

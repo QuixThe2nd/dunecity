@@ -74,6 +74,7 @@ private:
     std::vector<ModInfo> availableMods;
     TextButton      backButton;
     Label          supportDescription;
+    Label          enemyDescription;
     DropDownBox     supportBotDropDown;
     DropDownBox     enemyAIDropDown;
     TextButton hostCoopButton;

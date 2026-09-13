@@ -793,6 +793,47 @@ TEST_CASE("Factory safety outranks frontage preferences without banning constrai
 }
 
 #include <players/SimpleArmyPolicy.h>
+#include <players/CampaignDifficultyPolicy.h>
+#include <misc/IMemoryStream.h>
+#include <misc/OMemoryStream.h>
+TEST_CASE("Campaign alliance gates overlapping houses and recovery independently of individual timers", "[quantbot][campaign]") {
+    using namespace CampaignDifficultyPolicy;
+    const auto easy=profile(0,8), medium=profile(1,8), hard=profile(2,8), brutal=profile(3,8);
+    Pressure one{1,2,600,1000};
+    REQUIRE_FALSE(canLaunch(easy,one,10000,0,100));
+    REQUIRE_FALSE(canLaunch(medium,one,10000,0,100));
+    REQUIRE(canLaunch(hard,one,10000,0,100));
+    Pressure two{2,4,1200,1000};
+    REQUIRE_FALSE(canLaunch(hard,two,10000,0,100));
+    REQUIRE(canLaunch(brutal,two,10000,0,100));
+    Pressure ended{0,0,0,1000};
+    REQUIRE_FALSE(canLaunch(easy,ended,1099,0,100));
+    REQUIRE(canLaunch(easy,ended,1100,0,100));
+    REQUIRE_FALSE(canLaunch(easy,{},1100,1200,100));
+    REQUIRE_FALSE(fits(easy,{1,4,1400,0},300)); // Value cap, even with a troop slot.
+    REQUIRE_FALSE(fits(easy,{1,5,500,0},50)); // Count cap, even with cheap infantry.
+}
+TEST_CASE("Campaign wave membership and deadlines survive stream round trips", "[quantbot][campaign][save]") {
+    using namespace CampaignDifficultyPolicy;
+    Wave original; original.initialized=true; original.opening=1234;
+    original.launched=5678; original.lastActive=9000; original.front=71; original.members={7,19,55};
+    OMemoryStream out; out.open(); original.save(out);
+    IMemoryStream in(out.getData(),out.getDataLength()); Wave restored; restored.load(in);
+    REQUIRE(restored.initialized==original.initialized);
+    REQUIRE(restored.opening==original.opening);
+    REQUIRE(restored.launched==original.launched);
+    REQUIRE(restored.lastActive==original.lastActive);
+    REQUIRE(restored.members==original.members);
+    REQUIRE(restored.front==original.front);
+}
+TEST_CASE("Campaign windtrap accounting covers commitments without duplicate generators", "[quantbot][campaign][power]") {
+    using namespace CampaignDifficultyPolicy;
+    REQUIRE(needsWindtrap(100,140,0,0,false));
+    REQUIRE(needsWindtrap(150,140,20,0,false));
+    REQUIRE(needsWindtrap(150,140,0,20,false));
+    REQUIRE_FALSE(needsWindtrap(150,140,0,10,false));
+    REQUIRE_FALSE(needsWindtrap(100,140,0,0,true));
+}
 TEST_CASE("Campaign attack sizes scale with difficulty and retain a reserve", "[quantbot][combat]") {
     std::vector<SimpleArmyPolicy::Responder> army;
     for (unsigned i=0; i<20; ++i) army.push_back({i+1,100,0});

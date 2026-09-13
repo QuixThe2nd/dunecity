@@ -184,7 +184,11 @@ HouseChoiceMenu::HouseChoiceMenu() : MenuBase()
     enemyAIDropDown.setSelectedItem(s_enemyAIIndex);
     enemyAIDropDown.setOnSelectionChange(std::bind(&HouseChoiceMenu::onEnemyAISelectionChanged, this, std::placeholders::_1));
     windowWidget.addWidget(&enemyAIDropDown, Point(336, 398), Point(256, 22));
-    label("Choose how your opponents fight.", 336, 425);
+    enemyDescription.setTextFontSize(10);
+    enemyDescription.setTextColor(COLOR_WHITE);
+    enemyDescription.setAlignment(Alignment_Left);
+    windowWidget.addWidget(&enemyDescription, Point(336, 423), Point(256, 30));
+    onEnemyAISelectionChanged(false);
 
     gameOptionsButton.setText(_("Game Options"));
     gameOptionsButton.setOnClick(std::bind(&HouseChoiceMenu::onGameOptions, this));
@@ -217,14 +221,33 @@ void HouseChoiceMenu::onGameOptions() {
 void HouseChoiceMenu::onSupportBotSelectionChanged(bool /*interactive*/) {
     int entry = supportBotDropDown.getSelectedEntryIntData();
     s_supportBotIndex = (entry >= 0 && entry < kSupportOptionCount) ? entry : 0;
-    supportDescription.setText(s_supportBotIndex >= 5
-        ? _("QuantBot plays for you: economy, building\nand unit control (including combat).")
-        : _("AI Support: economy and construction.\nYou command combat units."));
+    const char* descriptions[] = {
+        "You control economy, building and combat.",
+        "AI builds and manages your economy.\nYou command combat units.",
+        "AI builds and manages your economy.\nYou command combat units.",
+        "AI builds and manages your economy.\nYou command combat units.",
+        "AI builds and manages your economy.\nYou command combat units.",
+        "Full control: cautious attacks, home reserves.\nBuilds economy and covers power demand.",
+        "Full control: balanced attacks and repairs.\nBuilds economy and covers power demand.",
+        "Full control: larger armies and air raids.\nKeeps a small home reserve.",
+        "Full control: strongest army and air raids.\nCommits most troops to combat.",
+        "Builds your economy and defends your base."
+    };
+    supportDescription.setText(_(descriptions[s_supportBotIndex]));
 }
 
 void HouseChoiceMenu::onEnemyAISelectionChanged(bool /*interactive*/) {
     int entry = enemyAIDropDown.getSelectedEntryIntData();
     s_enemyAIIndex = (entry >= 0 && entry < kEnemyAIOptionCount) ? entry : 0;
+    const char* descriptions[] = {
+        "Small waves, one enemy house at a time.\nLong recovery breaks; supplies its power.",
+        "Larger waves, one enemy house at a time.\nModerate breaks; supplies its power.",
+        "Two houses can attack together.\nFlanking, air raids and shorter breaks.",
+        "All enemy houses can attack together.\nLargest waves and shortest breaks.",
+        "Builds and defends without main assaults.",
+        "Uses the original campaign AI behaviour."
+    };
+    enemyDescription.setText(_(descriptions[s_enemyAIIndex]));
 }
 
 void HouseChoiceMenu::onHouseButton(int button) {

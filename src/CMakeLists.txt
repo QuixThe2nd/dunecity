@@ -244,6 +244,7 @@ target_sources(dunecity
         players/CampaignAIPlayer.cpp
         players/AIDecisionLog.cpp
         players/QuantBot.cpp
+        players/QuantBotCampaign.cpp
         players/Mentat.cpp
         players/MentatBuildOrderMentat.cpp
         players/QuantBotConfig.cpp

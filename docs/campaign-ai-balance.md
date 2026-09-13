@@ -283,6 +283,10 @@ launchGroundHunt; `include/dunecity/VanillaEconomy.h`.
 
 ## Human difficulty proposal — not implemented
 
+**Update:** the initial pressure/power experiment is implemented in local 669.
+See the [implementation settings and verification](campaign-ai-difficulty-matrix.md).
+The paragraphs below retain the reasoning and original proposed ranges.
+
 The complete [current/proposed enemy and partner matrix](campaign-ai-difficulty-matrix.md)
 extends this proposal with Stefan's Easy/Medium single-house assault requirement
 and demand-covering Windtrap construction. General power is currently disabled
