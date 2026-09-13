@@ -1,6 +1,6 @@
 # Campaign QuantBot: current behaviour and proposed difficulty design
 
-## Implemented local candidate: 1.0.670
+## Implemented local candidate: 1.0.671
 
 Stefan authorized implementation after reviewing this matrix. The following
 settings now apply to QuantBot campaign enemies. The original audit/proposal
@@ -15,6 +15,15 @@ below remains the design history, not the current release status.
 | Extra opening grace | 120 seconds | 60 seconds | None | None |
 | Maximum sortie duration before withdrawal | 150 seconds | 180 seconds | 240 seconds | 300 seconds |
 | Human partner's home reserve by army value | 25% | 15% | 10% | 5% |
+
+Campaign enemy readiness is the smaller of its legacy army threshold and the
+combined sortie value cap. This lets Easy send a small wave without first
+amassing an oversized reserve; failed readiness checks retry within 15 game
+seconds. Turn selection uses the same criterion. The opening/recovery gates
+still apply. Easy/Medium/Hard enemy worker limits retain their configured initial
+refinery multipliers even under a higher game-wide maximum. A lower user ceiling
+still applies. Human-house partners retain their growth policy; Brutal keeps its
+broader economy policy. Existing excess workers are not removed.
 
 All times are game time. Combat value uses purchase value with a minimum of 100
 for free/cheap scripted troops. House-level configured attack percentages still

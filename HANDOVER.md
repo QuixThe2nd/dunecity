@@ -1,3 +1,32 @@
+## Campaign worker caps and small-wave readiness — 1.0.671 local, 13 September 2026
+
+Stefan reported excess enemy workers and no attacks in a closed match. Latest
+local telemetry was Atreides level 4 SCENA008.INI, seed 1237721204, co-op campaign,
+Medium partner/Easy Harkonnen enemy, harvester override 100. Harkonnen bought seven
+workers, had six remaining, and repeatedly deferred below a 4,600-value readiness
+threshold. The active native window/Brave tab no longer contained that match;
+Stefan confirmed he had closed it and requested both fixes regardless.
+
+Easy/Medium/Hard campaign enemy update now reconstructs the configured worker
+limit from initial refinery allowance and difficulty multiplier; the game-wide
+override can lower it but cannot raise it. Full human partners retain their
+separate economy development; Brutal keeps its broader economy policy. Existing
+excess workers are not deleted. Enemy readiness is capped at the shared sortie
+value allowance (level-4 Easy 1,200 rather than 4,600 in the reported example).
+Fair turn allocation uses the same threshold. Under-strength campaign enemies
+recheck in at most 15 game seconds. Opening grace, recovery, percentage selection
+and combined wave budgets remain enforced. Empty readiness checks no longer log
+fake zero-unit ground_hunt events.
+
+Native Release and six CTest targets pass. Real-engine `--pacing-probe --level 4`
+passes with override 100: enemy limits 2/4/4 for two initial refineries, override
+1 still lowers them, partner can exceed 2, and 1,500 army value can launch a
+budgeted Easy sortie below the former 4,600 threshold without bypassing opening
+or topping up an active wave. Evidence: `/tmp/dunecity-campaign-balance/pacing-671-v2`.
+Defense/pressure fixtures and full match matrix are being rerun. The 670 web
+build was cancelled in its optimizer after these additional user requests;
+671 full browser build is in progress. No public deployment or push.
+
 ## Campaign defensive response — 1.0.670 local, 13 September 2026
 
 Browser testing of 669 exposed passive enemy defenders: GUARD uses the tank's

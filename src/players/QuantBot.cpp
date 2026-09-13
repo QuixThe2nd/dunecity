@@ -757,6 +757,14 @@ void QuantBot::update() {
 		// Other difficulties keep baseHarvesterLimit from multiplier * refinery count
 	}
 
+    if (isCampaignEnemy() && difficulty!=Difficulty::Brutal) {
+        // Game Options supplies an engine ceiling, not permission for an Easy
+        // campaign opponent to expand to a skirmish-sized harvester fleet.
+        baseHarvesterLimit=std::max(0,diffSettings.harvesterLimitPerRefineryMultiplier
+            * initialItemCount[Structure_Refinery]);
+        if (harvesterOverride>=0) baseHarvesterLimit=std::min(baseHarvesterLimit,harvesterOverride);
+    }
+
     if (harvesterOverride < 0 && gameMode == GameMode::Custom && !getHouse()->isPowerRequired())
         baseHarvesterLimit = DuneCity::vanillaHarvesterCapacity(baseHarvesterLimit);
     // The engine cap may come from an older save or an explicit scenario limit.
@@ -927,8 +935,6 @@ void QuantBot::onDamage(const ObjectBase* pObject, int damage, Uint32 damagerID)
 		if (pGroundUnit->isAwaitingPickup()) {
 			return;
 		}
-
-
 		// Stop him dead in his tracks if he's going to rally point
 		if (!humanControls(pGroundUnit) && pGroundUnit->wasForced() && (pGroundUnit->getItemID() != Unit_Harvester)) {
 			doMove2Pos(pGroundUnit,
@@ -6575,12 +6581,14 @@ void QuantBot::attack(int militaryValue) {
 
 	FixPoint attackThreshold = FixPoint(static_cast<int>(attackThresholdPercent * 100)) / 100;
 	const bool vanillaCustom = gameMode == GameMode::Custom && !getHouse()->isPowerRequired();
-    const int requiredMilitary = vanillaCustom
+	int requiredMilitary = vanillaCustom
         ? DuneCity::vanillaAttackThreshold((militaryValueLimit * attackThreshold).lround(), static_cast<int>(difficulty))
         : (militaryValueLimit * attackThreshold).lround();
+    if (isCampaignEnemy())
+        requiredMilitary=CampaignDifficultyPolicy::requiredArmy(campaignProfile(),requiredMilitary);
     if (militaryValue < requiredMilitary) {
         // Recheck readiness promptly; do not miss a short-lived strength window.
-        if (vanillaCustom && difficulty == Difficulty::Brutal)
+        if (isCampaignEnemy() || (vanillaCustom && difficulty == Difficulty::Brutal))
             attackTimer = std::min(attackTimer, static_cast<int>(MILLI2CYCLES(15000)));
 		traceDecision("attack_deferred", AITelemetry::Record().set("reason", "army_threshold").set("military", militaryValue).set("limit", militaryValueLimit)
             .set("required_military", requiredMilitary));
@@ -6701,6 +6709,7 @@ void QuantBot::launchGroundHunt() {
         } else if (unit->isAGroundUnit()) doSetAttackMode(unit,HUNT);
         ++count; value+=std::max(100,currentGame->objectData.data[unit->getItemID()][unit->getOriginalHouseID()].price);
     }
+    if (count==0) return; // An empty house checking readiness is not an attack.
     traceDecision("ground_hunt",AITelemetry::Record().set("members",count).set("value",value)
         .set("campaign_limited",limited).set("army_value",armyValue).set("committed_value",committedValue)
         .set("attack_percent",percent).set("attack_budget",limited ? SimpleArmyPolicy::attackBudget(armyValue,percent) : armyValue)

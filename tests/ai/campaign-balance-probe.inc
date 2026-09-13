@@ -12,6 +12,7 @@
 #include "campaign-stats-probe.inc"
 #include "campaign-pressure-probe.inc"
 #include "campaign-defence-probe.inc"
+#include "campaign-pacing-probe.inc"
 
 int runCampaignBalanceProbe() {
     const int level = std::atoi(std::getenv("BALANCE_LEVEL"));
@@ -24,20 +25,24 @@ int runCampaignBalanceProbe() {
     const std::string enemyClass = enemy == "hard" ? "qBotHard" : enemy == "medium" ? "qBotMedium"
         : enemy == "brutal" ? "qBotBrutal" : "qBotEasy";
     const int percent = std::atoi(std::getenv("BALANCE_ATTACK_PERCENT"));
+    const auto humanHouse=static_cast<HOUSETYPE>(std::getenv("BALANCE_HOUSE") ? std::atoi(std::getenv("BALANCE_HOUSE")) : HOUSE_HARKONNEN);
     ModManager::instance().setActiveMod("vanilla");
     getQuantBotConfig().easy.attackForceMilitaryValueRatio = percent / 100.0f;
     settings.general.playerName = "Campaign balance observer";
     settings.network.metaServer = "http://127.0.0.1:1/";
     settings.gameOptions.fogOfWar = false;
     settings.gameOptions.immortalHumanPlayer = false;
-    GameInitSettings init(HOUSE_HARKONNEN, settings.gameOptions, level);
+    if (std::getenv("BALANCE_HARVESTER_LIMIT"))
+        settings.gameOptions.maximumNumberOfHarvestersOverride=std::atoi(std::getenv("BALANCE_HARVESTER_LIMIT"));
+    if (std::getenv("BALANCE_PACING_PROBE")) settings.gameOptions.maximumNumberOfHarvestersOverride=100;
+    GameInitSettings init(humanHouse, settings.gameOptions, level);
     init.randomSeed = seed; // Test-only access, provided by -fno-access-control.
     init.setMultiplePlayersPerHouse(true);
     for (int h=0; h<NUM_HOUSES; ++h) {
         if (!isHouseAvailable(static_cast<HOUSETYPE>(h))) continue;
-        GameInitSettings::HouseInfo info(static_cast<HOUSETYPE>(h), h==HOUSE_HARKONNEN ? 1 : 2);
-        if (h==HOUSE_HARKONNEN) info.addPlayerInfo({settings.general.playerName,"HumanPlayer"});
-        info.addPlayerInfo({getHouseNameByNumber(static_cast<HOUSETYPE>(h)),h==HOUSE_HARKONNEN ? partnerClass : enemyClass});
+        GameInitSettings::HouseInfo info(static_cast<HOUSETYPE>(h), h==humanHouse ? 1 : 2);
+        if (h==humanHouse) info.addPlayerInfo({settings.general.playerName,"HumanPlayer"});
+        info.addPlayerInfo({getHouseNameByNumber(static_cast<HOUSETYPE>(h)),h==humanHouse ? partnerClass : enemyClass});
         init.addHouseInfo(info);
     }
     auto game = std::make_unique<Game>();
@@ -48,6 +53,11 @@ int runCampaignBalanceProbe() {
     game->initGame(init);
     game->bReplay = false;
     game->initializeGameLoop();
+    if (std::getenv("BALANCE_PACING_PROBE")) {
+        runCampaignPacingProbe(*game);
+        game.reset();currentGame=nullptr;pLocalPlayer=nullptr;
+        return MENU_QUIT_DEFAULT;
+    }
     if (std::getenv("BALANCE_DEFENCE_PROBE")) {
         runCampaignDefenceProbe(*game);
         game.reset();currentGame=nullptr;pLocalPlayer=nullptr;

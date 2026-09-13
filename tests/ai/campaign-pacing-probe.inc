@@ -1,0 +1,53 @@
+// Reproduce the level-four 100-harvester override and oversized readiness goal.
+void runCampaignPacingProbe(Game& game) {
+    auto require=[](bool ok,const char* reason){if(!ok){SDL_Log("CAMPAIGN_PACING_FAIL: %s",reason);throw std::runtime_error(reason);}};
+    std::vector<QuantBot*> enemies;QuantBot* partner=nullptr;
+    game.gameCycleCount=123;
+    for(int h=0;h<NUM_HOUSES;++h) if(auto* house=game.getHouse(h))
+        for(const auto& player:house->getPlayerList()) if(auto* bot=dynamic_cast<QuantBot*>(player.get())) {
+            bot->update();
+            if(bot->isCampaignEnemy()) enemies.push_back(bot);else if(h==HOUSE_HARKONNEN) partner=bot;
+        }
+    require(partner && !enemies.empty(),"Pacing fixture needs partner and enemy");
+    auto* bot=enemies.front();
+    for(auto tier:{QuantBot::Difficulty::Easy,QuantBot::Difficulty::Medium,QuantBot::Difficulty::Hard}) {
+        bot->difficulty=tier;bot->initialItemCount[Structure_Refinery]=2;
+        bot->initialMilitaryValue=1000;bot->lastCalculatedSpice=200000;bot->harvesterLimit=100;
+        game.gameInitSettings.gameOptions.maximumNumberOfHarvestersOverride=100;
+        bot->update();
+        const int expected=2*getQuantBotConfig().getSettings(int(tier)).harvesterLimitPerRefineryMultiplier;
+        require(bot->harvesterLimit==expected,"High game ceiling replaced campaign difficulty economy cap");
+        bot->update();require(bot->harvesterLimit==expected,"Campaign worker cap drifted on next update");
+        game.gameInitSettings.gameOptions.maximumNumberOfHarvestersOverride=1;
+        bot->update();require(bot->harvesterLimit==1,"Lower player ceiling was ignored");
+        SDL_Log("CAMPAIGN_WORKER_LIMIT_PASS: tier=%d initial_refineries=2 limit=%d",int(tier),expected);
+    }
+    game.gameInitSettings.gameOptions.maximumNumberOfHarvestersOverride=100;
+    partner->lastCalculatedSpice=200000;partner->update();
+    require(partner->harvesterLimit>2,"Human partner incorrectly inherited small enemy worker cap");
+    for(auto* enemy:enemies) {
+        enemy->difficulty=QuantBot::Difficulty::Easy;enemy->campaignWave={};
+        enemy->campaignWave.initialized=true;enemy->attackTimer=INT32_MAX;
+    }
+    // Ensure a usable army exists; these real troops still pass through the
+    // normal percentage selection and shared-wave budget code.
+    auto* owner=const_cast<House*>(bot->getHouse());int spawned=0;
+    for(int y=1;y<currentGameMap->getSizeY()-1 && spawned<6;++y)
+        for(int x=1;x<currentGameMap->getSizeX()-1 && spawned<6;++x)
+            if(!currentGameMap->getTile(x,y)->hasAGroundObject() && !currentGameMap->getTile(x,y)->isMountain()) {
+                auto* unit=owner->createUnit(Unit_Tank);require(unit,"Pacing tank creation failed");
+                unit->deploy(Coord(x,y));bot->doSetAttackMode(unit,AREAGUARD);++spawned;
+            }
+    bot->militaryValueLimit=9200;bot->attackTimer=0;
+    game.techLevel=4;bot->campaignWave.opening=game.getGameCycleCount()+100;
+    bot->attack(1500);require(bot->campaignWave.members.empty(),"Small-wave readiness bypassed opening grace");
+    game.gameCycleCount+=100;
+    bot->attack(1500);
+    require(!bot->campaignWave.members.empty(),"Easy waited for 4600 army value instead of fielding its small wave");
+    const auto first=bot->campaignWave.members;bot->attack(1500);
+    require(bot->campaignWave.members==first,"Readiness change topped up an active wave");
+    const auto used=bot->campaignPressure();const auto limit=bot->campaignProfile();
+    require(used.houses<=limit.houses && used.units<=limit.units && used.value<=limit.value,"Small wave exceeded assault limits");
+    SDL_Log("CAMPAIGN_PACING_PASS: 1500 army launches below legacy 4600 threshold, opening and shared limits preserved");
+    SDL_Log("CAMPAIGN_BALANCE_RESULT: probe=pacing outcome=passed");
+}

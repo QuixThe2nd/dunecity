@@ -88,7 +88,9 @@ bool QuantBot::campaignCanLaunch() const {
                 && unit->getAttackMode()!=RETREAT && !unit->hasATarget();
         }
         const auto& settings=getQuantBotConfig().getSettings(static_cast<int>(bot->difficulty));
-        if (!usable || value < static_cast<int>(bot->militaryValueLimit*settings.attackThresholdPercent)) continue;
+        const int ready=CampaignDifficultyPolicy::requiredArmy(profile,
+            static_cast<int>(bot->militaryValueLimit*settings.attackThresholdPercent));
+        if (!usable || value < ready) continue;
         if (std::make_pair(bot->campaignWave.launched,bot->getHouse()->getHouseID())
             < std::make_pair(campaignWave.launched,getHouse()->getHouseID())) return false;
     }
