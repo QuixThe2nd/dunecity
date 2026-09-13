@@ -1,3 +1,38 @@
+## Menu acceptance — 1.0.672 local, 13 September 2026
+
+Stefan requested actual verification. Commit 2f440b5 fixes a live-discovered
+Home keyboard trap: hidden legacy buttons participated in Tab navigation.
+Only visible destinations now register in screen order, and initial focus is
+assigned after registration. The production-menu probe checks a complete cycle.
+Native Release, dependency/version/signature checks and all seven CTest groups
+pass. A live cycle with Continue visible also passed.
+
+Isolated native clients exercised all four core routes into actual gameplay:
+offline Campaign and Custom, private-code online Custom (670), and public
+Campaign co-op (672). Campaign retained Ordos/level 4 through cancellation and
+hosting and loaded SCENO008.INI. Real directory filters distinguished campaign
+from custom. Custom peer traffic reached cycle 11,999; campaign passed 2,600;
+neither inspected log reported desync. Offline save → Home → Continue resumed
+the mission. Online custom saves route into hosting lobbies in 670 and 672.
+Mods and Map Editor opened from Extras; unified Graphics was inspected.
+
+Exact evidence and scope are in `docs/menu-acceptance.md`, with logs and isolated
+profiles under `../outputs/dunecity-menu-acceptance`. The browser test build
+joined a fresh public native campaign, passed the start barrier, and ran to
+cycle 14,624 with no reported desync. A browser unit command appeared on the
+host. Browser Home/Join/Graphics/Audio mouse navigation passed. The browser
+initial lobby display remains open: it could show Join Online's waiting screen
+until the host started, despite the host recognizing the browser. Saved co-op
+admission was checked, but actual saved-session resumption is not claimed.
+
+Default web Release linking was stopped after over 20 minutes in Binaryen's
+local2Stack optimizer (12.2 GB sampled footprint). The successful browser test
+used existing Release objects with CMAKE_EXE_LINKER_FLAGS_RELEASE=-O2; default
+project flags are unchanged. This does not validate the default O3 web release.
+No WAN/mobile or completed-campaign claim. Nothing was pushed or deployed.
+Existing Game Rules/New Map keyboard dismissal remains a follow-up; native
+pointer automation was unreliable. The candidate is not fully signed off.
+
 ## Menu navigation — 1.0.670 local, 13 September 2026
 
 Stefan approved implementing the menu review, including Mods and Map Editor in

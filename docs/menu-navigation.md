@@ -1,4 +1,4 @@
-# Menu navigation, local candidate 1.0.670
+# Menu navigation, local candidate 1.0.672
 
 This change follows Stefan's menu review and approval on 13 September 2026.
 It starts from 81ff90a (campaign controls 1.0.669), preserving the campaign AI,
@@ -60,7 +60,14 @@ The final native Release build, dependency audit, and all seven CTest targets pa
 Images and logs are in build/menu-probe. Network transport and authorization
 continue to have their dedicated CTest coverage.
 
-This is a local implementation candidate. It has not been published. Live
-native/browser two-player play, browser/mobile layout checks, a richer save
-metadata list, timed display rollback, parties and rematch flows are separate
-follow-up work; the existing implementations remain where applicable.
+Live native verification subsequently exercised all four core play routes,
+private custom invites, public campaign filters/joining, setup preservation,
+offline save/Continue, online custom save routing, and Extras entry points.
+It caught and fixed Home's hidden-button keyboard trap. See
+`docs/menu-acceptance.md` for exact versions, evidence and remaining limits.
+
+This is a local implementation candidate. It has not been published. A browser
+test build passed native/browser campaign gameplay, but its initial lobby
+display remains open and the default browser Release link did not finish.
+WAN/mobile checks, a richer save metadata list, timed display rollback, parties
+and rematch flows remain follow-up work.
