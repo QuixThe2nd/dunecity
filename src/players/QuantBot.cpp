@@ -4307,6 +4307,29 @@ void QuantBot::build(int militaryValue) {
                 };
                 if (queueCampaignWindtrap(0)) continue;
 
+                // Experienced campaign controllers establish/replace one repair
+                // yard before optional expansion. This applies to both enemy
+                // rebuild mode and full partners, including Brutal's build path.
+                // Existing or queued yards count; ordinary prerequisites, cash
+                // and safe placement remain mandatory.
+                if (isCampaignGameType(currentGame->gameType) && difficulty>=Difficulty::Hard
+                    && currentGame->techLevel>4 && pBuilder->getItemID()==Structure_ConstructionYard
+                    && !pBuilder->isUpgrading() && pBuilder->getProductionQueueSize()==0
+                    && itemCount[Structure_RepairYard]==0
+                    && getHouse()->getNumItems(Structure_Refinery)>0
+                    && getHouse()->getNumItems(Unit_Harvester)>0
+                    && (getHouse()->hasHeavyFactory() || getHouse()->getNumItems(Structure_StarPort)>0)
+                    && money>=data[Structure_RepairYard][houseID].price+300
+                    && pBuilder->isAvailableToBuild(Structure_RepairYard)) {
+                    const Coord site=findPlaceLocation(Structure_RepairYard);
+                    if (site.isValid() && produceItemWithLogging(Structure_RepairYard,__LINE__,"campaign_repair_capacity")) {
+                        builderPlaceLocations[pBuilder->getObjectID()].push_back(site);
+                        reservedStructures[pBuilder->getObjectID()]={Structure_RepairYard,site};
+                        ++itemCount[Structure_RepairYard];money-=data[Structure_RepairYard][houseID].price;
+                        continue;
+                    }
+                }
+
 				// Restore the reserved portion after this builder's decisions, keeping
 				// all existing local spending deductions for subsequent builders.
 				struct RestoreReservedCredits {

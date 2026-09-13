@@ -28,6 +28,7 @@ parser.add_argument('--starport-probe', action='store_true', help='Exercise rese
 parser.add_argument('--stats-probe', action='store_true', help='Verify campaign results with a shared human/AI house')
 parser.add_argument('--pressure-probe', action='store_true', help='Verify campaign assault slots, recovery and save state')
 parser.add_argument('--defence-probe', action='store_true', help='Verify retaliation and base/harvester reinforcements')
+parser.add_argument('--repair-probe', action='store_true', help='Verify experienced campaign bots replace missing repair yards')
 parser.add_argument('--pacing-probe', action='store_true', help='Verify enemy worker caps and small-wave readiness')
 parser.add_argument('--seed', type=int, default=486409243)
 parser.add_argument('--minutes', type=int, default=20)
@@ -81,6 +82,7 @@ if args.stats_probe: env['BALANCE_STATS_PROBE'] = '1'
 if args.pressure_probe: env['BALANCE_PRESSURE_PROBE'] = '1'
 if args.defence_probe: env['BALANCE_DEFENCE_PROBE'] = '1'
 if args.pacing_probe: env['BALANCE_PACING_PROBE'] = '1'
+if args.repair_probe: env['BALANCE_REPAIR_PROBE'] = '1'
 with (out/'run.log').open('w') as log:
     subprocess.run([str(binary),'--window','--showlog'],cwd=out,env=env,
                    stdout=log,stderr=subprocess.STDOUT,check=True,timeout=600)

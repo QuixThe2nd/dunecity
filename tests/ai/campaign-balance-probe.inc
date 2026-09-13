@@ -13,6 +13,7 @@
 #include "campaign-pressure-probe.inc"
 #include "campaign-defence-probe.inc"
 #include "campaign-pacing-probe.inc"
+#include "campaign-repair-probe.inc"
 
 int runCampaignBalanceProbe() {
     const int level = std::atoi(std::getenv("BALANCE_LEVEL"));
@@ -53,6 +54,11 @@ int runCampaignBalanceProbe() {
     game->initGame(init);
     game->bReplay = false;
     game->initializeGameLoop();
+    if (std::getenv("BALANCE_REPAIR_PROBE")) {
+        runCampaignRepairProbe(*game);
+        game.reset();currentGame=nullptr;pLocalPlayer=nullptr;
+        return MENU_QUIT_DEFAULT;
+    }
     if (std::getenv("BALANCE_PACING_PROBE")) {
         runCampaignPacingProbe(*game);
         game.reset();currentGame=nullptr;pLocalPlayer=nullptr;
