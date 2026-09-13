@@ -1,3 +1,9 @@
+## 2026-09-13 — Native campaign resistance validation, 1.0.677
+
+Local branch `fix/campaign-ai-attack-limits`, game commit `0861fba`, diagnostic snapshot `a6c54ef`. Added Hard/Brutal repair-yard and prerequisite priority for both roles, removed the repair-yard attack prerequisite, retired army readiness goals after spice exhaustion, and gave idle dispatched campaign attackers real scouting/visible-base reacquisition. Human orders, home defenders and shared enemy wave limits remain protected.
+
+Final native matrix: 59 real matches, 49 player wins, 10 losses, no timeouts. Six CTest targets, dependency audit, signature and five native fixture invocations passed. Detailed ratios, checkpoints, reproduction and limitations: [campaign-ai-validation-677](docs/campaign-ai-validation-677.md). Two individual enemy no-damage spells remain; early difficulty overlap and inconsistent Brutal-helper performance mean this is not a claim of finished human balance. The browser remains on validated 672; 677 is committed/built locally only, with no push or deployment.
+
 ## Campaign defensive reserve refinement — 1.0.672 local, 13 September 2026
 
 Stefan refined readiness: a level-4 Easy wave may be four 300-value units, so
