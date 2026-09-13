@@ -3172,7 +3172,10 @@ void QuantBot::build(int militaryValue) {
                         if (QuantBotBuildPolicy::militaryItem(queued.itemID))
                             queuedMilitaryValue += queued.num * data[queued.itemID][houseID].price;
 					}
-					queuedProductionCost += std::max(0, builderQueuedCost - pBuilder->getProductionProgress().lround());
+                    // Starport cargo is paid for when ordered. It still counts
+                    // toward the fleet, but must not reserve the same cash again.
+                    if (pBuilder->getItemID()!=Structure_StarPort)
+                        queuedProductionCost += std::max(0, builderQueuedCost - pBuilder->getProductionProgress().lround());
                     if (pBuilder->getItemID() == Structure_HeavyFactory) {
 						activeHeavyFactoryCount++;
 					}
@@ -3214,6 +3217,8 @@ void QuantBot::build(int militaryValue) {
     const bool powerRules = getHouse()->isPowerRequired();
     const bool turretPowerRequired = getGameInitSettings().getGameOptions().rocketTurretsNeedPower;
     const bool vanillaEconomy = !citySimEnabled && !powerRules;
+    const bool campaignEconomyPush = vanillaEconomy && isCampaignGameType(currentGame->gameType)
+        && !supportMode && !isCampaignEnemy() && difficulty>=Difficulty::Hard;
     // Buildings pay gradually. Previously the same unspent cash funded more
     // orders every pass even though it was already committed to existing queues.
     if (vanillaEconomy || citySimEnabled) money = std::max(0, money - queuedProductionCost);
@@ -3368,7 +3373,7 @@ void QuantBot::build(int militaryValue) {
         if (getHouse(h) && getHouse(h)->getNumStructures() > 0) ++spiceCompetitors;
     const int spiceShare = lastCalculatedSpice / std::max(1, spiceCompetitors);
     const int mapSpiceHarvesterTarget = vanillaEconomy
-        ? DuneCity::vanillaHarvesterTarget(lastCalculatedSpice, spiceCompetitors, harvesterLimit)
+        ? DuneCity::vanillaHarvesterTarget(lastCalculatedSpice, campaignEconomyPush ? 1 : spiceCompetitors, harvesterLimit)
         : QuantBotBuildPolicy::desiredSpiceHarvesters(lastCalculatedSpice, spiceCompetitors, harvesterLimit);
     const int spiceHarvesterTarget = citySimEnabled ? mapSpiceHarvesterTarget
         : QuantBotBuildPolicy::refineryThroughputHarvesterTarget(
@@ -3518,7 +3523,7 @@ void QuantBot::build(int militaryValue) {
                     getHouse()->getNumItems(Structure_Refinery), harvesterLimit))
             .set("repair_baseline", QuantBotBuildPolicy::baselineRepairYards(
                 getHouse()->getNumItems(Structure_HeavyFactory), militaryValue))
-            .set("harvester_ai_limit", harvesterLimit)
+            .set("harvester_ai_limit", harvesterLimit).set("campaign_economy_push",campaignEconomyPush)
             .set("harvester_engine_limit", getHouse()->getMaxHarvesters())
             .set("funded_harvester_target", vanillaEconomy ? spiceHarvesterTarget : fundedHarvesterTarget)
             .set("storage_capacity", getHouse()->getCapacity())
@@ -3598,6 +3603,7 @@ void QuantBot::build(int militaryValue) {
         return false;
     };
     auto factoryPrefersHarvester = [&](const BuilderBase* factory) {
+        if (campaignEconomyPush && itemCount[Unit_Harvester]<spiceHarvesterTarget) return true;
         return CityEconomyInvestmentPolicy::preferFactoryHarvester(itemCount[Unit_Harvester],
             citySimEnabled ? fundedHarvesterTarget : spiceHarvesterTarget,militaryValue,militaryValueLimit,
             data[Unit_Harvester][houseID].price,canBuildMilitaryVehicle(factory),
@@ -4145,10 +4151,18 @@ void QuantBot::build(int militaryValue) {
     // Keep IDs, not pointers: an earlier yard may demolish a later zone.
     std::vector<std::pair<int, Uint32>> planningOrder;
     for (const auto* structure : getStructureList())
-        if (structure->getOwner() == getHouse())
-            planningOrder.emplace_back(QuantBotBuildPolicy::productionPlanningPriority(citySimEnabled,
+        if (structure->getOwner() == getHouse()) {
+            int priority=QuantBotBuildPolicy::productionPlanningPriority(citySimEnabled,
                 structure->getItemID(), structure->getItemID() == Structure_ConstructionYard
-                    && static_cast<const ConstructionYard*>(structure)->isWaitingToPlace(), needsFirstTransport()), structure->getObjectID());
+                    && static_cast<const ConstructionYard*>(structure)->isWaitingToPlace(), needsFirstTransport());
+            // Compound the helper's income before optional construction/army
+            // spending. The port still checks funds, stock and existing orders.
+            if (campaignEconomyPush && itemCount[Unit_Harvester]<spiceHarvesterTarget) {
+                if (structure->getItemID()==Structure_StarPort) priority=6;
+                else if (structure->getItemID()==Structure_HeavyFactory) priority=5;
+            }
+            planningOrder.emplace_back(priority,structure->getObjectID());
+        }
     std::stable_sort(planningOrder.begin(), planningOrder.end(),
         [](const auto& a, const auto& b) { return a.first > b.first; });
     cityReadyYardCount = std::max(1,int(std::count_if(planningOrder.begin(),planningOrder.end(),
@@ -4605,7 +4619,7 @@ void QuantBot::build(int militaryValue) {
                             && itemCount[Unit_Harvester] < (vanillaEconomy ? spiceHarvesterTarget : fundedHarvesterTarget)
                             && pBuilder->isAvailableToBuild(Unit_Harvester) && !getHouse()->isGroundUnitLimitReached()
                             && money + (vanillaEconomy ? reserve.reserved : 0) >= data[Unit_Harvester][houseID].price
-                                + (vanillaEconomy ? 1000 : (openingWorkersNeeded() || brutalCityEconomy) ? 0 : data[Unit_Tank][houseID].price)) {
+                                + (campaignEconomyPush ? 0 : vanillaEconomy ? 1000 : (openingWorkersNeeded() || brutalCityEconomy) ? 0 : data[Unit_Tank][houseID].price)) {
                             if (produceItemWithLogging(Unit_Harvester, __LINE__, "spice_economy")) {
                                 ++itemCount[Unit_Harvester];
                                 money -= data[Unit_Harvester][houseID].price;

@@ -25,6 +25,7 @@ parser.add_argument('--harvester-limit', type=int, choices=range(-1,101), defaul
 parser.add_argument('--partner-difficulty', choices=('easy','medium','hard','brutal'), default='easy')
 parser.add_argument('--enemy-difficulty', choices=('easy','medium','hard','brutal'), default='easy')
 parser.add_argument('--starport-probe', action='store_true', help='Exercise reserved cash with above-normal Starport prices')
+parser.add_argument('--helper-economy-probe', action='store_true', help='Verify advanced campaign helper worker investment and paid imports')
 parser.add_argument('--stats-probe', action='store_true', help='Verify campaign results with a shared human/AI house')
 parser.add_argument('--pressure-probe', action='store_true', help='Verify campaign assault slots, recovery and save state')
 parser.add_argument('--defence-probe', action='store_true', help='Verify retaliation and base/harvester reinforcements')
@@ -78,6 +79,7 @@ env = dict(os.environ,DUNECITY_USERDIR=str(out/'profile'),SDL_VIDEODRIVER='dummy
            BALANCE_ATTACK_PERCENT=str(args.attack_percent),BALANCE_ENEMY=args.enemy_difficulty,
            BALANCE_HOUSE=str(('harkonnen','atreides','ordos').index(args.house)),BALANCE_HARVESTER_LIMIT=str(args.harvester_limit))
 if args.starport_probe: env['BALANCE_STARPORT_PROBE'] = '1'
+if args.helper_economy_probe: env['BALANCE_HELPER_ECONOMY_PROBE'] = '1'
 if args.stats_probe: env['BALANCE_STATS_PROBE'] = '1'
 if args.pressure_probe: env['BALANCE_PRESSURE_PROBE'] = '1'
 if args.defence_probe: env['BALANCE_DEFENCE_PROBE'] = '1'

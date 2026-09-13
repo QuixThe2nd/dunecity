@@ -14,6 +14,7 @@
 #include "campaign-defence-probe.inc"
 #include "campaign-pacing-probe.inc"
 #include "campaign-repair-probe.inc"
+#include "campaign-helper-economy-probe.inc"
 
 int runCampaignBalanceProbe() {
     const int level = std::atoi(std::getenv("BALANCE_LEVEL"));
@@ -77,6 +78,11 @@ int runCampaignBalanceProbe() {
     if (std::getenv("BALANCE_STATS_PROBE")) {
         runCampaignStatsProbe(*game, level);
         game.reset(); currentGame = nullptr; pLocalPlayer = nullptr;
+        return MENU_QUIT_DEFAULT;
+    }
+    if (std::getenv("BALANCE_HELPER_ECONOMY_PROBE")) {
+        runCampaignHelperEconomyProbe(*game);
+        game.reset();currentGame=nullptr;pLocalPlayer=nullptr;
         return MENU_QUIT_DEFAULT;
     }
     if (std::getenv("BALANCE_STARPORT_PROBE")) {
