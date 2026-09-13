@@ -118,6 +118,19 @@ python3 ../dunelegacy.com/deploy/check-web-security.py
 node --test scripts/tests/test-web-shell.cjs
 ```
 
+A completed successful stable-tag build also provides a reusable
+`DuneCity-Emscripten` artifact. For an authorized release, download that exact
+run's artifact into a staging `bin/` directory, verify its source commit against
+the tag, run `scripts/check-web-mods.py` with the staging parent as `--build-root`,
+and package it using the matching tagged source. Include the matching
+`package-p2p-service.py` output, validate website security and hashes, then
+fetch/rebase the website changes and push. Recheck that GitHub latest still
+matches the intended tag and refuse to downgrade a newer browser version.
+Cancel only the redundant automatic browser rebuild for that release before
+it publishes; do not cancel the stable release or SourceForge jobs. Record
+both CI and website deployment IDs and perform the same live checks below.
+This path was verified for 1.0.679 using build 34760679530 and website d38c374.
+
 Windows `package-web.ps1` uses the same packager (Python 3 required). The manifest
 records version, source commit, artifact hashes and packaging time. Every script,
 WASM and data URL carries the same version/content token; unversioned artifacts
