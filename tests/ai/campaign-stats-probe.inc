@@ -2,6 +2,7 @@
 #include <Menu/CampaignStatsMenu.h>
 #include <units/Harvester.h>
 #include <FileClasses/LoadSavePNG.h>
+#include <climits>
 
 void runCampaignStatsProbe(Game& game, int level) {
     auto* local = game.getHouse(HOUSE_HARKONNEN);

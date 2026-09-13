@@ -1,3 +1,31 @@
+## Campaign score attribution — 1.0.668 local, 13 September 2026
+
+Game-source commit `f3c5cd1` on `fix/campaign-ai-attack-limits` fixes
+`CampaignStatsMenu::calculateScore`: classify houses, surviving structures and
+loaded harvester spice by the local team's ID instead of `House::isAI()`. A
+human house shared with QuantBot sets that AI flag, so previous versions put its
+harvests/kills under Enemy, subtracted its destroyed value and omitted its cash
+and surviving-building score. The score formula itself and gameplay are unchanged.
+Human opponents stay on Enemy; AI allies count with the local team.
+
+`tests/ai/run-campaign-balance.py --level 9 --stats-probe --output-dir <new-dir>`
+instantiates the actual results menu against a real shared-house campaign. It
+checks ordinary-human versus AI-assisted score/rank parity, known kills and
+harvest totals including carried spice, an AI ally and a human enemy. Fixture
+screenshot verified: You 1,300 spice / 7 units / 3 buildings; Enemy 775 / 5 / 2;
+score 567, Warlord. These are controlled test totals, not a played mission.
+Evidence: `/tmp/dunecity-campaign-balance/stats-668-render-v2`. Native Release,
+dependency and signature audits and all six CTest targets pass.
+
+Stefan also asked why campaign difficulties look similar. Audit in
+`docs/campaign-ai-balance.md` distinguishes enemy and shared-house partner paths:
+enemy ground-HUNT budgets are 25/40/50/60%; initial attack delay and much planning
+are shared. Partner uses Custom growth and has no enemy wave cap; its configured
+harvester difficulty caps are overwritten by common dynamic map limits. Several
+legacy defender-count/aircraft-threshold knobs are loaded but unused. No further
+AI tuning was made. Public deployment remains 665; user's existing browser game
+uses 667 and has not been restarted.
+
 ## Campaign economy and selection — 1.0.667 local candidate, 13 September 2026
 
 Branch `fix/campaign-ai-attack-limits` in the campaign-controls worktree. Building

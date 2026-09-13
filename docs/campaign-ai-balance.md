@@ -44,7 +44,8 @@ cycle was not recovered from the buffered log. Evidence: `baseline-level9.json`.
 
 The post-mission statistics currently classify the full-control partner's
 production and kills under “Enemy”. Household telemetry, not those labels, was
-used for the balance comparison. This is a separate observed display defect.
+used for the balance comparison. This separate display defect is fixed in local 1.0.668: campaign results now
+group houses by the local team instead of `House::isAI()`. See HANDOVER.md.
 
 ## Controlled real-game comparison
 
@@ -232,3 +233,78 @@ of all houses, mods and seeds. The Easy partner automates economy and combat and
 may outperform or make different mistakes from a beginner. The smaller waves
 address the demonstrated pressure spike; further tuning should use human trials
 before altering income, attack intervals or mission reinforcements.
+
+## Difficulty audit — 1.0.668
+
+Campaign enemies and the AI sharing the human house use different paths. The
+shared-house QuantBot switches to Custom growth rules inside a Campaign game;
+this is intentional so it can build the player's base instead of merely replace
+the enemy scenario's starting structures.
+
+Current shipped Vanilla configuration (user config overrides can differ):
+
+| Enemy setting | Easy | Medium | Hard | Brutal |
+| --- | --- | --- | --- | --- |
+| Committed ground-HUNT budget / army value | 25% | 40% | 50% | 60% |
+| Base army-value limit / initial army | 2.0x | 2.5x | 3.0x | 3.5x |
+| Readiness / army limit | 50% | 40% | 30% | 30% |
+| Offensive air target selection | No | No | Yes | Yes |
+| Initial refinery build-target minimum | None | None | 2 | 4 |
+
+Army limits have late-scenario exceptions: scenario 21+ Easy minimum 2,000, Medium
+minimum 4,000, Hard fixed 10,000. This is scenario numbering, not displayed level.
+All enemy difficulties share the tech-dependent 8–12-minute initial wait and
+90-second base subsequent attack check with 75–125% deterministic jitter.
+Readiness times the base army multiplier equals roughly the initial army value
+for every difficulty (1.0x,1.0x,0.9x,1.05x), reducing separation in first readiness.
+Scripted reinforcement schedules are unchanged across these choices.
+
+For a full-control partner on maps larger than 32x32 and up to 64x64, the configured
+army limits are 8,000 / 12,000 / 20,000 / 40,000. Enemy wave budgets do not apply to
+that partner. The dynamic Custom-mode harvester adjustment overwrites its
+configured per-difficulty cap with common ObjectData map limits, then applies
+Vanilla capacity, engine/explicit caps and spice availability. Do not advertise
+the initial 2/4/7/10 configuration as its sustained harvester caps.
+
+Combat differences also exist: Easy skips launcher/deviator kiting and the
+non-Easy damage-response retreat/repair logic; campaign Easy/Medium suppress
+that damage-triggered manual repair. Medium+ kites; Hard/Brutal have offensive
+air targets. Infantry quotas are 18%/15%/12%/10%. Most targeting, factory planning,
+Starport economy decisions and local defense planning are shared. Some legacy
+settings (`structureDefenders`, `harvesterDefenders`, `ornithopterAttackThreshold`)
+are loaded but not referenced by the current QuantBot implementation. No further
+difficulty tuning was made during this audit.
+
+Sources: `config/QuantBot Config.ini.default`, `src/players/QuantBotConfig.cpp`,
+`src/players/QuantBot.cpp` initialization/update, build, onDamage, attack and
+launchGroundHunt; `include/dunecity/VanillaEconomy.h`.
+
+## Human difficulty proposal — not implemented
+
+Stefan clarified that Easy self-play victory is not evidence that Easy is
+comfortable for a human. Treat it as a regression check for AI solvability;
+calibrate difficulty through human play at normal speed, including recovery from
+ordinary mistakes. Four Easy-9 wins do not establish beginner accessibility.
+
+Proposed first experiment: differentiate campaign enemy attack pressure using an
+alliance-wide active-assault budget, both unit count and combat value, plus a
+quiet interval after a wave ends. Existing per-house percentages permit multiple
+houses' waves to stack, and replacements can maintain pressure. Count scripted
+reinforcements that join the offensive toward the same pressure allowance.
+Defenders should still protect their bases, with bounded pursuit so a defensive
+response cannot bypass the assault limit.
+
+Initial values to test, not validated defaults: Easy 3–5 active attackers and
+2–3 minutes recovery; Medium 6–8 and 90–120 seconds; Hard 10–14 and 45–75 seconds;
+Brutal 16–24 and 20–40 seconds. Scale and validate by mission, with a combat-value
+cap preventing five expensive vehicles from being treated like five infantry.
+Easy should use one front and limited economy harassment; Hard/Brutal can use
+flanks, deliberate harvester raids, repair rotations and coordinated fronts.
+Keep useful economic behaviour (including necessary Starport purchases) intact.
+The opening grace period should be mission-aware and generous on Easy.
+
+Measure first attack, concurrent enemy attack strength, quiet time, base/economy
+survival after a lost engagement, and whether a human can rebuild a lost refinery
+or army. Test representative early, middle and late missions with humans at
+normal speed. No additional balance change was implemented in response to this
+design question.
