@@ -1,3 +1,38 @@
+## Campaign AI balance — 1.0.666 local candidate, 13 September 2026
+
+Worktree `/Users/stefan/Documents/projects/dunecity-campaign-controls`, branch
+`fix/campaign-ai-attack-limits`; original dev checkout remains untouched.
+Game-source commit `05979ae` implements campaign enemy ground-hunt budgets from
+existing QuantBot difficulty settings: Easy 25%, Medium 40%, Hard 50%, Brutal 60%.
+Already committed hunters consume the budget; deterministic selection preserves
+reserves. A lone cheapest unit may exceed an otherwise empty small-army budget.
+The full-control human partner remains uncapped. No save-format, economy,
+reinforcement, opening timer or skirmish changes.
+
+Stefan's acceptance target: Easy partner should win or hold through levels 4–5;
+Hard partner should beat Easy enemies on level 9. In two fixed-seed real-game
+simulation sets, Easy won levels 4/5 and Hard won level 9. The local browser
+level-4 Easy-versus-Easy run won in about 15 minutes. Its first enemy wave was
+8 units / 1,050 value, versus 31 / 4,360 in public 1.0.665. All six CTest targets,
+native Release and Emscripten builds pass. Native app signature and version 666
+were verified. `build/bin/dunecity.app` is rebuilt; installed app not replaced.
+
+See [campaign AI balance](docs/campaign-ai-balance.md) for measured outcomes,
+repeatable diagnostic commands, limitations and source-verified Dune Dynasty
+comparison. Dynasty gates team scripts on enemy contact and recruits small
+scenario-defined teams; its reinforcement schedule is separate. QuantBot still
+uses its existing 8–12 minute opening wait. Importing contact activation could
+start attacks sooner and is not part of the demonstrated size fix.
+
+**Release status:** 1.0.665 is merged and fully public (GitHub, SourceForge and
+browser), source `b7db7199455d9b756043118b7412c1d1e9359d06`. Browser artifacts were
+hash-verified. Website deployment `6042d82f9780e37474bbc7624e9b8f76ef817729` and
+anonymous feedback service are live; no server sudo/package install is needed.
+The Mac mini runner and caffeinate wrapper are restored; temporary Air builder
+label removed. Original branch protection restored after PR26 merge.
+**1.0.666 balance changes are committed locally, not pushed, merged, tagged or
+publicly deployed.** Earlier dated entries below describe historical states.
+
 ## Campaign controls release integration — 13 September 2026
 
 Version 1.0.665 combines campaign controls, map-selection repair, AI partner choices

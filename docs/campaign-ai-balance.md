@@ -1,0 +1,179 @@
+# Campaign attack balance — 1.0.666
+
+## Finding
+
+The September 2026 browser playtest reproduced excessive Easy campaign attacks.
+`QuantBotConfig` already specified attack fractions by difficulty, but
+`QuantBot::launchGroundHunt()` never read them and dispatched every eligible unit.
+
+Unless stated otherwise, samples used Vanilla, Harkonnen, a full-control
+QuantBot Easy partner and QuantBot Easy opponents, with no human building or combat commands. Times below
+are simulation time (3,750 cycles per minute), not accelerated wall-clock time.
+
+## Public 1.0.665 browser observations
+
+Source: `b7db7199455d9b756043118b7412c1d1e9359d06` at
+<https://dunelegacy.com/play/>. Browser speed was 4 ms per cycle for observation;
+the normal simulation conversion remains 16 ms per cycle.
+
+| Mission | Seed | Observation |
+| --- | --- | --- |
+| Level 1, SCENH001.INI | 1922307813 | Victory at 6.1 minutes, no friendly losses; no `ground_hunt` wave before victory. |
+| Level 4, SCENH008.INI | 486409243 | At 8.01 minutes, Ordos dispatched 31 units worth 4,360 credits: its entire army. The friendly army was worth 1,700 shortly before the attack. Defeat at 10.84 minutes. |
+
+Browser telemetry sessions were `1789276479975000-0` and
+`1789277223304000-0`. Local evidence is in
+`/tmp/dunecity-campaign-balance/baseline-level1.json` and
+`/tmp/dunecity-campaign-balance/baseline-level4.json`.
+
+## Updated browser verification
+
+Local Emscripten 1.0.666 at game-source commit `05979ae`, level 4, seed
+**501376578**, Easy partner and Easy enemies: **victory**, with the results
+screen showing 15 game minutes. At cycle 30,048 the first Ordos wave was 8 units /
+1,050 value against a 1,090 budget. The next wave was 6 units / 1,100 value against
+1,127. No human building or combat orders were issued. Session:
+`1789278977169999-0`; summary: `candidate-level4-browser.json` in the evidence
+folder. Browser seed differs from the controlled native pair.
+
+An additional public 1.0.665 level-9 browser sample (seed **257913089**, session
+`1789278590744999-0`) sent 10 Sardaukar units / 2,900 value and 17 Atreides units /
+4,750 value at minute 12. The friendly construction yard and factories were gone
+by the snapshot at 13.17 minutes, followed by the defeat briefing. Exact end
+cycle was not recovered from the buffered log. Evidence: `baseline-level9.json`.
+
+The post-mission statistics currently classify the full-control partner's
+production and kills under “Enemy”. Household telemetry, not those labels, was
+used for the balance comparison. This is a separate observed display defect.
+
+## Controlled real-game comparison
+
+The diagnostic harness runs the real native campaign, AI, economy, units and
+command loop with an isolated profile and fixed seed **486409243**. It suppresses
+the introductory UI and public analytics; it does not script victory or command
+the player's units. Both sides use the same setup in each pair. The 100% case is
+the new selection code with its budget set to the full army, providing a controlled
+comparison of attack size; it is not a separate build of historical 1.0.665.
+
+| Mission | Full-army budget | Easy 25% budget |
+| --- | --- | --- |
+| Level 4 | First wave 31 units / 4,360 value; defeat at cycle 40,427 (10.78 min) | First wave 8 units / 1,050 value against a 1,090 budget; victory at cycle 57,626 (15.37 min) |
+| Level 9 | First Atreides wave 18 units / 5,200 value; defeat at cycle 61,427 (16.38 min) | First Atreides wave 3 units / 1,300 value; still alive with construction yard and army at the 75,000-cycle (20 min) cutoff. Opponents also remained alive. |
+
+Level 9's first Sardaukar wave changed from 6 units / 2,000 value to 3 units /
+650 value. Their next limited wave sent only 200 value because 450 was already
+committed against a 650 budget. This exercises reserve accounting in the game.
+
+Evidence directories under `/tmp/dunecity-campaign-balance/`:
+`native-level4-unlimited-v2`, `native-level4-limited-v4`,
+`native-level9-unlimited`, and `native-level9-limited`. Each contains a
+`summary.json`, the full decision log, and the build/run logs. These measurements
+used the code committed as `05979ae`, while the working tree was still uncommitted;
+the harness records that distinction in its summaries.
+
+## Player difficulty targets
+
+Stefan clarified the acceptance target: an Easy partner should win or hold through
+campaign levels 4–5. An Easy partner need not win level 9, but a Hard partner
+should be able to beat Easy enemies there. The 25% enemy cap meets those targets
+in both tested simulation seeds:
+
+| Partner / level | Seed 486409243 | Seed 1 |
+| --- | --- | --- |
+| Easy / 4 | Victory, 15.37 min (57,626 cycles) | Victory, 14.99 min (56,204 cycles) |
+| Easy / 5 | Victory, 21.43 min (80,361 cycles) | Victory, 16.19 min (60,699 cycles) |
+| Hard / 9 | Victory, 25.49 min (95,578 cycles) | Victory, 25.33 min (94,984 cycles) |
+
+The Hard partner uses its actual Hard economy/combat settings; opponents remain
+Easy. Added evidence directories: `native-level5-easy`,
+`native-level9-hard-partner`, and `native-level{4,5,9}-seed1`.
+Reproduce Hard with `--partner-difficulty hard --level 9 --minutes 45`.
+These outcomes justify keeping the demonstrated 25% reduction while gathering
+human results, rather than weakening Easy further based on level 9 Easy-versus-Easy.
+
+## Dune Dynasty campaign activation and scripts
+
+Inspected the local upstream reference at commit
+`4469449c75f51388ad2725297a95f09a6c601905` (gameflorist/dunedynasty).
+It does not use QuantBot's universal opening timer:
+
+- [GameLoop_Team in src/team.c](https://github.com/gameflorist/dunedynasty/blob/4469449c75f51388ad2725297a95f09a6c601905/src/team.c)
+  skips team scripts while the house's `isAIActive` flag is false, then honors
+  each script's delay. New teams have zero initial script delay.
+- [Unit_Server_HouseUnitCount_Add in src/unit.c](https://github.com/gameflorist/dunedynasty/blob/4469449c75f51388ad2725297a95f09a6c601905/src/unit.c)
+  activates both houses when registering an opposing non-flying normal unit
+  (there is also a sandworm path). Thus ordinary ground contact activates the
+  main team machinery; it is not simply a fixed minute in every mission.
+- [Scenario_Load_Team in src/scenario.c](https://github.com/gameflorist/dunedynasty/blob/4469449c75f51388ad2725297a95f09a6c601905/src/scenario.c)
+  loads behavior, movement type, minimum and maximum members from `[TEAMS]`.
+  [Script_Team_AddClosestUnit](https://github.com/gameflorist/dunedynasty/blob/4469449c75f51388ad2725297a95f09a6c601905/src/script/team.c)
+  enforces the maximum while recruiting. The original `TEAM.EMC` in our local
+  `DUNE.PAK` contains staging/member checks, target selection, attack calls and
+  600-tick delay calls, rather than a mission-length initial sleep. Team loop
+  cadence also matters, so those delay constants are not exact wall-clock times.
+- Reinforcements have a separate scenario schedule. Dynasty loads their time as
+  `scenario_value * 6 + 1`, and the house loop decrements it every 600 game ticks
+  (normal speed is 60 ticks/second). Values approximately represent mission
+  minutes. They can introduce enemy contact and therefore activate main teams.
+
+The original **SCENARIO.PAK**, not the repository's altered loose scenario files,
+sets level 4 (`SCENH008.INI`) teams to 2–6 members by type, enemy-base troop drops
+at minute 11 and recurring Sardaukar drops from minute 20. Level 5
+(`SCENH011.INI`) uses 3–7-member teams and enemy-base drops at minutes 11 and 20.
+Level 9 (`SCENH022.INI`) starts recurring enemy-base drops at minutes 12 and 14.
+Multiple teams can operate concurrently; those per-team limits are not an
+aggregate limit for the entire enemy alliance.
+
+DuneCity loads `[TEAMS]` into House metadata and schedules the original
+reinforcements, but QuantBot does not consume the team definitions. Its opening
+attack timer is 8 minutes for tech levels up to 5, 9 at tech 6, 10 at tech 7 and
+12 at tech 8. Its on-damage `campaignAIAttackFlag` is written and saved but is not
+read as an attack gate. The 1.0.666 fix changes attack size only. Copying Dynasty's
+contact gate could actually start QuantBot attacks earlier when the partner
+scouts or attacks, so it should not be introduced as an assumed difficulty fix.
+A fuller scripted campaign mode is a separate behavior change, requiring explicit
+activation, team recruitment and save/load semantics, not just a longer timer.
+
+## Behavior implemented
+
+| Enemy difficulty | Maximum committed ground-combat value |
+| --- | --- |
+| Easy | 25% |
+| Medium | 40% |
+| Hard | 50% |
+| Brutal | 60% |
+
+The existing configuration values now govern campaign enemy hunts. Units already
+hunting consume the budget, selection is deterministic by object ID, and smaller
+units can fit when a more expensive one cannot. If no unit fits and nobody is
+already committed, one cheapest available unit may exceed the budget so a small
+army can still attack. Defend continues not to launch attacks.
+
+This cap applies to actual campaign enemies. The player's full-control partner,
+skirmish/custom modes, base defence, scripted reinforcements, aircraft, attack
+timing and economy rules retain their existing behavior. Save data is unchanged.
+Telemetry records the eligible army value, committed value, percentage and budget
+alongside the number and value of units dispatched.
+
+## Reproduction and limits
+
+Build the native macOS Ninja target, then run each case into a new output folder:
+
+```sh
+python3 tests/ai/run-campaign-balance.py --level 4 --seed 486409243 \
+  --attack-percent 25 --minutes 20 --output-dir /tmp/campaign-level4-25
+python3 tests/ai/run-campaign-balance.py --level 4 --seed 486409243 \
+  --attack-percent 100 --minutes 20 --output-dir /tmp/campaign-level4-100
+```
+
+Use `--level 9` for the late-game pair. The harness links a test-only main against
+the existing native game objects; no diagnostic entry point enters the shipped
+game. All six CTest targets pass, including difficulty scaling, committed waves,
+mixed unit costs, one-unit exceptions and deterministic selection. Native and
+Emscripten Release builds also pass.
+
+These are targeted samples, not a measured human win rate or an exhaustive check
+of all houses, mods and seeds. The Easy partner automates economy and combat and
+may outperform or make different mistakes from a beginner. The smaller waves
+address the demonstrated pressure spike; further tuning should use human trials
+before altering income, attack intervals or mission reinforcements.
