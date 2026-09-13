@@ -13,8 +13,23 @@ The actual eight-tank fixture passes: 2,399 is below readiness, 2,400 sends exac
 four tanks, opening is respected, and repeated checks cannot top up the wave.
 The earlier 671 batch was interrupted on this refinement; do not describe its
 partial results as final-672 validation. The 671 web optimizer was also stopped.
-Final native fixtures, full-match matrix and browser build are being rerun.
-No public push or deployment has occurred.
+Final native defense/pressure/pacing fixtures pass, as do all six CTest targets,
+dependency audit and native signature verification. The clean-source `27f14ff`
+matrix completed 22 matches: 17 wins, four 60-minute time limits, one defeat.
+Easy/Easy levels 4,5,9 and Hard/Easy levels 8,9 won both seeds (1 and 42).
+Brutal/Hard levels 6 and 7 won both seeds; level 8 won seed 1 but timed out seed
+42; level 9 timed out both. Medium/Medium level 9 seed 42 won, Hard/Hard timed
+out, Brutal/Brutal lost. The reported Atreides level-4 settings reproduced in
+ordinary campaign won at 15.94 minutes; Easy bought no extra workers and sent
+four troops at 13.00 minutes. This is not a co-op transport reproduction.
+
+The late time limits expose an unchanged human-partner readiness problem:
+Brutal can wait for 16,000 army value after spice exhaustion (level 8 seed 42
+had 15,080 and no enemy combat army left), Hard for 8,000 (7,950 remaining in
+Hard/Hard level 9). These are not proof of healthy stalemates or human balance.
+See `docs/campaign-ai-validation-672.md` and the full evidence under
+`/tmp/dunecity-campaign-balance/672-validation`. Browser build/visible mission
+validation remains pending at this checkpoint. No public push or deployment.
 
 ## Campaign worker caps and small-wave readiness — 1.0.671 local, 13 September 2026
 

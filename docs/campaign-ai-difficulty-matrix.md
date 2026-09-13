@@ -16,7 +16,7 @@ below remains the design history, not the current release status.
 | Maximum sortie duration before withdrawal | 150 seconds | 180 seconds | 240 seconds | 300 seconds |
 | Human partner's home reserve by army value | 25% | 15% | 10% | 5% |
 
-Campaign enemy readiness is the smaller of its legacy army threshold and the
+Campaign enemy readiness is the smaller of its legacy army threshold and
 twice the combined sortie value cap. This lets Easy retain a defensive reserve without first
 amassing an oversized reserve; failed readiness checks retry within 15 game
 seconds. Turn selection uses the same criterion. The opening/recovery gates
@@ -66,17 +66,15 @@ above; Easy full partners can now use the normal damage-triggered repair path.
 The game menu describes these implemented behaviors. Further expansion/micro
 ideas in the proposal are future tuning, not a claim of a new economy planner.
 
-Validation: all six CTest targets pass; real-engine pressure/save/legacy-load/
-reinforcement/recovery/Windtrap fixture passes; menu rendered at all four tiers.
-Final-source level-9 seed 486409243: Easy partner/Easy enemies won in 23.91 game
-minutes, Hard/Hard won in 28.96. Both continuously assert shared limits. These
-are AI regression samples, not proof of human difficulty. Logs and screenshots:
-`/tmp/dunecity-campaign-balance/{pressure,easy9,hard-hard9}-669-verified`.
-
-Full Emscripten Release build also passed. The local browser preview serves
-1.0.669 from game-source commit `81ff90a`; all seven served artifact hashes match
-its manifest. A fresh browser load displayed v1.0.669 and opened the updated
-campaign menu successfully. This candidate has not been pushed or publicly deployed.
+Validation on clean 672 source `27f14ff`: all six CTest targets and the real-engine
+defense, pressure and pacing fixtures pass. Twenty-two full native matches
+completed with 17 wins, four time limits and one defeat. Easy/Easy levels 4,5,9
+and Hard/Easy levels 8,9 won both seeds. Late Hard/Brutal partner thresholds can
+still stall an army after spice exhaustion; these time limits do not establish
+healthy balance. See [the full results](campaign-ai-validation-672.md) for the
+matrix, exact conditions and limitations. Final 672 browser validation remains
+pending; the preview still serves 669 until the new build is packaged. This
+candidate has not been pushed or publicly deployed.
 
 ## Original audit and proposal
 
