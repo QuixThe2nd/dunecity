@@ -77,7 +77,7 @@ void runCampaignPacingProbe(Game& game) {
         if(building->getOwner()->getTeamID()!=partner->getHouse()->getTeamID())
             building->setVisible(partner->getHouse()->getTeamID(),false);
     for(int y=0;y<currentGameMap->getSizeY();++y)
-        for(int x=0;x<currentGameMap->getSizeX();++x)currentGameMap->getTile(x,y)->explored.reset();
+        for(int x=0;x<currentGameMap->getSizeX();++x)for(auto& explored:currentGameMap->getTile(x,y)->explored)explored=false;
     partner->doMove2Pos(scout,scout->getX(),scout->getY(),false);
     partner->doSetAttackMode(scout,AREAGUARD);
     require(!partner->campaignControlsUnit(scout),"Home defender was reassigned to scouting");
