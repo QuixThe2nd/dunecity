@@ -160,6 +160,12 @@ const EXPECTED_WEBRTC_CONSTANTS = {
   DUNECITY_WEBRTC_STATE_FAILED: 3,
 };
 
+const EXPECTED_WEBRTC_HELPERS = [
+  'resolveP2pkit',
+  'createDuneCitySignallingChannel',
+  'isP2pkitDialectMessage',
+];
+
 function loadGlueLibrary() {
   global.mergeInto = (target, lib) => Object.assign(target, lib);
   global.LibraryManager = { library: {} };
@@ -254,11 +260,12 @@ test('emitted symbol retention covers every DUNECITY_WEBRTC_* reference and fail
   assert.ok(retained.has('$createDuneCityWebRtc'), 'factory must be retained through __deps');
   assert.ok(retained.has('$webrtcInit'), '$webrtcInit must be retained through __deps');
 
-  // The deps list is the retention guarantee: exactly the constant set.
-  assert.deepEqual(
-    [...lib.$createDuneCityWebRtc__deps].sort(),
-    Object.keys(EXPECTED_WEBRTC_CONSTANTS).map((name) => `$${name}`).sort(),
-  );
+  // The deps list is the retention guarantee: wire constants plus p2pkit helpers.
+  const expectedDeps = [
+    ...Object.keys(EXPECTED_WEBRTC_CONSTANTS).map((name) => `$${name}`),
+    ...EXPECTED_WEBRTC_HELPERS.map((name) => `$${name}`),
+  ].sort();
+  assert.deepEqual([...lib.$createDuneCityWebRtc__deps].sort(), expectedDeps);
 
   const emitted = emitRetainedLibrary(lib, retained);
   const referenced = referencedConstants(emitted.functionCode);
