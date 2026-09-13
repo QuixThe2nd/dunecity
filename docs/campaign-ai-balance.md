@@ -266,10 +266,12 @@ configured per-difficulty cap with common ObjectData map limits, then applies
 Vanilla capacity, engine/explicit caps and spice availability. Do not advertise
 the initial 2/4/7/10 configuration as its sustained harvester caps.
 
-Combat differences also exist: Easy skips launcher/deviator kiting and the
-non-Easy damage-response retreat/repair logic; campaign Easy/Medium suppress
-that damage-triggered manual repair. Medium+ kites; Hard/Brutal have offensive
-air targets. Infantry quotas are 18%/15%/12%/10%. Most targeting, factory planning,
+Combat differences also exist: Easy has reactive on-hit launcher/deviator and
+light-raider evasion, but skips the proactive ranged spacing and non-Easy
+damage-response rotation. Campaign Easy/Medium suppress that damage-triggered
+manual vehicle repair; other structure/RETREAT repair paths still exist.
+Medium+ adds proactive spacing; Hard/Brutal have offensive air targets.
+Infantry quotas are 18%/15%/12%/10%. Most targeting, factory planning,
 Starport economy decisions and local defense planning are shared. Some legacy
 settings (`structureDefenders`, `harvesterDefenders`, `ornithopterAttackThreshold`)
 are loaded but not referenced by the current QuantBot implementation. No further
@@ -280,6 +282,12 @@ Sources: `config/QuantBot Config.ini.default`, `src/players/QuantBotConfig.cpp`,
 launchGroundHunt; `include/dunecity/VanillaEconomy.h`.
 
 ## Human difficulty proposal — not implemented
+
+The complete [current/proposed enemy and partner matrix](campaign-ai-difficulty-matrix.md)
+extends this proposal with Stefan's Easy/Medium single-house assault requirement
+and demand-covering Windtrap construction. General power is currently disabled
+for default Vanilla campaigns, so construction and power consequences are
+separate design decisions.
 
 Stefan clarified that Easy self-play victory is not evidence that Easy is
 comfortable for a human. Treat it as a regression check for AI solvability;

@@ -1,3 +1,16 @@
+## Campaign difficulty design matrix — 13 September 2026
+
+`docs/campaign-ai-difficulty-matrix.md` records current and proposed behaviour
+for all four difficulties, separately for enemies and the full QuantBot sharing
+the human house. No balance implementation or deployment accompanies this doc.
+Stefan requests Easy/Medium enemies take turns attacking and build Windtraps to
+cover demand. Proposal adds combined assault budgets/recovery intervals; Hard
+may overlap two houses, Brutal all. Trial sizes/timings remain unvalidated.
+Vanilla general power is currently disabled for humans and AI alike; building
+Windtraps does not itself restore shortage consequences. Corrected prior audit:
+Easy has reactive on-hit evasion, but lacks proactive ranged spacing. Structure
+and RETREAT repairs mean Easy/Medium do not lack every repair path.
+
 ## Campaign score attribution — 1.0.668 local, 13 September 2026
 
 Game-source commit `f3c5cd1` on `fix/campaign-ai-attack-limits` fixes
