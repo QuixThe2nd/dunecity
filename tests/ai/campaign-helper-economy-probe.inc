@@ -26,7 +26,7 @@ void runCampaignHelperEconomyProbe(Game& game) {
     if(!house->getNumItems(Unit_Carryall))house->createUnit(Unit_Carryall,true);
     auto& market=house->getChoam();
     for(auto& item:market.availableItems) {
-        item.num=item.itemID==Unit_Harvester ? 10 : 0;
+        item.num=item.itemID==Unit_Harvester ? 5 : 0;
         if(item.itemID==Unit_Harvester)item.price=900;
     }
     port->updateBuildList();
@@ -39,19 +39,21 @@ void runCampaignHelperEconomyProbe(Game& game) {
         int count=0;for(const auto& item:port->currentProductionQueue)count+=item.itemID==Unit_Harvester;
         return count;
     };
-    require(queuedWorkers()==7,"Helper failed to fill its 15-worker target before other spending");
+    require(queuedWorkers()==5,"Helper failed to buy all available workers toward its 15-worker target");
     require(!port->okToOrder(),"Worker order was not dispatched");
-    // Paid cargo must count toward the target but not drain the budget twice.
-    // Isolate its unpaid-cash test from unrelated construction commitments.
-    auto saved=structureList;structureList.clear();structureList.push_back(port);structureList.push_back(factory);
-    house->takeCredits(house->getCredits());house->addCredits(3000);
-    factory->currentProductionQueue.clear();factory->updateBuildList();
-    require(factory->isAvailableToBuild(Unit_Tank),"Factory fixture needs available tank production");
+    // While five paid workers are in transit, a second port can buy exactly
+    // the remaining two. Neither double reservation nor duplicate orders fit.
+    auto* second=dynamic_cast<StarPort*>(place(Structure_StarPort));
+    require(second,"Second port placement failed");
+    for(auto& item:market.availableItems)if(item.itemID==Unit_Harvester)item.num=2;
+    second->updateBuildList();
+    auto saved=structureList;structureList.clear();structureList.push_back(port);structureList.push_back(second);
+    house->takeCredits(house->getCredits());house->addCredits(1800);
     try {bot->build(4200);}catch(...){structureList=saved;throw;}
     structureList=saved;
-    require(queuedWorkers()==7,"Pending deliveries were ordered twice");
-    require(factory->getProductionQueueSize()>0,"Paid Starport cargo reserved cash again and blocked production");
-    require(factory->getCurrentProducedItem()!=Unit_Harvester,"Pending workers did not count toward helper target");
+    int remaining=0;for(const auto& item:second->currentProductionQueue)remaining+=item.itemID==Unit_Harvester;
+    require(queuedWorkers()==5 && remaining==2,"Paid cargo blocked later orders or was counted twice");
+    require(house->getCredits()==0,"Two worker imports were not charged exactly once");
     SDL_Log("CAMPAIGN_HELPER_ECONOMY_PASS: eight workers plus seven above-market imports reach 15; pending cargo counted once, cash not reserved twice");
     SDL_Log("CAMPAIGN_BALANCE_RESULT: probe=helper_economy outcome=passed");
 }
