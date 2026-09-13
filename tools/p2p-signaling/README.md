@@ -122,6 +122,18 @@ informational, and they are shaped so that nothing can be misread as a gameplay 
       `is_link()` check would accept a symlinked directory as a real one, so the link check comes
       first everywhere.
 
+## Lobby announcements
+
+After a host seats successfully, and after an authenticated host commits the match
+phase, the optional trusted local `dunecityP2PNotifyLobby(kind, fields)` hook receives
+only mode, visibility, host display name, version and player counts plus an opaque
+log ID. It receives no invitation code, grant, control/session token, SDP or address.
+Grant recovery and repeated match-phase requests do not emit another event. Hook
+failure cannot undo admission/start. The core service still makes no outbound
+requests; the website deployment owns Discord configuration, queuing and delivery.
+Both public and private lobbies are announced, with private invitations omitted.
+No map or mod is claimed: those stay between game peers and are unavailable here.
+
 ## Analytics
 
 Truthful, session-only lifecycle events, appended as bounded JSONL to `analytics.jsonl` in the
