@@ -4308,25 +4308,32 @@ void QuantBot::build(int militaryValue) {
                 if (queueCampaignWindtrap(0)) continue;
 
                 // Experienced campaign controllers establish/replace one repair
-                // yard before optional expansion. This applies to both enemy
-                // rebuild mode and full partners, including Brutal's build path.
-                // Existing or queued yards count; ordinary prerequisites, cash
-                // and safe placement remain mandatory.
+                // yard before optional expansion, including its missing prerequisites.
+                // Count queued structures and preserve normal costs/placement rules.
                 if (isCampaignGameType(currentGame->gameType) && difficulty>=Difficulty::Hard
-                    && currentGame->techLevel>4 && pBuilder->getItemID()==Structure_ConstructionYard
+                    && data[Structure_RepairYard][houseID].enabled
+                    && currentGame->techLevel>=data[Structure_RepairYard][houseID].techLevel
+                    && pBuilder->getItemID()==Structure_ConstructionYard
                     && !pBuilder->isUpgrading() && pBuilder->getProductionQueueSize()==0
                     && itemCount[Structure_RepairYard]==0
                     && getHouse()->getNumItems(Structure_Refinery)>0
                     && getHouse()->getNumItems(Unit_Harvester)>0
-                    && (getHouse()->hasHeavyFactory() || getHouse()->getNumItems(Structure_StarPort)>0)
-                    && money>=data[Structure_RepairYard][houseID].price+300
-                    && pBuilder->isAvailableToBuild(Structure_RepairYard)) {
-                    const Coord site=findPlaceLocation(Structure_RepairYard);
-                    if (site.isValid() && produceItemWithLogging(Structure_RepairYard,__LINE__,"campaign_repair_capacity")) {
-                        builderPlaceLocations[pBuilder->getObjectID()].push_back(site);
-                        reservedStructures[pBuilder->getObjectID()]={Structure_RepairYard,site};
-                        ++itemCount[Structure_RepairYard];money-=data[Structure_RepairYard][houseID].price;
-                        continue;
+                    && (getHouse()->hasHeavyFactory() || getHouse()->getNumItems(Structure_StarPort)>0)) {
+                    Uint32 repairStep=Structure_RepairYard;
+                    if (!pBuilder->isAvailableToBuild(repairStep)) {
+                        repairStep=NONE_ID;
+                        for (int i=Structure_FirstID;i<=Structure_LastID;++i)
+                            if (data[Structure_RepairYard][houseID].prerequisiteStructuresSet[i]
+                                && itemCount[i]==0 && pBuilder->isAvailableToBuild(i)) {repairStep=i;break;}
+                    }
+                    if (repairStep!=NONE_ID && money>=data[repairStep][houseID].price+300) {
+                        const Coord site=findPlaceLocation(repairStep);
+                        if (site.isValid() && produceItemWithLogging(repairStep,__LINE__,"campaign_repair_capacity")) {
+                            builderPlaceLocations[pBuilder->getObjectID()].push_back(site);
+                            reservedStructures[pBuilder->getObjectID()]={repairStep,site};
+                            ++itemCount[repairStep];money-=data[repairStep][houseID].price;
+                            continue;
+                        }
                     }
                 }
 

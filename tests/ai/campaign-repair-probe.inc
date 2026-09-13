@@ -11,19 +11,39 @@ void runCampaignRepairProbe(Game& game) {
     for(auto* bot:{partner,enemy}) {
         require(bot->difficulty>=QuantBot::Difficulty::Hard,"Run repair probe with Hard or Brutal controllers");
         auto* house=const_cast<House*>(bot->getHouse());
+        auto place=[&](Uint32 item) {
+            for(int y=1;y<currentGameMap->getSizeY()-4;y+=4)
+                for(int x=1;x<currentGameMap->getSizeX()-4;x+=4) {
+                    bool clear=true;
+                    for(int dy=0;dy<3;++dy)for(int dx=0;dx<3;++dx)
+                        if(currentGameMap->getTile(x+dx,y+dy)->hasAGroundObject())clear=false;
+                    if(clear && house->placeStructure(NONE_ID,item,x,y,true,true))return;
+                }
+            throw std::runtime_error("No fixture building site");
+        };
+        for(auto item:{Structure_WindTrap,Structure_Refinery,Structure_HeavyFactory,Structure_LightFactory})
+            if(!house->getNumItems(item))place(item);
+        if(!house->getNumItems(Unit_Harvester))house->createUnit(Unit_Harvester,true);
         auto originalStructures=structureList;
         for(auto* building:originalStructures)
-            if(building->getOwner()==house && building->getItemID()==Structure_RepairYard)
-                building->destroy();
+            if(building->getOwner()==house && (building->getItemID()==Structure_RepairYard
+                || building->getItemID()==Structure_Radar))building->destroy();
         BuilderBase* yard=nullptr;
         for(auto* building:structureList)
             if(building->getOwner()==house && building->getItemID()==Structure_ConstructionYard)
                 {yard=dynamic_cast<BuilderBase*>(building);break;}
         require(yard,"Missing fixture construction yard");
         yard->updateBuildList();
-        require(yard->isAvailableToBuild(Structure_RepairYard),"Repair prerequisites missing in fixture");
+        require(yard->isAvailableToBuild(Structure_Radar),"Radar prerequisites missing in fixture");
         house->addCredits(10000);bot->lastCalculatedSpice=100000;
         if(bot==partner) bot->gameMode=QuantBot::GameMode::Custom;
+        bot->build(4000);
+        require(yard->getCurrentProducedItem()==Structure_Radar,"Missing repair prerequisite was not prioritized");
+        yard->doCancelItem(Structure_Radar);
+        bot->builderPlaceLocations.erase(yard->getObjectID());
+        bot->reservedStructures.erase(yard->getObjectID());
+        place(Structure_Radar);yard->updateBuildList();
+        require(yard->isAvailableToBuild(Structure_RepairYard),"Repair prerequisites still missing");
         bot->build(4000);
         require(yard->getCurrentProducedItem()==Structure_RepairYard,"Missing repair yard was not prioritized");
         bot->build(4000);
