@@ -1,6 +1,6 @@
 // Diagnostic-only real construction queue checks for both campaign roles.
 void runCampaignRepairProbe(Game& game) {
-    auto require=[](bool ok,const char* reason){if(!ok)throw std::runtime_error(reason);};
+    auto require=[](bool ok,const char* reason){if(!ok){SDL_Log("CAMPAIGN_REPAIR_FAIL: %s",reason);throw std::runtime_error(reason);}};
     QuantBot* partner=nullptr;QuantBot* enemy=nullptr;
     for(int h=0;h<NUM_HOUSES;++h) if(auto* house=game.getHouse(h))
         for(const auto& player:house->getPlayerList()) if(auto* bot=dynamic_cast<QuantBot*>(player.get())) {
