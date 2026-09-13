@@ -6,7 +6,7 @@ The campaign engine/AI is unchanged from the 71-scenario 680 validation.
 Rebuilding native/browser and rerunning the combined menu tests before merge.
 The separate 1.0.681 publication is not cancelled.
 
-## Original custom map browser restored — 1.0.681 local, 14 September 2026
+## Original custom map browser restored — 1.0.681 published, 14 September 2026
 
 Stefan correctly reported that restoring the classic player layout had left
 custom map selection reduced to a dropdown. The original CustomGameMenu was
@@ -25,10 +25,33 @@ The native probe now checks map-browser presence and rendering at 640×480,
 roster round trip. All seven CTest groups pass. The final isolated browser build passes dependency and bundled-mod audits.
 Interactive checks confirm Custom Game opens the full browser, MP Maps filters
 the list, preview follows selection, Online carries into Players, and Browse
-Maps/Escape preserve the selected map and Atreides roster choice. Publication
-outcome must be verified separately. Do not interrupt any running human game; use a
-separate preview. Version 1.0.680 belongs to the independent campaign worktree
-and is not included in this change.
+Maps/Escape preserve the selected map and Atreides roster choice.
+
+PR 34 merged as 72ef00f4e10509c86080ab2c0627e47e1748a6ca, tagged v1.0.681.
+Stable release 34763123495 passed all tests and Windows/Linux/macOS/Emscripten
+builds. All six GitHub packages were downloaded and verified. The CI Mac DMG
+reports 681, passes strict signature verification and includes both mods.
+SourceForge run 34764258867 verified all uploads, source branch/tag and three
+platform defaults. The exact stable-run browser artifact was packaged with
+production signaling; redundant browser rebuild 34764258860 was cancelled.
+
+Website 154366c84ad94fb1c39eb29f9ddc4a64595e7e2b publishes that package and the
+restored-map-browser guide. Deploy 34764315624, Web security 34764315629 and
+CodeQL 34764315627 passed. Live build.json reports 681/source 72ef00f; all seven
+artifact hashes match. Live payload verification confirms 769 Tornie entries,
+six Dune2R files and 38,455,774 data bytes. Signaling health is status=ok/protocol=1.
+The public browser opens the original map list; Online -> Players -> Create Lobby
+successfully creates a private lobby with the chosen Habbanya-Penny map, preview
+and invite code. Leaving that test lobby and Browse Maps retain the selection.
+The exact CI browser package also starts an offline Habbanya-Sammy custom game.
+
+Evidence: ../outputs/dunecity-menu-acceptance/live-681/verification.json,
+release-681-assets, sourceforge-681.log and ci-681-macos-verification.json.
+Different-network two-device multiplayer and multiplayer save/resume remain
+unverified in this release pass. No human game was interrupted or installed app
+replaced. The independent campaign work is proceeding as 1.0.682; it incorporates
+this fix and must preserve the map-browser guide when publishing its website.
+
 ## 2026-09-14 — 1.0.680 validation complete; publication in progress
 
 71 native scenarios resolved naturally: 46 wins, 25 losses, no crash/timeout.
