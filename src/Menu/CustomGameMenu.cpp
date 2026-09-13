@@ -17,6 +17,7 @@
 
 #include <Menu/CustomGameMenu.h>
 #include <Menu/CustomGamePlayers.h>
+#include <Menu/PlaySetup.h>
 
 #include <FileClasses/GFXManager.h>
 #include <FileClasses/TextManager.h>
@@ -48,8 +49,9 @@
 #include <vector>
 
 
-CustomGameMenu::CustomGameMenu(bool multiplayer, bool LANServer)
- : MenuBase(), bMultiplayer(multiplayer), bLANServer(LANServer), currentGameOptions(effectiveGameOptions) {
+CustomGameMenu::CustomGameMenu(bool multiplayer, bool LANServer, CustomPlaySetup* newSetup)
+ : MenuBase(), setup(newSetup), bMultiplayer(multiplayer), bLANServer(LANServer),
+   currentGameOptions(newSetup ? newSetup->rules : effectiveGameOptions) {
     // set up window
     SDL_Texture *pBackground = pGFXManager->getUIGraphic(UI_MenuBackground);
     setBackground(pBackground);
@@ -59,10 +61,30 @@ CustomGameMenu::CustomGameMenu(bool multiplayer, bool LANServer)
 
     windowWidget.addWidget(&mainVBox, Point(24,23), Point(getRendererWidth() - 48, getRendererHeight() - 32));
 
-    captionLabel.setText(bMultiplayer ? (bLANServer ? _("LAN Game") : _("Internet Game")) : _("Custom Game"));
+    captionLabel.setText(setup ? _("Custom Game — Choose Map") : bMultiplayer ? (bLANServer ? _("LAN Game") : _("Internet Game")) : _("Custom Game"));
     captionLabel.setAlignment(Alignment_HCenter);
     mainVBox.addWidget(&captionLabel, 24);
     mainVBox.addWidget(VSpacer::create(24));
+    if(setup) {
+        connectionChoice.addEntry(_("Offline"));
+        connectionChoice.addEntry(_("Online"));
+        connectionChoice.setSelectedItem(setup->online ? 1 : 0);
+        connectionChoice.setOnSelectionChange([this](bool) {
+            const bool online = connectionChoice.getSelectedIndex() == 1;
+            visibilityChoice.setVisible(online);
+            visibilityChoice.setEnabled(online);
+        });
+        connectionRow.addWidget(&connectionChoice, 130);
+        connectionRow.addWidget(HSpacer::create(8));
+        visibilityChoice.addEntry(_("Private - invite code"));
+        visibilityChoice.addEntry(_("Public - anyone"));
+        visibilityChoice.setSelectedItem(setup->publicGame ? 1 : 0);
+        visibilityChoice.setVisible(setup->online);
+        visibilityChoice.setEnabled(setup->online);
+        connectionRow.addWidget(&visibilityChoice, 180);
+        connectionRow.addWidget(Spacer::create());
+        mainVBox.addWidget(&connectionRow, 28);
+    }
 
     mainVBox.addWidget(Spacer::create(), 0.05);
 
@@ -112,12 +134,12 @@ CustomGameMenu::CustomGameMenu(bool multiplayer, bool LANServer)
 
     leftVBox.addWidget(VSpacer::create(10));
 
-    multiplePlayersPerHouseCheckbox.setText(_("Multiple players per house"));
-    multiplePlayersPerHouseCheckbox.setChecked(settings.general.multiplePlayersPerHouse);
+    multiplePlayersPerHouseCheckbox.setText(setup ? _("Shared house") : _("Multiple players per house"));
+    multiplePlayersPerHouseCheckbox.setChecked(setup ? setup->sharedHouse : settings.general.multiplePlayersPerHouse);
     multiplePlayersPerHouseCheckbox.setOnClick(std::bind(&CustomGameMenu::onMultiplePlayersPerHouseChange, this));
     optionsHBox.addWidget(&multiplePlayersPerHouseCheckbox);
     optionsHBox.addWidget(Spacer::create());
-    gameOptionsButton.setText(_("Game Options..."));
+    gameOptionsButton.setText(setup ? _("Game Rules") : _("Game Options..."));
     gameOptionsButton.setOnClick(std::bind(&CustomGameMenu::onGameOptions, this));
     optionsHBox.addWidget(&gameOptionsButton, 140);
 
@@ -157,7 +179,7 @@ CustomGameMenu::CustomGameMenu(bool multiplayer, bool LANServer)
     
     // Populate mod dropdown
     availableMods = ModManager::instance().listMods();
-    std::string activeModName = ModManager::instance().getActiveModName();
+    std::string activeModName = setup && !setup->mods.empty() ? setup->mods[setup->mod].name : ModManager::instance().getActiveModName();
     int activeIndex = 0;
     for (size_t i = 0; i < availableMods.size(); i++) {
         modDropDown.addEntry(availableMods[i].displayName);
@@ -168,6 +190,19 @@ CustomGameMenu::CustomGameMenu(bool multiplayer, bool LANServer)
     if (!availableMods.empty()) {
         modDropDown.setSelectedItem(activeIndex);
     }
+    if(setup) modDropDown.setOnSelectionChange([this](bool interactive) {
+        const int choice = modDropDown.getSelectedIndex();
+        if(!interactive || choice < 0 || choice >= static_cast<int>(availableMods.size())) return;
+        auto& manager = ModManager::instance();
+        const auto previous = manager.getActiveModName();
+        if(previous == availableMods[choice].name) return;
+        if(manager.setActiveMod(availableMods[choice].name)) {
+            currentGameOptions = effectiveGameOptions = manager.loadEffectiveGameOptions(settings.gameOptions);
+        } else {
+            for(size_t i = 0; i < availableMods.size(); ++i)
+                if(availableMods[i].name == previous) modDropDown.setSelectedItem(static_cast<int>(i));
+        }
+    });
     
     rightVBox.addWidget(Spacer::create());
 
@@ -186,22 +221,36 @@ CustomGameMenu::CustomGameMenu(bool multiplayer, bool LANServer)
 
     buttonHBox.addWidget(Spacer::create(), 0.25);
     loadButton.setText(_("Load"));
-    loadButton.setVisible(bMultiplayer);
-    loadButton.setEnabled(bMultiplayer);
+    loadButton.setVisible(bMultiplayer && !setup);
+    loadButton.setEnabled(bMultiplayer && !setup);
     loadButton.setOnClick(std::bind(&CustomGameMenu::onLoad, this));
     buttonHBox.addWidget(&loadButton, 0.175);
     buttonHBox.addWidget(Spacer::create(), 0.25);
 
     buttonHBox.addWidget(Spacer::create(), 0.0625);
 
-    nextButton.setText(_("Next"));
+    nextButton.setText(setup ? _("Players") : _("Next"));
     nextButton.setOnClick(std::bind(&CustomGameMenu::onNext, this));
     buttonHBox.addWidget(&nextButton, 0.1);
     buttonHBox.addWidget(HSpacer::create(90));
 
     // Default tab: "All Maps" in multiplayer (host gets every option),
     // "SP Maps" in single-player (matches the original behaviour).
-    onMapTypeChange(bMultiplayer ? 4 : 0);
+    onMapTypeChange(setup ? setup->mapCategory : bMultiplayer ? 4 : 0);
+    if(setup && !setup->maps.empty()) {
+        const auto& selected = setup->maps[setup->map];
+        auto restoreSelection = [&]() {
+            for(int i = 0; i < mapList.getNumEntries(); ++i) {
+                const auto& dir = currentMapDirectory.empty() ? mapEntryDirectories_[i] : currentMapDirectory;
+                if(strToLower(dir + mapList.getEntry(i) + ".ini") == strToLower(selected)) {
+                    mapList.setSelectedItem(i);
+                    return true;
+                }
+            }
+            return false;
+        };
+        if(!restoreSelection()) { onMapTypeChange(4); restoreSelection(); }
+    }
 }
 
 CustomGameMenu::~CustomGameMenu()
@@ -237,6 +286,7 @@ void CustomGameMenu::onChildWindowClose(Window* pChildWindow) {
 }
 
 void CustomGameMenu::onMultiplePlayersPerHouseChange() {
+    if(setup) return; // Local setup is committed with Players, not as a global preference.
     // Remember the choice across games and restarts.
     settings.general.multiplePlayersPerHouse = multiplePlayersPerHouseCheckbox.isChecked();
     INIFile config(getConfigFilepath());
@@ -249,6 +299,29 @@ void CustomGameMenu::onMultiplePlayersPerHouseChange() {
 void CustomGameMenu::onNext()
 {
     if(mapList.getSelectedIndex() < 0) {
+        return;
+    }
+
+    if(setup) {
+        auto path = getSelectedMapPath();
+        getCaseInsensitiveFilename(path);
+        const auto selected = std::find(setup->maps.begin(), setup->maps.end(), path);
+        if(selected == setup->maps.end()) return;
+        const int mapIndex = static_cast<int>(selected - setup->maps.begin());
+        int selectedMod = setup->mod;
+        const int choice = modDropDown.getSelectedIndex();
+        if(choice >= 0 && choice < static_cast<int>(availableMods.size())) {
+            for(size_t i = 0; i < setup->mods.size(); ++i)
+                if(setup->mods[i].name == availableMods[choice].name) selectedMod = static_cast<int>(i);
+        }
+        if(mapIndex != setup->map || selectedMod != setup->mod) setup->players = ChangeEventList{};
+        setup->map = mapIndex;
+        setup->mod = selectedMod;
+        setup->online = connectionChoice.getSelectedIndex() == 1;
+        setup->publicGame = visibilityChoice.getSelectedIndex() == 1;
+        setup->sharedHouse = multiplePlayersPerHouseCheckbox.isChecked();
+        setup->rules = currentGameOptions;
+        quit(MENU_SETUP_PLAYERS);
         return;
     }
 
@@ -311,6 +384,7 @@ std::string CustomGameMenu::getSelectedMapPath() const
 
 void CustomGameMenu::onMapTypeChange(int buttonID)
 {
+    if(setup) setup->mapCategory = buttonID;
     allMapsButton           .setToggleState(buttonID == 4);
     singleplayerMapsButton  .setToggleState(buttonID == 0);
     singleplayerUserMapsButton.setToggleState(buttonID == 1);
@@ -389,6 +463,7 @@ void CustomGameMenu::onMapTypeChange(int buttonID)
         }
     }
 
+    nextButton.setEnabled(mapList.getNumEntries() > 0);
     if(mapList.getNumEntries() > 0) {
         mapList.setSelectedItem(0);
     } else {

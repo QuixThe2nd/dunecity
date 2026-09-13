@@ -1,6 +1,7 @@
 // Test-only entry point, linked against the real menu objects by run-menu-probe.py.
 #include <Menu/HouseChoiceMenu.h>
 #include <Menu/CustomGamePlayers.h>
+#include <Menu/CustomGameMenu.h>
 #include <Menu/CrossplayMenu.h>
 #include <Menu/OptionsMenu.h>
 #include <Menu/PlaySetup.h>
@@ -74,6 +75,19 @@ int runMenuProbe() {
     setup.mods = ModManager::instance().listMods();
     for(size_t i=0;i<setup.mods.size();++i) if(setup.mods[i].name=="vanilla") setup.mod=i;
     setup.rules = effectiveGameOptions;
+    for(bool online : {false, true}) {
+        auto mapSetup = setup;
+        mapSetup.online = online;
+        CustomGameMenu browser(false, false, &mapSetup);
+        menuRequire(browser.mapList.getNumEntries() > 10, "Original scrolling map browser is missing");
+        menuRequire(browser.getSelectedMapPath() == setup.maps[setup.map], "Map browser lost selected map");
+        menuRequire(browser.mainVBox.getMinimumSize().x <= browser.mainVBox.getSize().x, "Map browser controls exceed menu width");
+        menuRequire(browser.mainVBox.getMinimumSize().y <= browser.mainVBox.getSize().y, "Map browser controls exceed menu height");
+        menuCapture(browser, online ? "map-browser-online" : "map-browser-offline");
+        browser.onNext();
+        menuRequire(browser.retVal == MENU_SETUP_PLAYERS, "Map selection did not proceed to players");
+        menuRequire(mapSetup.online == online && mapSetup.map == setup.map, "Map browser changed mode or map");
+    }
     const auto map = setup.maps.front();
     GameInitSettings init(getBasename(map,true),readCompleteFile(map),false,setup.rules);
     {
@@ -102,8 +116,16 @@ int runMenuProbe() {
         menu.update();
         menuRequire(menu.mainVBox.getMinimumSize().x<=menu.mainVBox.getSize().x,"Custom controls exceed menu width");
         menuCapture(menu,"custom-offline");
-        menu.rebuildSetup(true);
+        menu.onCancel();
+        menuRequire(menu.retVal == MENU_SETUP_MAP,"Back did not return to map browser");
         menuRequire(!setup.players.changeEventList.empty(),"Custom setup lost roster");
+    }
+    {
+        auto roundTrip = setup;
+        CustomGameMenu browser(false, false, &roundTrip);
+        browser.onNext();
+        menuRequire(roundTrip.players.changeEventList.size() == original.changeEventList.size(), "Returning through map browser lost the roster");
+        menuRequire(roundTrip.map == setup.map, "Returning through map browser changed map");
     }
     setup.online=true;
     {

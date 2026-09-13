@@ -53,6 +53,7 @@ class CustomGamePlayers : public MenuBase
 public:
     CustomGamePlayers(const GameInitSettings& newGameInitSettings, bool server = true, bool LANServer = true, CustomPlaySetup* setup = nullptr, const ChangeEventList* initialPlayers = nullptr);
     virtual ~CustomGamePlayers();
+    int showMenu() override;
 
     /**
         Applies a change event list. On the host the list is a *request* from senderName and is
@@ -84,7 +85,7 @@ private:
     HBox setupMapRow, setupModeRow;
     DropDownBox setupMap, setupMod, setupConnection, setupVisibility;
     Checkbox setupShared;
-    TextButton setupRules;
+    TextButton setupRules, setupBrowseMaps;
     Label readinessLabel;
 
     void onReceiveChatMessage(const std::string& name, const std::string& message);
