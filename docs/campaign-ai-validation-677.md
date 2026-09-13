@@ -112,8 +112,7 @@ Two five-minute inspection flags were examined:
 
 These are individual ineffective attacks/lulls, not frozen matches. The exact tactical cause of these two residual spells is not established.
 
-| Case with no enemy sortie | Enemy HP damage | Enemy defense orders | Enemy retaliation orders |
-| --- | ---: | ---: | ---: |
+Every final match included at least one nonempty enemy offensive sortie. This records dispatch, not proof that each sortie reached or damaged its objective.
 
 
 Representative completed repair construction/use on level 9, seed 42. P/E aggregates the helper house and all enemy houses. Built counts include replacements; busy samples only establish observed use.
