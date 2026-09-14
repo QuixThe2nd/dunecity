@@ -1,3 +1,32 @@
+## 2026-09-14 — Hard co-op helper opening deadlock, 1.0.689
+
+Live 688 Harkonnen human + Hard QuantBot helper, SCENH022 seed1221113892:
+helper correctly used normal Custom logic, but its cramped starting rock
+triggered an expansion-MCV reserve. With 1,000 credits, no factory, no power
+and no income, reserving 900 left only 100 for a 300-credit first windtrap.
+Repeated construction_rejected/committed_cash events explain the inactivity.
+Evidence: ../outputs/dunecity-689-helper/live-688.json.
+
+Only reserve expansion-MCV cash when an existing living heavy factory can
+actually build an MCV. Uses the existing producer scan; no new timers, saved
+state or changes to the attack/economy policy. Expansion production and its
+upgrade path remain intact.
+
+Extended the existing helper-economy engine fixture with this city opening:
+it fails on 688 and passes on 689, requiring the first windtrap and power,
+refinery and harvester within five game minutes. An independent ten-minute
+normal same-map/seed run ordered three refineries, additional harvesters,
+R/C/I, both factories, a high-tech factory, a carryall and military units.
+Last snapshot (9.63min): three refineries, four harvesters, 5R/1C/1I;
+5,665 spice credits refined, 2,804 city credits collected. This is an isolated
+observer reproduction, not an exact replay of human commands.
+
+All seven CTest groups and dependency/version/signature checks pass.
+Evidence: /tmp/dunecity-689-helper-before/, /tmp/dunecity-689-helper-after/,
+/tmp/dunecity-689-helper-natural/, /tmp/dunecity-689-ctest.log.
+Built and installed locally as 1.0.689 after the running game exited.
+No remote release, website update or save-format change.
+
 ## 2026-09-14 — Easy/Medium one wave then a break, 1.0.688
 
 Stefan reported a large Easy Atreides attack and explicitly clarified one wave

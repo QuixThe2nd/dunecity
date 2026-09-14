@@ -3135,6 +3135,7 @@ void QuantBot::build(int militaryValue) {
 	int activeHeavyFactoryCount = 0;
     std::vector<const BuilderBase*> harvesterFactories;
     bool carryallBuildAvailable = false;
+    bool mcvBuildAvailable = false;
     bool nuclearBuildAvailable = false;
     int activeLightFactoryCount = 0;
 	int activeHighTechFactoryCount = 0;
@@ -3168,6 +3169,8 @@ void QuantBot::build(int militaryValue) {
                     && pBuilder->isAvailableToBuild(Unit_Ornithopter)) ++ornithopterCapableFactoryCount;
                 if (pBuilder->getItemID() == Structure_HeavyFactory && pBuilder->getHealth() > 0
                     && pBuilder->isAvailableToBuild(Unit_Harvester)) harvesterFactories.push_back(pBuilder);
+                if (pBuilder->getItemID() == Structure_HeavyFactory && pBuilder->getHealth() > 0
+                    && pBuilder->isAvailableToBuild(Unit_MCV)) mcvBuildAvailable = true;
                 if (pBuilder->getItemID() == Structure_HeavyFactory && pBuilder->isUpgrading()
                     && !pBuilder->isAvailableToBuild(Unit_MCV)) ++mcvUpgradesInProgress;
                 if (currentGame->isCitySimEnabled() && pBuilder->isUpgrading())
@@ -4401,7 +4404,9 @@ void QuantBot::build(int militaryValue) {
                     && pBuilder->isAvailableToBuild(Unit_Carryall);
                 int protectedCash = pBuilder->getItemID() == Structure_ConstructionYard || transportProducer || workerProducer || expansionProducer
                     ? 0 : std::max({strategicReserveCost,economyReserve,civicReserveCost});
-                if (rockExpansionNeeded && itemCount[Unit_MCV]==0 && !expansionProducer)
+                // A cramped start still needs power, income and a factory before
+                // it can expand. Don't protect cash for an MCV we cannot build.
+                if (rockExpansionNeeded && mcvBuildAvailable && itemCount[Unit_MCV]==0 && !expansionProducer)
                     protectedCash=std::max(protectedCash,int(data[Unit_MCV][houseID].price));
                 if (!openingWorker && !expansionProducer && pBuilder->getItemID() != Structure_ConstructionYard)
                     protectedCash = std::max(protectedCash,civicReserveCost);
