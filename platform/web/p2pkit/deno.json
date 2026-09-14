@@ -1,5 +1,0 @@
-{
-  "tasks": {
-    "smoke": "deno run test/smoke/smoke.mjs"
-  }
-}

@@ -84,9 +84,19 @@ if [[ -f "${OUT_DIR}/dunecity.worker.js" ]]; then
     exit 1
 fi
 
+# Fetch (or reuse) the p2pkit IIFE bundle before prepending it into dunecity.js.
+P2PKIT_IIFE="${ROOT}/platform/web/p2pkit/dist/p2pkit.iife.js"
+if [[ "${P2PKIT_SKIP_FETCH:-}" == "1" ]]; then
+    if [[ ! -s "${P2PKIT_IIFE}" ]]; then
+        echo "ERROR: P2PKIT_SKIP_FETCH=1 but p2pkit bundle missing or empty: ${P2PKIT_IIFE}" >&2
+        exit 1
+    fi
+else
+    bash "${ROOT}/tools/web/fetch-p2pkit-bundle.sh"
+fi
+
 # Prepend the vendored p2pkit IIFE so globalThis.P2PKIT_IIFE exists before
 # dunecity.js runs (webrtc_glue.js resolves it lazily at runtime).
-P2PKIT_IIFE="${ROOT}/platform/web/p2pkit/dist/p2pkit.iife.js"
 if [[ -s "${P2PKIT_IIFE}" ]]; then
     echo "==> prepending p2pkit IIFE to ${JS}"
     cat "${P2PKIT_IIFE}" "${JS}" > "${JS}.tmp"
