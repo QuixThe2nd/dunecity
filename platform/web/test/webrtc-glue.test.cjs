@@ -8,6 +8,8 @@ const assert = require('node:assert/strict');
 const WebSocket = require('ws');
 const {
   createDuneCityWebRtc,
+  resolveP2pkit,
+  _createSignallingChannelForTest,
   DUNECITY_WEBRTC_CONTROL_OPTIONS,
   DUNECITY_WEBRTC_COMMANDS_OPTIONS,
   DUNECITY_WEBRTC_CONTROL_HIGH_WATER,
@@ -21,9 +23,26 @@ const {
   DUNECITY_WEBRTC_STATE_FAILED,
 } = require('../webrtc_glue.js');
 
+const p2pkit = resolveP2pkit({});
+
 const DUNECITY_WEBRTC_CONTROL_LOW_WATER = 128 * 1024;
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+// Session description that satisfies the hardened validators in the in-tree
+// p2pkit RTCTransport (exactly one sha-256 fingerprint, one m=application
+// section, no candidate lines). The glue itself does not inspect SDP.
+const MOCK_VALID_SDP = [
+  'v=0\r\n',
+  'o=- 4611731400430051336 2 IN IP4 127.0.0.1\r\n',
+  's=-\r\n',
+  't=0 0\r\n',
+  'a=group:BUNDLE 0\r\n',
+  'a=fingerprint:sha-256 1A:2B:3C:4D:5E:6F:7A:8B:9C:AD:BE:CF:D1:E2:F3:A4:B5:C6:D7:E8:F9:0A:1B:2C:3D:4E:5F:6A:7B:8C:9D:AE\r\n',
+  'm=application 9 UDP/DTLS/SCTP webrtc-datachannel\r\n',
+  'c=IN IP4 0.0.0.0\r\n',
+  'a=mid:0\r\n',
+].join('');
 
 // ---- mock WebRTC -----------------------------------------------------------
 
@@ -35,6 +54,11 @@ class MockDataChannel {
     this.readyState = 'connecting';
     this.bufferedAmount = 0;
     this.bufferedAmountLowThreshold = 0;
+    // Spec-shaped defaults: reliable channels report null for both limits and
+    // p2pkit's hardened RTCTransport rejects channels that do not.
+    this.ordered = options.ordered !== undefined ? options.ordered : true;
+    this.maxRetransmits = options.maxRetransmits !== undefined ? options.maxRetransmits : null;
+    this.maxPacketLifeTime = options.maxPacketLifeTime !== undefined ? options.maxPacketLifeTime : null;
     this.sent = [];
     this._peer = null;
     this.onopen = null;
@@ -146,11 +170,11 @@ class MockPeerConnection {
   }
 
   async createOffer() {
-    return { type: 'offer', sdp: 'mock-offer' };
+    return { type: 'offer', sdp: MOCK_VALID_SDP };
   }
 
   async createAnswer() {
-    return { type: 'answer', sdp: 'mock-answer' };
+    return { type: 'answer', sdp: MOCK_VALID_SDP };
   }
 
   async setLocalDescription(desc) {
@@ -167,8 +191,16 @@ class MockPeerConnection {
   }
 
   _emitIce() {
+    const candidateObj = {
+      candidate: 'candidate:mock 1 udp 2130706431 127.0.0.1 9 typ host',
+      sdpMid: '0',
+      sdpMLineIndex: 0,
+      toJSON() {
+        return { candidate: this.candidate, sdpMid: this.sdpMid, sdpMLineIndex: this.sdpMLineIndex };
+      },
+    };
     this.onicecandidate?.({
-      candidate: { candidate: 'candidate:mock 1 udp 2130706431 127.0.0.1 9 typ host' },
+      candidate: candidateObj,
       type: 'icecandidate',
       target: this,
     });
@@ -264,7 +296,7 @@ function collectEvents(onEvent) {
 }
 
 async function startSignalingServer() {
-  const { createSignalingServer } = await import('dunecity-webrtc-signaling/server.js');
+  const { createSignalingServer } = await import('../../../tools/webrtc-signaling/server.js');
   const ctx = createSignalingServer();
   await new Promise((resolve, reject) => {
     ctx.httpServer.once('error', reject);
@@ -319,7 +351,14 @@ async function waitFor(predicate, timeoutMs = 3000, label = 'condition') {
   throw new Error(`timeout waiting for ${label}`);
 }
 
-async function connectMockPair(roomCode = 'PAIR') {
+// Signaling wire messages are v:1 envelopes whose data carries the p2pkit
+// dialect message ({description|iceCandidate, from, to}).
+const isSignalDescription = (kind) => (msg) =>
+  msg && msg.type === 'signal' && msg.data && msg.data.description && msg.data.description.type === kind;
+const isDescriptionOffer = isSignalDescription('offer');
+const isDescriptionAnswer = isSignalDescription('answer');
+
+async function connectMockPair(roomCode = 'PAIR', hostPeerId = 'phost001', clientPeerId = 'pclient01') {
   const wsFactory = makeWebSocketFactory();
   const pcs = [];
   const RTCPeerConnection = class extends MockPeerConnection {
@@ -331,27 +370,29 @@ async function connectMockPair(roomCode = 'PAIR') {
   };
 
   const { events, handler } = collectEvents();
-  const host = createDuneCityWebRtc({ RTCPeerConnection, WebSocket: wsFactory.WebSocket, onEvent: handler });
-  const client = createDuneCityWebRtc({ RTCPeerConnection, WebSocket: wsFactory.WebSocket, onEvent: handler });
+  const host = createDuneCityWebRtc({ RTCPeerConnection, WebSocket: wsFactory.WebSocket, p2pkit, onEvent: handler });
+  const client = createDuneCityWebRtc({ RTCPeerConnection, WebSocket: wsFactory.WebSocket, p2pkit, onEvent: handler });
 
   host.hostRoom();
   const hostWs = wsFactory.sockets[0];
-  hostWs.receive({ v: 1, type: 'created', room: roomCode, peerId: 'phost001' });
+  hostWs.receive({ v: 1, type: 'created', room: roomCode, peerId: hostPeerId });
 
   client.joinRoom(roomCode);
   const clientWs = wsFactory.sockets[1];
-  clientWs.receive({ v: 1, type: 'joined', room: roomCode, peerId: 'pclient01', host: 'phost001' });
-  hostWs.receive({ v: 1, type: 'peer-joined', peerId: 'pclient01' });
+  clientWs.receive({ v: 1, type: 'joined', room: roomCode, peerId: clientPeerId, host: hostPeerId });
+  hostWs.receive({ v: 1, type: 'peer-joined', peerId: clientPeerId });
 
-  await waitFor(() => pcs.length === 1 && hostWs.sent.some((m) => m.type === 'signal' && m.data?.kind === 'offer'));
+  // The room host always creates the offer.
+  await waitFor(() => pcs.length === 1 && hostWs.sent.some(isDescriptionOffer));
   const hostPc = pcs[0];
-  const offerMsg = hostWs.sent.find((m) => m.type === 'signal' && m.data?.kind === 'offer');
-  clientWs.receive({ v: 1, type: 'signal', from: 'phost001', data: offerMsg.data });
+  const offerMsg = hostWs.sent.find(isDescriptionOffer);
+  clientWs.receive({ v: 1, type: 'signal', from: hostPeerId, data: offerMsg.data });
 
-  await waitFor(() => pcs.length === 2 && clientWs.sent.some((m) => m.type === 'signal' && m.data?.kind === 'answer'));
+  await waitFor(() => pcs.length === 2 && clientWs.sent.some(isDescriptionAnswer));
   const clientPc = pcs[1];
-  const answerMsg = clientWs.sent.find((m) => m.type === 'signal' && m.data?.kind === 'answer');
-  hostWs.receive({ v: 1, type: 'signal', from: 'pclient01', data: answerMsg.data });
+  const answerMsg = clientWs.sent.find(isDescriptionAnswer);
+  hostWs.receive({ v: 1, type: 'signal', from: clientPeerId, data: answerMsg.data });
+
   hostPc.openAllChannels();
   await waitFor(() => host.getStats().channels[0].state === 'open');
 
@@ -407,7 +448,7 @@ test('joinRoom validates room code alphabet and length', () => {
   assert.ok(events.some((e) => e.type === DUNECITY_WEBRTC_EVENT_STATE && e.cause === DUNECITY_WEBRTC_STATE_FAILED));
 });
 
-test('peer-joined creates offer with expected data-channel options', async () => {
+test('peer-joined triggers offer with expected data-channel options on initiator', async () => {
   const wsFactory = makeWebSocketFactory();
   const pcs = [];
   const RTCPeerConnection = class extends MockPeerConnection {
@@ -421,15 +462,17 @@ test('peer-joined creates offer with expected data-channel options', async () =>
   const host = createDuneCityWebRtc({
     RTCPeerConnection,
     WebSocket: wsFactory.WebSocket,
+    p2pkit,
     onEvent: handler,
   });
 
   host.hostRoom();
   const ws = wsFactory.sockets[0];
   ws.receive({ v: 1, type: 'created', room: 'WXYZ', peerId: 'phost001' });
+  // The room host is always the offerer and creates the data channels.
   ws.receive({ v: 1, type: 'peer-joined', peerId: 'pclient01' });
 
-  await waitFor(() => pcs.length === 1 && ws.sent.some((m) => m.type === 'signal' && m.data?.kind === 'offer'));
+  await waitFor(() => pcs.length === 1 && ws.sent.some(isDescriptionOffer));
   const pc = pcs[0];
   assert.equal(pc._channels.length, 2);
   assert.deepEqual(pc._channels[0].options, DUNECITY_WEBRTC_CONTROL_OPTIONS);
@@ -503,12 +546,14 @@ test('integration: host and client connect through real signaling server', async
     RTCPeerConnection,
     WebSocket: NodeWebSocket,
     config: { signaling: server.url },
+    p2pkit,
     onEvent: handler,
   });
   const client = createDuneCityWebRtc({
     RTCPeerConnection,
     WebSocket: NodeWebSocket,
     config: { signaling: server.url },
+    p2pkit,
     onEvent: handler,
   });
 
@@ -521,11 +566,10 @@ test('integration: host and client connect through real signaling server', async
     assert.equal(client.joinRoom(room), true);
     await waitFor(() => pcs.length === 2, 5000, 'two peer connections');
 
-    const hostPc = pcs[0];
-    const clientPc = pcs[1];
-
-    await waitFor(() => hostPc.localDescription && clientPc.localDescription, 5000, 'local descriptions');
-    hostPc.openAllChannels();
+    await waitFor(() => pcs.some((pc) => pc._channels.length === 2), 5000, 'initiator data channels');
+    const initiatorPc = pcs.find((pc) => pc._channels.length === 2);
+    await waitFor(() => pcs.every((pc) => pc.localDescription), 5000, 'local descriptions');
+    initiatorPc.openAllChannels();
 
     await waitFor(
       () => events.some((e) => e.type === DUNECITY_WEBRTC_EVENT_CONNECT),
@@ -543,8 +587,7 @@ test('integration: host and client connect through real signaling server', async
     );
     const msg = events.find((e) => e.type === DUNECITY_WEBRTC_EVENT_MESSAGE && e.channel === 0);
     assert.deepEqual(msg.bytes, Array.from(ping));
-    assert.equal(hostPc._channels[0].sent.length, 1);
-    assert.deepEqual(Array.from(hostPc._channels[0].sent[0]), Array.from(ping));
+    assert.equal(host.getStats().channels[0].sent, 1);
   } finally {
     host.disconnect();
     client.disconnect();
@@ -558,4 +601,124 @@ test('module exports include channel option constants', () => {
   assert.equal(DUNECITY_WEBRTC_COMMANDS_OPTIONS.maxRetransmits, 0);
   assert.equal(DUNECITY_WEBRTC_CONTROL_HIGH_WATER, 512 * 1024);
   assert.equal(DUNECITY_WEBRTC_COMMANDS_HIGH_WATER, 512 * 1024);
+});
+
+test('signalling adapter send() wraps p2pkit dialect in the v:1 signal envelope and rejects malformed messages', () => {
+  const sent = [];
+  const channel = _createSignallingChannelForTest({
+    sendRaw: (text) => {
+      sent.push(JSON.parse(text));
+      return true;
+    },
+    p2pkit,
+    log: () => {},
+  });
+
+  assert.equal(
+    channel.send({ description: { type: 'offer', sdp: 'x' }, from: 'pa', to: 'pb' }),
+    true,
+  );
+  assert.equal(sent.length, 1);
+  // The wire message is the signaling server's relay envelope; the dialect
+  // message rides inside data (the server stamps the outer from on relay).
+  assert.deepEqual(sent[0], {
+    v: 1,
+    type: 'signal',
+    to: 'pb',
+    data: { description: { type: 'offer', sdp: 'x' }, from: 'pa', to: 'pb' },
+  });
+
+  assert.equal(channel.send({ description: { type: 'offer', sdp: 'x' }, from: 'pa' }), false);
+  assert.equal(sent.length, 1, 'malformed message must not reach the wire');
+});
+
+test('p2pkit dialect envelopes produce the expected webrtcOnEvent sequence', async () => {
+  const { host, client, hostWs, clientWs, events } = await connectMockPair('EVNT');
+
+  assert.ok(events.some((e) => e.type === DUNECITY_WEBRTC_EVENT_STATE && e.cause === DUNECITY_WEBRTC_STATE_CONNECTING));
+  assert.ok(events.some((e) => e.type === DUNECITY_WEBRTC_EVENT_CONNECT));
+  assert.ok(events.some((e) => e.type === DUNECITY_WEBRTC_EVENT_STATE && e.cause === DUNECITY_WEBRTC_STATE_CONNECTED));
+
+  const payload = new Uint8Array([0x02, 0x00, 0x00, 0x00, 0x01]);
+  assert.equal(host.send(0, payload), true);
+  await waitFor(() => events.some((e) => e.type === DUNECITY_WEBRTC_EVENT_MESSAGE && e.channel === 0));
+
+  hostWs.receive({ v: 1, type: 'peer-left', peerId: 'pclient01' });
+  assert.ok(events.some((e) => e.type === DUNECITY_WEBRTC_EVENT_DISCONNECT));
+  assert.ok(events.some((e) => e.type === DUNECITY_WEBRTC_EVENT_STATE && e.cause === DUNECITY_WEBRTC_STATE_FAILED));
+
+  host.disconnect();
+  client.disconnect();
+});
+
+test('stock RTCTransport negotiates over the signalling adapter wire format', async () => {
+  assert.ok(p2pkit && p2pkit.RTCTransport, 'p2pkit bundle must export RTCTransport');
+
+  const hostSent = [];
+  const clientSent = [];
+  const hostAdapter = _createSignallingChannelForTest({
+    sendRaw: (text) => {
+      hostSent.push(JSON.parse(text));
+      return true;
+    },
+    p2pkit,
+    log: () => {},
+  });
+  const clientAdapter = _createSignallingChannelForTest({
+    sendRaw: (text) => {
+      clientSent.push(JSON.parse(text));
+      return true;
+    },
+    p2pkit,
+    log: () => {},
+  });
+  hostAdapter._setReady();
+  clientAdapter._setReady();
+
+  hostAdapter.onMessage((msg) => {
+    if (msg.to === 'pb') clientAdapter._deliver(msg);
+  });
+  clientAdapter.onMessage((msg) => {
+    if (msg.to === 'pa') hostAdapter._deliver(msg);
+  });
+
+  const pcs = [];
+  const RTCPeerConnection = class extends MockPeerConnection {
+    constructor(...args) {
+      super(...args);
+      pcs.push(this);
+      if (pcs.length === 2) pcs[0].linkTo(pcs[1]);
+    }
+  };
+
+  const hostTransport = new p2pkit.RTCTransport({
+    self: 'pa',
+    remote: 'pb',
+    signalling: hostAdapter,
+    backend: { RTCPeerConnection },
+    initiator: true,
+  });
+  const clientTransport = new p2pkit.RTCTransport({
+    self: 'pb',
+    remote: 'pa',
+    signalling: clientAdapter,
+    backend: { RTCPeerConnection },
+    initiator: false,
+  });
+
+  await waitFor(() => hostSent.some(isDescriptionOffer), 3000, 'offer envelope');
+  const offerWire = hostSent.find(isDescriptionOffer);
+  assert.equal(offerWire.v, 1);
+  assert.equal(offerWire.type, 'signal');
+  assert.equal(offerWire.to, 'pb');
+  assert.equal(offerWire.data.from, 'pa');
+  assert.equal(offerWire.data.to, 'pb');
+  assert.equal(offerWire.data.description.type, 'offer');
+
+  await waitFor(() => pcs.length === 2, 3000, 'peer connections');
+  const initiatorPc = pcs.find((pc) => pc._channels.length > 0) || pcs[0];
+  initiatorPc.openAllChannels();
+
+  hostTransport.disconnect();
+  clientTransport.disconnect();
 });
