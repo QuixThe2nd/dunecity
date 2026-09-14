@@ -15,5 +15,8 @@
   "dependencies": {
     "ws": "^8.18.0"
   },
-  "license": "UNLICENSED"
+  "license": "UNLICENSED",
+  "devDependencies": {
+    "esbuild": "^0.28.2"
+  }
 }

@@ -5,6 +5,7 @@
   "description": "Unit tests for the DuneCity browser WebRTC bridge (platform/web/webrtc_glue.js).",
   "scripts": {
     "postinstall": "npm ci --prefix ../../tools/webrtc-signaling --omit=dev",
+    "build:p2pkit-iife": "node ../../tools/web/build-p2pkit-iife.mjs",
     "test": "node --test test/*.test.cjs"
   },
   "engines": {
