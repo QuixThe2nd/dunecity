@@ -1,3 +1,25 @@
+## 2026-09-14 — Dune City campaign construction routing, 1.0.687
+
+Live 686 SCENH022.INI, seed 1294169503, Easy enemies: Atreides, Ordos and
+Sardaukar had no R/C/I zones despite positive residential demand. Classic
+campaign rebuilding/upgrades took precedence, power deficits blocked the
+last-resort zoning branch, Ordos spent its funds on a reactor, and Sardaukar
+could not place a completed windtrap. Evidence preserved in
+`../outputs/dunecity-687-city-campaign/live-686-evidence.json`.
+
+One-condition fix: the classic campaign Construction Yard branch now requires
+city simulation to be disabled. City campaigns use the existing city planner,
+including its power investment and income priorities. Campaign mode, army
+limits, attack timing/readiness and worker limits are unchanged. No new policy.
+
+A ten-minute isolated observer run on the same map/seed confirms actual zone
+construction: last sampled Atreides 6R/2C/1I, Ordos 3R/1C (I ordered at 9.93min),
+Sardaukar 13R/4C/5I. The observer has an AI helper, so this verifies behavior,
+not exact replay equivalence to Stefan's ongoing match. Evidence:
+`/tmp/dunecity-687-city-campaign/summary.json`. Native dependency audit,
+version/signature checks and all seven CTest groups pass. Built 687 locally;
+the running/installed 686 app remains untouched. No remote publication.
+
 ## 2026-09-14 — Campaign readiness and separate waves, 1.0.686
 
 Stefan clarified that surviving attackers occupy military capacity, not the

@@ -4950,7 +4950,10 @@ void QuantBot::build(int militaryValue) {
 						// Campaign Build order, iterate through the buildings, if the number that exist
 						// is less than the number that should exist, then build the one that is missing
 
-						if (gameMode == GameMode::Campaign && difficulty != Difficulty::Brutal) {
+                        // City campaigns need the same economy/civic planner as
+                        // city custom games. The classic rebuild list puts zones
+                        // behind upgrades and defences and can starve them forever.
+						if (!citySimEnabled && gameMode == GameMode::Campaign && difficulty != Difficulty::Brutal) {
 							//logDebug("GameMode Campaign.. ");
 
 						for (int i = Structure_FirstID; i <= Structure_LastID; i++) {
