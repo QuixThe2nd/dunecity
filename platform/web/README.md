@@ -56,6 +56,27 @@ Run the glue unit tests (Node, no browser):
 cd platform/web && npm test
 ```
 
+### p2pkit bundle
+
+`webrtc_glue.js` consumes the hardened in-tree p2pkit copy
+(`platform/web/p2pkit/src`, see `platform/web/p2pkit/UPSTREAM.md`) through the
+committed IIFE bundle at `platform/web/dist/p2pkit.iife.js`, which exposes
+`globalThis.P2PKIT_IIFE` (`RTCTransport`, `DEFAULT_ICE_SERVERS`, `Emitter`,
+`randomId`). `tools/web/build-emscripten.sh` prepends the bundle to
+`dunecity.js` so the runtime resolves it without a separate script tag, and no
+npm/network access is needed at build time.
+
+After changing `platform/web/p2pkit/src`, regenerate and re-commit the bundle:
+
+```bash
+npm ci --prefix tools/webrtc-signaling   # installs the esbuild devDependency
+node tools/web/build-p2pkit-iife.mjs     # or: cd platform/web && npm run build:p2pkit-iife
+```
+
+The build script self-checks the export surface by loading the bundle in a
+bare vm context; `platform/web/test/p2pkit-iife.test.cjs` enforces the same
+contract in CI.
+
 ## Local smoke test
 
 ```bash
@@ -75,4 +96,6 @@ same `./tools/web/build-emscripten.sh` command.
 The verifier checks artifact presence and obvious pthread dependencies; it is
 not a security audit or a multiplayer test. Browser builds keep the existing
 HTTP implementation, which already separates Emscripten from native libcurl.
-This build foundation does not add P2PKit or change gameplay routing.
+The build foundation does not change gameplay routing: the WebRTC handshake
+runs through the in-tree p2pkit copy while game packets stay on native binary
+data channels.

@@ -114,6 +114,19 @@ if [[ -f "${OUT_DIR}/dunecity.worker.js" ]]; then
     exit 1
 fi
 
+# Prepend the committed p2pkit IIFE bundle (built from platform/web/p2pkit/src
+# by tools/web/build-p2pkit-iife.mjs) so globalThis.P2PKIT_IIFE exists before
+# dunecity.js runs; webrtc_glue.js resolves it lazily at runtime.
+P2PKIT_IIFE="${ROOT}/platform/web/dist/p2pkit.iife.js"
+if [[ ! -s "${P2PKIT_IIFE}" ]]; then
+    echo "ERROR: p2pkit IIFE bundle missing: ${P2PKIT_IIFE}" >&2
+    echo "       regenerate with: node tools/web/build-p2pkit-iife.mjs" >&2
+    exit 1
+fi
+echo "==> prepending p2pkit IIFE to ${JS}"
+cat "${P2PKIT_IIFE}" "${JS}" > "${JS}.tmp"
+mv "${JS}.tmp" "${JS}"
+
 node "${ROOT}/tools/web/verify-dunecity-js.mjs" --built "${JS}"
 python3 "${ROOT}/scripts/check-web-mods.py" --build-root "${BUILD_DIR}"
 
