@@ -134,13 +134,10 @@ function createDuneCitySignallingChannel({ sendRaw, p2pkit, log }) {
             log('webrtc: invalid signalling send: ' + err);
             return false;
         }
-        // The signaling server only relays opaque v:1 "signal" payloads, so the
-        // p2pkit dialect message rides inside data; the server stamps the outer
-        // from when it relays to the other peer.
+        // The matchmaking server relays {"t":"sig"} payloads verbatim between
+        // paired peers; the dialect message (from/to stamped by us) is opaque.
         const envelope = {
-            v: DUNECITY_WEBRTC_SIGNAL_PROTOCOL_VERSION,
-            type: 'signal',
-            to: message.to,
+            t: 'sig',
             data: message,
         };
         const text = JSON.stringify(envelope);
