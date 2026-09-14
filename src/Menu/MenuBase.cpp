@@ -83,7 +83,7 @@ int MenuBase::showMenu() {
             SDL_RenderClear(renderer);
         }
         draw();
-        SDL_RenderPresent(renderer);
+        presentWithCursor();
 
         while(SDL_PollEvent(&event)) {
             updateCursorVisibilityForInput(event);

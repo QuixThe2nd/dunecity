@@ -1,3 +1,35 @@
+## 2026-09-14 — Cursor rendering candidate 1.0.683
+
+Desktop and browser now draw the original game cursor sprites as the last
+frame overlay in every menu, briefing/cutscene, editor and gameplay frame.
+Normal, move, attack, heal, capture and carryall-drop shapes are preserved.
+Focus and visibility are re-evaluated on every presentation; Android retains
+its existing touch/physical-pointer policy. Window coordinates are converted
+to drawable pixels independently of scene zoom, letterboxing and clip state.
+
+Auto uses original 1x size in window units, with explicit 1x–4x preferences
+retained. Physical monitor DPI must not enlarge this again: the former 224-DPI
+Mac default selected 3x and made the candidate cursor visibly too large.
+The overlay already handles Retina/backing density once, equally on desktop
+and web. Pixel-readback tests cover 100/125/150/200% backing density, all four
+explicit scales, clipped/letterboxed content and renderer-state restoration.
+Native SDL2 and sdl2-compat expose different explicit/logical scale behavior;
+restoration handles both without multiplying the scene scale each frame.
+
+Native and Emscripten builds and dependency audits pass; all seven native
+CTest groups pass, including the new cursor readback cases and menu probes.
+Browser package audit preserves Tornie's 769 files and Dune2R's six files.
+Browser interaction verified main menu, campaign selection, briefing/letterbox,
+normal/move/attack gameplay pointers, canvas leave/re-entry, and modal arrow
+restoration (pause menu uses the arrow; closing it restores the attack cursor).
+Native menu and Settings screenshots show the original-sized arrow. Installed
+the final signed build in /Applications/dunecity.app only after checking the
+installed app was closed; previous app is preserved under the task's
+outputs/dunecity-menu-acceptance/cursor-683-small/previous-installed.app.
+All seven CTest groups passed again after the modal correction. Native Windows
+UI has not been exercised; the density regression tests run the shared renderer,
+not Windows automation. Source is committed locally; no public 683 release yet.
+
 ## 2026-09-14 — Campaign AI release 1.0.682 published
 
 PR #33 merged/tagged at d2dc426. Stable CI 34764559810 passed all platform builds

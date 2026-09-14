@@ -3207,7 +3207,9 @@ void Game::renderFrame() {
     // Copy to main screen and present in one step
     SDL_SetRenderTarget(renderer, nullptr);
     SDL_RenderCopy(renderer, screenTexture, nullptr, nullptr);
-    SDL_RenderPresent(renderer);
+    // Menus use the arrow without discarding the pending gameplay command.
+    const bool modalOpen = pInGameMenu || pInGameMentat || pWaitingForOtherPlayers;
+    presentWithCursor(modalOpen ? CursorMode_Normal : currentCursorMode);
     
     const Uint64 renderEnd = SDL_GetPerformanceCounter();
     const double renderMs = getElapsedMs(renderStart, renderEnd);

@@ -23,6 +23,7 @@
 #include <units/UnitBase.h>
 #include <structures/StructureBase.h>
 #include <structures/Palace.h>
+#include <misc/CursorRenderer.h>
 
 #include <algorithm>
 
@@ -42,6 +43,16 @@ bool shouldShowCursor() {
         return true;
     }
     return autoCursorHasPhysicalMouse;
+}
+
+bool usesSoftwareCursor() {
+#ifndef __ANDROID__
+    return window && renderer && pGFXManager
+        && (SDL_GetWindowFlags(window) & SDL_WINDOW_INPUT_FOCUS)
+        && (SDL_GetWindowFlags(window) & SDL_WINDOW_MOUSE_FOCUS);
+#else
+    return false;
+#endif
 }
 
 // Scale an SDL_Surface up by an integer factor. Returns a new surface the
@@ -73,25 +84,12 @@ SDL_Surface* scaleSurface(SDL_Surface* src, int scale) {
     return dst;
 }
 
-// Determine the effective cursor scale from settings. 0 = auto-detect from DPI.
+// Auto preserves the original sprite size in window coordinates on every
+// platform. The final overlay already converts window units to drawable pixels;
+// a physical-DPI multiplier here would enlarge HiDPI cursors a second time.
 int getEffectiveCursorScale() {
     const int configured = settings.video.cursorScale;
-    if (configured >= 1 && configured <= 4) {
-        return configured;
-    }
-    // Auto-detect: use the display's logical-to-physical pixel ratio.
-    // SDL_GetDisplayDPI gives horizontal DPI; 96 dpi is "1x" baseline.
-    float ddpi = 96.0f, hdpi = 96.0f, vdpi = 96.0f;
-    int displayIndex = window ? SDL_GetWindowDisplayIndex(window) : 0;
-    if (displayIndex < 0) displayIndex = 0;
-    SDL_GetDisplayDPI(displayIndex, &ddpi, &hdpi, &vdpi);
-    const float dpi = hdpi > 0.0f ? hdpi : ddpi;
-    SDL_LogVerbose(SDL_LOG_CATEGORY_APPLICATION,
-                   "CursorManager: display %d DPI=%.1f, auto-detecting cursor scale", displayIndex, dpi);
-    if (dpi >= 288.0f) return 4;  // 4K HiDPI (e.g. 4x retina)
-    if (dpi >= 192.0f) return 3;
-    if (dpi >= 144.0f) return 2;  // 2x Retina / 150% Windows
-    return 1;
+    return configured >= 1 && configured <= 4 ? configured : 1;
 }
 
 struct CursorCache {
@@ -224,7 +222,41 @@ SDL_Cursor* createColorCursorSafe(SDL_Surface* source, int hotspotX, int hotspot
 }
 
 void applyCursorVisibilitySetting() {
-    SDL_ShowCursor(shouldShowCursor() ? SDL_ENABLE : SDL_DISABLE);
+    SDL_ShowCursor(shouldShowCursor() && !usesSoftwareCursor() ? SDL_ENABLE : SDL_DISABLE);
+}
+
+void presentWithCursor(int mode) {
+    applyCursorVisibilitySetting();
+    if(usesSoftwareCursor() && shouldShowCursor()) {
+        int graphic = UI_CursorNormal;
+        switch(mode) {
+            case Game::CursorMode_Move: graphic = UI_CursorMove_Zoomlevel0; break;
+            case Game::CursorMode_Attack: graphic = UI_CursorAttack_Zoomlevel0; break;
+            case Game::CursorMode_Heal: graphic = UI_CursorHeal_Zoomlevel0; break;
+            case Game::CursorMode_Capture: graphic = UI_CursorCapture_Zoomlevel0; break;
+            case Game::CursorMode_CarryallDrop: graphic = UI_CursorCarryallDrop_Zoomlevel0; break;
+            default: break;
+        }
+        SDL_Surface* surface = pGFXManager->getUIGraphicSurface(graphic);
+        SDL_Texture* texture = pGFXManager->getUIGraphic(graphic);
+        bool drawn = false;
+        if(surface && texture) {
+            SDL_Point hotspot{surface->w / 2, surface->h / 2};
+            if(graphic == UI_CursorNormal) {
+                static SDL_Surface* previous = nullptr;
+                static SDL_Point arrow{};
+                if(previous != surface) { arrow = findTopLeftOpaquePixel(surface); previous = surface; }
+                hotspot = arrow;
+            }
+            SDL_Point mouse{}, windowSize{};
+            SDL_GetMouseState(&mouse.x, &mouse.y);
+            SDL_GetWindowSize(window, &windowSize.x, &windowSize.y);
+            drawn = CursorRenderer::draw(renderer, texture, mouse, windowSize, hotspot, getEffectiveCursorScale());
+        }
+        // A missing asset/render failure must still leave a visible pointer.
+        if(!drawn) { SDL_SetCursor(SDL_GetDefaultCursor()); SDL_ShowCursor(SDL_ENABLE); }
+    }
+    SDL_RenderPresent(renderer);
 }
 
 void updateCursorVisibilityForInput(const SDL_Event& event) {
@@ -277,7 +309,7 @@ void updateCursorVisibilityForInput(const SDL_Event& event) {
         applyCursorVisibilitySetting();
     }
 #else
-    (void) event;
+    if(event.type == SDL_WINDOWEVENT || event.type == SDL_MOUSEMOTION) applyCursorVisibilitySetting();
 #endif
 }
 
@@ -298,6 +330,15 @@ void CursorManager::initialize() {
     if (initialized) {
         return;
     }
+
+#ifndef __ANDROID__
+    // Desktop and web draw game artwork in the final frame. Do not install a
+    // transparent/stale OS color cursor when the application regains focus.
+    SDL_SetCursor(SDL_GetDefaultCursor());
+    applyCursorVisibilitySetting();
+    initialized = true;
+    return;
+#endif
 
     auto& cache = getCursorCache();
 
