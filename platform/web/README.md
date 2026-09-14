@@ -1,7 +1,7 @@
 # DuneCity browser (Emscripten) build
 
-This directory holds the reproducible browser build script for the full
-`dunecity` game target (not a toy demo).
+This directory holds the WebRTC JavaScript bridge and the reproducible browser
+build script for the full `dunecity` game target (not a toy demo).
 
 ## Prerequisites
 
@@ -30,6 +30,19 @@ build/emscripten/bin/
   dunecity.js
   dunecity.wasm
   dunecity.data    # preloaded PAK/config/mods/sprites
+```
+
+### WebRTC glue
+
+`platform/web/webrtc_glue.js` is linked into the Emscripten output via
+`--js-library` in `src/CMakeLists.txt`. The C++ side (`WebRtcTransport.cpp`)
+calls exported `webrtcHostRoom`, `webrtcJoinRoom`, `webrtcSendTo`, etc.; the
+library block wires those to `createDuneCityWebRtc`.
+
+Run the glue unit tests (Node, no browser):
+
+```bash
+cd platform/web && npm test
 ```
 
 ## Local smoke test

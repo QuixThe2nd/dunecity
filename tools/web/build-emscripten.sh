@@ -7,7 +7,7 @@
 #   dunecity.wasm
 #   dunecity.data   (preloaded game assets)
 #
-# Requires: git, cmake, python3.
+# Requires: git, cmake, python3, node (for webrtc glue unit tests only).
 #
 # Artifact sizes use tools/web/file-size-bytes.sh (portable wc -c) so the
 # script works on Linux CI and macOS dev machines.
@@ -51,6 +51,9 @@ if ! emcc --version 2>/dev/null | grep -q "${EMSDK_VERSION}"; then
 fi
 echo "==> Using ${EMCC_VERSION}"
 
+echo "==> WebRTC glue source checks"
+node "${ROOT}/tools/web/verify-dunecity-js.mjs" --source "${ROOT}/platform/web/webrtc_glue.js"
+
 echo "==> Prebuilding Emscripten SDL ports (serial cache warmup)"
 unset EM_CACHE_IS_LOCKED
 embuilder build sdl2 sdl2_mixer sdl2_ttf
@@ -79,6 +82,25 @@ done
 if [[ -f "${OUT_DIR}/dunecity.worker.js" ]]; then
     echo "ERROR: pthread worker artifact present; browser build must be single-threaded" >&2
     exit 1
+fi
+
+# Fetch (or reuse) the p2pkit IIFE bundle before prepending it into dunecity.js.
+P2PKIT_IIFE="${ROOT}/platform/web/p2pkit/dist/p2pkit.iife.js"
+if [[ "${P2PKIT_SKIP_FETCH:-}" == "1" ]]; then
+    if [[ ! -s "${P2PKIT_IIFE}" ]]; then
+        echo "ERROR: P2PKIT_SKIP_FETCH=1 but p2pkit bundle missing or empty: ${P2PKIT_IIFE}" >&2
+        exit 1
+    fi
+else
+    bash "${ROOT}/tools/web/fetch-p2pkit-bundle.sh"
+fi
+
+# Prepend the vendored p2pkit IIFE so globalThis.P2PKIT_IIFE exists before
+# dunecity.js runs (webrtc_glue.js resolves it lazily at runtime).
+if [[ -s "${P2PKIT_IIFE}" ]]; then
+    echo "==> prepending p2pkit IIFE to ${JS}"
+    cat "${P2PKIT_IIFE}" "${JS}" > "${JS}.tmp"
+    mv "${JS}.tmp" "${JS}"
 fi
 
 node "${ROOT}/tools/web/verify-dunecity-js.mjs" --built "${JS}"
