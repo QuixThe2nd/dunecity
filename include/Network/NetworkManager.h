@@ -223,10 +223,15 @@ public:
     void connect(ENetAddress address, const std::string& playerName);
 #else
     /**
-        Browser transport join: connect to a host's signaling room by its short
-        room code. Player identity stays an opaque peer id; no IP/port involved.
+        Browser transport: enter the global matchmaking lobby. The lobby pairs
+        the next two finders and assigns the roles (host/joiner); pairing is
+        reported through the onMatched callback. No IP/port or room code
+        involved.
     */
-    void connectWebRtc(const std::string& roomCode, const std::string& playerName);
+    void connectWebRtc(const std::string& playerName);
+
+    /// Leave the matchmaking queue; only meaningful before pairing.
+    void cancelMatchmaking();
 #endif
 
     void disconnect();
@@ -234,11 +239,16 @@ public:
     void update();
 
 #ifdef __EMSCRIPTEN__
-    /// Room code assigned by the signaling server (host) / joined code (client).
-    std::string getWebRtcRoomCode() const { return pWebRtcTransport->getRoomCode(); }
-
     /// Coarse transport state for UI (connecting/connected/error indicators).
     WebRtcTransport::State getWebRtcState() const { return pWebRtcTransport->getState(); }
+
+    /**
+        Sets the function that should be called when the matchmaking lobby pairs us.
+        \param  pOnMatched  function to call; true when we take the host (offer) role
+    */
+    inline void setOnMatched(std::function<void (bool bHost)> pOnMatched) {
+        this->pOnMatched = pOnMatched;
+    }
 #endif
 
     void sendChatMessage(const std::string& message);
@@ -670,6 +680,8 @@ private:
 #ifdef __EMSCRIPTEN__
     std::unique_ptr<WebRtcTransport> pWebRtcTransport;
     uint32_t connectPeerWebRtcId = 0;   // transport handle of the host we joined
+    bool bWebRtcHost = false;           // role assigned by the lobby (Matched event)
+    std::function<void (bool)> pOnMatched;
 #endif
 
     std::function<void (const std::string&, const std::string&)>            pOnReceiveChatMessage;

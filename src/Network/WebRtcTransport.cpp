@@ -26,10 +26,9 @@
 
 // JS glue (platform/web/webrtc_glue.js, linked with --js-library)
 extern "C" {
-int webrtcHostRoom();
-int webrtcJoinRoom(const char* pRoomCode);
+int webrtcFindMatch();
+int webrtcCancelMatch();
 int webrtcSendTo(int peerHandle, int channel, const uint8_t* pData, int length);
-int webrtcGetRoomCode(char* pBuffer, int bufferLength);
 int webrtcGetState();
 int webrtcGetRttMs();
 void webrtcDisconnect();
@@ -69,12 +68,12 @@ WebRtcTransport::~WebRtcTransport() {
     disconnect();
 }
 
-bool WebRtcTransport::startHost() {
-    return webrtcHostRoom() != 0;
+bool WebRtcTransport::findMatch() {
+    return webrtcFindMatch() != 0;
 }
 
-bool WebRtcTransport::joinRoom(const std::string& roomCode) {
-    return webrtcJoinRoom(roomCode.c_str()) != 0;
+bool WebRtcTransport::cancelMatchmaking() {
+    return webrtcCancelMatch() != 0;
 }
 
 void WebRtcTransport::disconnect() {
@@ -107,14 +106,6 @@ uint32_t WebRtcTransport::getRoundTripTimeMs(uint32_t peerHandle) const {
 
 WebRtcTransport::State WebRtcTransport::getState() const {
     return static_cast<State>(webrtcGetState());
-}
-
-std::string WebRtcTransport::getRoomCode() const {
-    char buffer[16] = { 0 };
-    if(webrtcGetRoomCode(buffer, sizeof(buffer)) == 0) {
-        return "";
-    }
-    return std::string(buffer);
 }
 
 void WebRtcTransport::enqueueEvent(Event&& event) {

@@ -45,7 +45,13 @@ public:
         Connect = 0,     // both data channels open; peer is now a valid handle
         Disconnect = 1,  // peer went away; cause is a NETWORKDISCONNECT_* code
         Message = 2,     // one application packet arrived on a data channel
-        State = 3        // transport-level state change (see getState())
+        State = 3,       // transport-level state change (see getState())
+        Matched = 4      // the lobby paired us; cause is the assigned MatchRole
+    };
+
+    enum class MatchRole {
+        Host = 0,    // we were the first finder: we create the offer
+        Joiner = 1   // we were the second finder: we answer the offer
     };
 
     struct Event {
@@ -63,12 +69,13 @@ public:
     WebRtcTransport(const WebRtcTransport&) = delete;
     WebRtcTransport& operator=(const WebRtcTransport&) = delete;
 
-    /// Create a signaling room (host side). The room code becomes available
-    /// through getRoomCode() once the signaling server confirms it.
-    bool startHost();
+    /// Enter the global matchmaking lobby. The lobby pairs the next two
+    /// finders and assigns the roles; pairing is reported as a Matched event.
+    /// Returns false if a match is already in progress.
+    bool findMatch();
 
-    /// Join an existing signaling room by its 4-character code (client side).
-    bool joinRoom(const std::string& roomCode);
+    /// Leave the matchmaking queue (only meaningful before pairing).
+    bool cancelMatchmaking();
 
     /// Tear down signaling + peer connection. Queued events are dropped.
     void disconnect();
@@ -85,10 +92,6 @@ public:
 
     State getState() const;
 
-    /// Room code once assigned by the signaling server (host: created code,
-    /// client: the joined code); empty before that.
-    std::string getRoomCode() const;
-
     /// Called (single-threaded, from the JS event loop) by the bridge shim.
     void enqueueEvent(Event&& event);
 
@@ -96,14 +99,13 @@ private:
     std::deque<Event> eventQueue;
 #else
     // Host-build stub: the browser transport does not exist on native desktop.
-    bool startHost() { return false; }
-    bool joinRoom(const std::string&) { return false; }
+    bool findMatch() { return false; }
+    bool cancelMatchmaking() { return false; }
     void disconnect() { }
     bool pollEvent(Event&) { return false; }
     bool sendToPeer(uint32_t, int, const uint8_t*, size_t) { return false; }
     uint32_t getRoundTripTimeMs(uint32_t) const { return 0; }
     State getState() const { return State::Idle; }
-    std::string getRoomCode() const { return ""; }
     void enqueueEvent(Event&&) { }
 #endif
 };

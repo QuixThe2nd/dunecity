@@ -47,14 +47,16 @@ MultiPlayerMenu::MultiPlayerMenu() : MenuBase() {
     mainVBox.addWidget(VSpacer::create(8));
 
 #ifdef __EMSCRIPTEN__
-    // Browser: join by the host's 4-character room code. No IP/port entry.
-    connectHBox.addWidget(Label::create(_("Room Code:")), 100);
-    roomCodeTextBox.setMaximumTextLength(4);
-    connectHBox.addWidget(&roomCodeTextBox, 90);
+    // Browser: global matchmaking lobby. One button finds an opponent; the
+    // lobby pairs the next two finders and assigns the host/joiner roles
+    // itself, so there are no rooms, codes, or separate host/join paths.
+    findMatchButton.setText(_("Find Match"));
+    findMatchButton.setOnClick(std::bind(&MultiPlayerMenu::onFindMatch, this));
+    connectHBox.addWidget(&findMatchButton, 120);
     connectHBox.addWidget(HSpacer::create(20));
-    connectButton.setText(_("Connect"));
-    connectButton.setOnClick(std::bind(&MultiPlayerMenu::onConnect, this));
-    connectHBox.addWidget(&connectButton, 100);
+    cancelButton.setText(_("Cancel"));
+    cancelButton.setOnClick(std::bind(&MultiPlayerMenu::onCancelMatchmaking, this));
+    connectHBox.addWidget(&cancelButton, 100);
     connectHBox.addWidget(Spacer::create());
 
     mainVBox.addWidget(&connectHBox, 28);
@@ -66,16 +68,6 @@ MultiPlayerMenu::MultiPlayerMenu() : MenuBase() {
 
     mainVBox.addWidget(VSpacer::create(16));
 
-    createGameButton.setText(_("Create Online Game"));
-    createGameButton.setOnClick(std::bind(&MultiPlayerMenu::onCreateGame, this));
-    leftVBox.addWidget(&createGameButton, 0.2);
-    leftVBox.addWidget(Spacer::create());
-
-    mainHBox.addWidget(&leftVBox, 180);
-    mainHBox.addWidget(Spacer::create());
-
-    mainVBox.addWidget(Spacer::create(), 0.05);
-    mainVBox.addWidget(&mainHBox, 0.85);
     mainVBox.addWidget(Spacer::create(), 0.05);
     mainVBox.addWidget(VSpacer::create(10));
 
@@ -267,13 +259,35 @@ void MultiPlayerMenu::onChildWindowClose(Window* pChildWindow) {
 
 #ifdef __EMSCRIPTEN__
 
-void MultiPlayerMenu::onCreateGame() {
+void MultiPlayerMenu::onFindMatch() {
     if (!validateAndSavePlayerName()) {
         return;
     }
-    // Same lobby path as the desktop build; NetworkManager::startServer picks
-    // the browser branch (signaling room) internally.
-    CustomGameMenu(true, true).showMenu();
+    if (!pNetworkManager) {
+        openWindow(MsgBox::create(_("Network not available.")));
+        return;
+    }
+
+    pNetworkManager->setOnReceiveGameInfo(std::bind(&MultiPlayerMenu::onReceiveGameInfo, this, std::placeholders::_1, std::placeholders::_2));
+    pNetworkManager->setOnPeerDisconnected(std::bind(&MultiPlayerMenu::onPeerDisconnected, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3));
+    pNetworkManager->setOnMatched(std::bind(&MultiPlayerMenu::onMatched, this, std::placeholders::_1));
+    pNetworkManager->connectWebRtc(settings.general.playerName);
+}
+
+void MultiPlayerMenu::onCancelMatchmaking() {
+    if (pNetworkManager) {
+        pNetworkManager->cancelMatchmaking();
+    }
+}
+
+void MultiPlayerMenu::onMatched(bool bHost) {
+    if (bHost) {
+        // Host continuation: pick the game. The lobby screen's startServer
+        // takes the server role while the transport is already paired.
+        CustomGameMenu(true, true).showMenu();
+    }
+    // Joiner continuation: nothing to do here; the host's game info arrives
+    // through onReceiveGameInfo once the data channels are open.
 }
 
 void MultiPlayerMenu::update() {
@@ -299,37 +313,6 @@ void MultiPlayerMenu::update() {
             connectionStatusLabel.setText(_("Connection failed"));
         } break;
     }
-}
-
-void MultiPlayerMenu::onConnect() {
-    if (!validateAndSavePlayerName()) {
-        return;
-    }
-    if (!pNetworkManager) {
-        openWindow(MsgBox::create(_("Network not available.")));
-        return;
-    }
-
-    std::string roomCode = roomCodeTextBox.getText();
-    // Trim whitespace
-    size_t start = roomCode.find_first_not_of(" \t");
-    size_t end = roomCode.find_last_not_of(" \t");
-    if(start != std::string::npos) {
-        roomCode = roomCode.substr(start, end - start + 1);
-    } else {
-        roomCode = "";
-    }
-
-    if(roomCode.empty()) {
-        openWindow(MsgBox::create(_("Please enter the room code from the game host.")));
-        return;
-    }
-
-    pNetworkManager->setOnReceiveGameInfo(std::bind(&MultiPlayerMenu::onReceiveGameInfo, this, std::placeholders::_1, std::placeholders::_2));
-    pNetworkManager->setOnPeerDisconnected(std::bind(&MultiPlayerMenu::onPeerDisconnected, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3));
-    pNetworkManager->connectWebRtc(roomCode, settings.general.playerName);
-
-    connectionStatusLabel.setText(_("Connecting..."));
 }
 
 #else // native desktop

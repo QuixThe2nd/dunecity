@@ -51,12 +51,16 @@ private:
     void onPlayOnline();
     void onHostCampaignCoop();
 #else
-    void onCreateGame();
+    void onFindMatch();
+    void onCancelMatchmaking();
+    /// Browser: the matchmaking lobby paired us; the host continues into the
+    /// game setup, the joiner waits for the host's game info.
+    void onMatched(bool bHost);
     /// Browser: refresh the connecting/connected/error status line.
     void update() override;
 #endif
-    void onConnect();
 #ifndef __EMSCRIPTEN__
+    void onConnect();
     void onJoin();
 #endif
     void onQuit();
@@ -91,8 +95,8 @@ private:
 
 #ifdef __EMSCRIPTEN__
     HBox            connectHBox;
-    TextBox         roomCodeTextBox;
-    TextButton      connectButton;
+    TextButton      findMatchButton;
+    TextButton      cancelButton;
     Label           connectionStatusLabel;
 #else
     HBox            connectHBox;
@@ -104,11 +108,9 @@ private:
     HBox            playerNameHBox;
     TextBox         playerNameTextBox;
 
+#ifndef __EMSCRIPTEN__
     // left VBox with create game buttons
     VBox            leftVBox;
-#ifdef __EMSCRIPTEN__
-    TextButton      createGameButton;
-#else
     TextButton      createLANGameButton;
     TextButton      createInternetGameButton;
     TextButton      playOnlineButton;

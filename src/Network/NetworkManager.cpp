@@ -318,14 +318,11 @@ void NetworkManager::startServer(bool bLANServer, const std::string& serverName,
     }
 
 #ifdef __EMSCRIPTEN__
-    // Browser host: create a signaling room. The room code for the other
-    // player is available through getWebRtcRoomCode() once the server confirms.
+    // Browser host: the matchmaking lobby already paired the transport (see
+    // connectWebRtc); hosting just means taking the server role for the
+    // post-connect handshake.
     (void) bLANServer;
     (void) serverName;
-
-    if(pWebRtcTransport->startHost() == false) {
-        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "NetworkManager: Could not create signaling room for hosting");
-    }
 #else
     if(bLANServer == true) {
         if(pLANGameFinderAndAnnouncer != nullptr) {
@@ -605,16 +602,21 @@ void NetworkManager::connect(ENetAddress address, const std::string& playerName)
 
 #else // __EMSCRIPTEN__
 
-void NetworkManager::connectWebRtc(const std::string& roomCode, const std::string& playerName) {
-    if(pWebRtcTransport->joinRoom(roomCode) == false) {
-        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "NetworkManager: Could not start joining room '%s'", roomCode.c_str());
+void NetworkManager::connectWebRtc(const std::string& playerName) {
+    if(pWebRtcTransport->findMatch() == false) {
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "NetworkManager: Could not enter the matchmaking lobby");
         return;
     }
 
     this->playerName = playerName;
 
-    // The NetPeer for the host is created when the transport reports the
+    // The lobby reports the pairing as a Matched event (host/joiner role).
+    // The NetPeer for the opponent is created when the transport reports the
     // Connect event (both DataChannels open).
+}
+
+void NetworkManager::cancelMatchmaking() {
+    pWebRtcTransport->cancelMatchmaking();
 }
 
 NetPeer* NetworkManager::findPeerByWebRtcId(uint32_t webRtcPeerId, bool bCreate) {
@@ -673,6 +675,7 @@ void NetworkManager::clearAllPeers() {
     }
 
     connectPeerWebRtcId = 0;
+    bWebRtcHost = false;
 }
 
 #endif // __EMSCRIPTEN__
@@ -949,7 +952,11 @@ void NetworkManager::update()
             case WebRtcTransport::EventType::Connect: {
                 NetPeer* peer = findPeerByWebRtcId(event.peerHandle, true);
 
-                if(bIsServer) {
+                // The lobby assigned the role when pairing. bIsServer is only
+                // set once the host reaches the game lobby (startServer),
+                // which can race with the data channels opening, so decide by
+                // the matched role here.
+                if(bIsServer || bWebRtcHost) {
                     // Host: the joining player's data channels are now open
                     debugNetwork("NetworkManager: peer %u connected.\n", (unsigned int) event.peerHandle);
 
@@ -1045,6 +1052,16 @@ void NetworkManager::update()
                 }
 
                 delete peer;
+            } break;
+
+            case WebRtcTransport::EventType::Matched: {
+                // The lobby paired us; cause is the assigned role.
+                bWebRtcHost = (event.cause == static_cast<int>(WebRtcTransport::MatchRole::Host));
+                debugNetwork("NetworkManager: matched as %s.\n", bWebRtcHost ? "host" : "joiner");
+
+                if(pOnMatched) {
+                    pOnMatched(bWebRtcHost);
+                }
             } break;
 
             case WebRtcTransport::EventType::State:

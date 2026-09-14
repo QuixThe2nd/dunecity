@@ -308,9 +308,10 @@ CustomGamePlayers::CustomGamePlayers(const GameInitSettings& newGameInitSettings
     mapPropertyMod.setText(activeModInfo.displayName);
     mapPropertyValuesVBox.addWidget(&mapPropertyMod);
 #ifdef __EMSCRIPTEN__
-    // Browser host: show the signaling room code the other player must enter.
-    mapPropertyNamesVBox.addWidget(Label::create(_("Room Code") + ":"));
-    mapPropertyValuesVBox.addWidget(&roomCodeLabel);
+    // Browser: the matchmaking lobby already paired us; show how the matched
+    // opponent's connection is doing.
+    mapPropertyNamesVBox.addWidget(Label::create(_("Opponent") + ":"));
+    mapPropertyValuesVBox.addWidget(&opponentLabel);
 #endif
     rightVBox.addWidget(Spacer::create());
 
@@ -700,19 +701,36 @@ CustomGamePlayers::CustomGamePlayers(const GameInitSettings& newGameInitSettings
     }
 
 #ifdef __EMSCRIPTEN__
-    // The room code arrives asynchronously from the signaling server; update()
-    // refreshes the label once it shows up.
-    updateRoomCodeLabel();
+    // The opponent's connection state changes asynchronously; update()
+    // refreshes the label.
+    updateOpponentLabel();
 #endif
 }
 
 #ifdef __EMSCRIPTEN__
-void CustomGamePlayers::updateRoomCodeLabel() {
-    if(bServer && pNetworkManager != nullptr) {
-        const std::string roomCode = pNetworkManager->getWebRtcRoomCode();
-        roomCodeLabel.setText(roomCode.empty() ? "..." : roomCode);
-    } else {
-        roomCodeLabel.setText("-");
+void CustomGamePlayers::updateOpponentLabel() {
+    if(pNetworkManager == nullptr) {
+        opponentLabel.setText("-");
+        return;
+    }
+
+    switch(pNetworkManager->getWebRtcState()) {
+        case WebRtcTransport::State::Connecting: {
+            opponentLabel.setText(_("Connecting..."));
+        } break;
+
+        case WebRtcTransport::State::Connected: {
+            opponentLabel.setText(_("Connected"));
+        } break;
+
+        case WebRtcTransport::State::Failed: {
+            opponentLabel.setText(_("Connection failed"));
+        } break;
+
+        case WebRtcTransport::State::Idle:
+        default: {
+            opponentLabel.setText("-");
+        } break;
     }
 }
 #endif
@@ -780,7 +798,7 @@ void CustomGamePlayers::onChildWindowClose(Window* child) {
 
 void CustomGamePlayers::update() {
 #ifdef __EMSCRIPTEN__
-    updateRoomCodeLabel();
+    updateOpponentLabel();
 #endif
 
     if(isCoopGameType(gameInitSettings.getGameType()) && startGameTime == 0 && bServer && !bWaitingForModAcks) {

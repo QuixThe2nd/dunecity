@@ -97,8 +97,8 @@ private:
     void updateDiscordGameStarting();
     void updateDiscordLobbyPresence();
 #ifdef __EMSCRIPTEN__
-    /// Browser: refresh the host's signaling room code label.
-    void updateRoomCodeLabel();
+    /// Browser: refresh the matched opponent's connection state label.
+    void updateOpponentLabel();
 #endif
     void onPeerDisconnected(const std::string& playername, bool bHost, int cause);
 
@@ -161,7 +161,7 @@ private:
     Label           mapPropertyLicense;
     Label           mapPropertyMod;
 #ifdef __EMSCRIPTEN__
-    Label           roomCodeLabel;   ///< Browser host: the signaling room code to give the joining player.
+    Label           opponentLabel;   ///< Browser: the matched opponent's connection state.
 #endif
 
     // bottom row of buttons
