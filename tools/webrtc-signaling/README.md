@@ -1,14 +1,16 @@
-# DuneCity WebRTC Signaling Server
+# DuneCity WebRTC Matchmaking Lobby
 
-A minimal Node.js WebSocket signaling service for DuneCity's WebRTC
-peer-to-peer sessions. It relays SDP offers/answers and ICE candidates between
-exactly **two peers in a room**, and nothing else.
+A minimal Node.js WebSocket service that pairs DuneCity players into WebRTC
+peer-to-peer sessions. The first client that looks for a match waits; the next
+one is paired with it (FIFO). The server assigns the roles — the waiting client
+becomes the **host** (offerer), the newcomer the **joiner** (answerer) — and
+then relays SDP/ICE between exactly the two paired peers, and nothing else.
 
 It deliberately does **not** provide:
 
-- persistence of any kind (rooms live in memory only)
+- persistence of any kind (the queue and pairs live in memory only)
 - accounts, authentication, or authorization of peers
-- matchmaking or room discovery (you must know the 4-character room code)
+- rooms, room codes, or any HTTP API
 - game data relay (once WebRTC connects, traffic is peer-to-peer)
 - TURN/STUN services (configure those separately, e.g. coturn)
 
@@ -19,8 +21,7 @@ npm install        # once; installs the single dependency `ws`
 npm start          # runs `node server.js`
 ```
 
-Defaults: `ws://127.0.0.1:8788/` (WebSocket endpoint, path is not restricted)
-and `http://127.0.0.1:8788/health`.
+Defaults: `ws://127.0.0.1:8788/` (WebSocket endpoint, path is not restricted).
 
 ### Environment variables
 
@@ -28,7 +29,6 @@ and `http://127.0.0.1:8788/health`.
 | ------------------------------ | ----------- | --------------------------------------------------- |
 | `PORT`                         | `8788`      | TCP port (`0` picks an ephemeral port)               |
 | `HOST`                         | `127.0.0.1` | Bind address (use `0.0.0.0` to expose externally)    |
-| `SIGNALING_ALLOWED_ORIGINS`    | _(empty)_   | Comma-separated allowlist of accepted `Origin` values |
 
 ### Using as a module
 
@@ -36,99 +36,78 @@ and `http://127.0.0.1:8788/health`.
 import { createSignalingServer } from './server.js';
 
 const ctx = createSignalingServer({
-  allowedOrigins: ['https://dunecity.example'],
   // rateLimit: { max: 120, windowMs: 5000, strikeLimit: 3 },
-  // emptyRoomTtlMs: 5000, idleRoomTtlMs: 600000, sweepIntervalMs: 1000,
-  // maxMessageBytes: 256 * 1024,
+  // maxQueue: 200, maxMessageBytes: 256 * 1024, pingIntervalMs: 30_000,
 });
 ctx.httpServer.listen(8788, '127.0.0.1');
-// ctx: { httpServer, wss, rooms, peers, sockets, options, stats(), close() }
+// ctx: { httpServer, wss, queue, states, options, stats(), close() }
 ```
 
-`stats()` returns `{ rooms, peers }` (rooms = live rooms, peers = connected
-sockets). `close()` terminates all client sockets, clears timers, and closes
-the HTTP server; it returns a Promise that resolves when shutdown completes.
+`stats()` returns `{ waiting, pairs, peers }` (waiting = clients currently
+queued, pairs = matched pairs, peers = connected sockets). `close()` terminates
+all client sockets, clears timers, and closes the HTTP server; it returns a
+Promise that resolves when shutdown completes.
 
 ## Wire protocol
 
 JSON **text frames** over a single WebSocket endpoint (default path `/`).
-Protocol version is `1`; every message and reply carries `"v":1`.
+Every message is a small object discriminated by `"t"`. There is no protocol
+version field and no peer identity: pairing is anonymous and the server relays
+only between the two sockets it paired itself.
 
 ### Client -> server
 
-| Message                                        | Effect                                                                                     |
-| ---------------------------------------------- | ------------------------------------------------------------------------------------------ |
-| `{"v":1,"type":"create"}`                      | Create a room. Reply: `{"v":1,"type":"created","room":"AB3D","peerId":"p1a2b3c4"}`          |
-| `{"v":1,"type":"join","room":"AB3D"}`          | Join a room. Reply to joiner: `{"v":1,"type":"joined","room":"AB3D","peerId":"...","host":"<hostPeerId>"}`; the host additionally receives `{"v":1,"type":"peer-joined","peerId":"<joinerPeerId>"}` |
-| `{"v":1,"type":"signal","to":"<peerId>","data":<opaque>}` | Relay `data` verbatim to that peer. Recipient gets `{"v":1,"type":"signal","from":"<senderPeerId>","data":<same opaque value>}` |
-
-`data` is opaque JSON (SDP strings, ICE candidate objects, ...) and is relayed
-unchanged. Maximum serialized message size is **256 KiB**.
+| Message                        | Effect                                                                                                                          |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------- |
+| `{"t":"find"}`                 | Enter the lobby. If someone is already waiting, the two of you are paired immediately (see `matched` below); otherwise you are queued and receive `{"t":"waiting"}`. Duplicate `find` (while waiting or paired) is ignored. |
+| `{"t":"cancel"}`               | Leave the waiting queue (no effect once paired; a pairing is only left by closing the socket).                                    |
+| `{"t":"sig","data":<opaque>}`  | Relay `data` verbatim to your paired peer. Dropped silently while unpaired. `data` is never parsed or inspected.                  |
 
 ### Server -> client
 
-| Message                                    | When                                                        |
-| ------------------------------------------ | ----------------------------------------------------------- |
-| `{"v":1,"type":"peer-left","peerId":"..."}` | The other peer's socket closed (or was promoted away/room expired for it) |
-| `{"v":1,"type":"error","code":"...","message":"..."}` | Any invalid input or policy violation                       |
+| Message                                  | When                                                        |
+| ---------------------------------------- | ----------------------------------------------------------- |
+| `{"t":"waiting"}`                        | You are queued; the next finder pairs with you              |
+| `{"t":"matched","role":"host"\|"joiner"}` | You were paired. The waiter is `host` (creates the WebRTC offer), the newcomer is `joiner` (answers). Both messages are sent in the same tick. |
+| `{"t":"sig","data":<opaque>}`            | Your paired peer sent you a `sig`; `data` is their payload unchanged |
+| `{"t":"peer_left"}`                      | Your paired peer's socket closed; the pairing is dissolved   |
+| `{"t":"error","code":"..."}`             | Any invalid input or policy violation                        |
+
+`data` is opaque JSON (SDP descriptions, ICE candidate objects, strings, ...)
+and is relayed unchanged. Maximum serialized message size is **256 KiB**.
 
 Error codes:
 
-| Code                   | Meaning                                                                     |
-| ---------------------- | --------------------------------------------------------------------------- |
-| `unsupported-version`  | `v` missing or not exactly `1`; no further processing of that message       |
-| `invalid-message`      | Not JSON, not an object, malformed `join` room code, or `signal` missing string `to` / missing `data` |
-| `invalid-type`         | Unknown or missing `type`                                                   |
-| `invalid-target`       | `signal` addressed to a peerId that does not exist, is not in your room, or is yourself |
-| `room-not-found`       | `join` for a room code that does not exist                                  |
-| `room-full`            | Room already has two peers                                                  |
-| `too-large`            | Message exceeds 256 KiB serialized                                          |
-| `rate-limited`         | Per-socket rate limit exceeded (see below)                                  |
-| `already-in-room`      | `create`/`join` while already in a room (a peer is in at most one room)     |
-| `room-expired`         | *(extension)* The room was closed after its idle TTL; the peer was detached and may create/join again |
-
-### Rules
-
-- Exactly 2 peers per room. A third `join` gets `room-full`.
-- Room codes are 4 characters from an unambiguous alphabet
-  (`ABCDEFGHJKLMNPQRSTUVWXYZ23456789` — no `0`/`O`/`1`/`I`), generated
-  randomly and regenerated on collision with a live room.
-- Peer IDs are opaque (`p` + 8 hex characters), assigned when entering a room.
-- If the host disconnects, the remaining peer is promoted to host and is
-  reported as `"host"` to subsequent joiners.
-
-## HTTP endpoints
-
-| Path     | Behavior                                                                     |
-| -------- | ---------------------------------------------------------------------------- |
-| `GET /health` | `200` with `{"status":"ok","rooms":N,"peers":M}`; carries `Access-Control-Allow-Origin` when an origin allowlist is configured |
-| anything else | `404`                                                                        |
+| Code               | Meaning                                                                     |
+| ------------------ | ---------------------------------------------------------------------------- |
+| `invalid_message`  | Not UTF-8 JSON, or not a JSON object                                         |
+| `unknown_type`     | `t` missing or not one of `find` / `cancel` / `sig`                          |
+| `too_large`        | Message exceeds 256 KiB serialized                                           |
+| `rate_limited`     | Per-socket `sig` rate limit exceeded (see below)                             |
+| `lobby_full`       | The waiting queue is at `maxQueue` (defensive; the queue holds one waiter in practice) |
 
 ## Limits
 
-| Limit                | Default       | Behavior                                                                                                        |
-| -------------------- | ------------- | --------------------------------------------------------------------------------------------------------------- |
-| Message size         | 256 KiB       | Larger messages get `too-large`; a hard transport cap of 2 MiB (`ws` `maxPayload`) drops absurd frames           |
-| Rate limit           | 120 msgs / 5 s per socket (fixed window) | The first over-limit message gets `rate-limited`. If the socket keeps exceeding the limit (3 strikes within the window), it is closed with close code `1008`. Counters and strikes reset when a new window starts. |
-| Empty room TTL       | 5 s           | A room whose last peer disconnected is deleted by a periodic sweep (sweep runs every 1 s; the sweep timer is `unref`'d) |
-| Idle room TTL        | 10 minutes    | A room whose remaining peer(s) stopped sending messages is deleted; remaining peers get a `room-expired` error and are detached so they can join a new room |
+| Limit        | Default       | Behavior                                                                                                        |
+| ------------ | ------------- | ---------------------------------------------------------------------------------------------------------------- |
+| Message size | 256 KiB       | Larger messages get `too_large`; a hard transport cap of 2 MiB (`ws` `maxPayload`) drops absurd frames            |
+| Rate limit   | 120 `sig` / 5 s per socket (fixed window) | The first over-limit `sig` gets `rate_limited`. If the socket keeps exceeding the limit (3 strikes within the window), it is closed with close code `1008`. Counters and strikes reset when a new window starts. |
+| Queue        | 200 waiters   | A finder beyond `maxQueue` gets `lobby_full`                                                                   |
+| Keepalive    | 30 s ping     | Sockets that miss a pong interval are terminated                                                               |
 
 All limits are configurable via `createSignalingServer` options
-(`maxMessageBytes`, `rateLimit`, `emptyRoomTtlMs`, `idleRoomTtlMs`,
-`sweepIntervalMs`) — which is also how the test suite exercises them quickly.
+(`maxMessageBytes`, `rateLimit`, `maxQueue`, `pingIntervalMs`) — which is also
+how the test suite exercises them quickly.
 
 ## Security notes
 
-- **Set `SIGNALING_ALLOWED_ORIGINS` in production** (e.g.
-  `https://dunecity.example`). While the list is non-empty, WebSocket upgrades
-  with a `Origin` header not on the list are rejected with `403`, and
-  `/health` replies carry the matching `Access-Control-Allow-Origin`. The
-  default (empty list) accepts all origins, which is fine for local
-  development only.
-- There is **no authentication**: anyone who learns a room code can occupy its
-  second slot (the room is destroyed if either peer misbehaves — just leave).
-  Signaling carries no secrets, but run it behind TLS (a reverse proxy such as
-  nginx/caddy terminating WSS) before exposing it publicly.
+- **Origin policy**: WebSocket upgrades are accepted from non-browser clients
+  (no `Origin` header), same-host pages, and `localhost`/`127.0.0.1`/`[::1]`;
+  anything else is rejected with `403`. For production behind a proxy, put TLS
+  (WSS) termination in front and keep the lobby private to the game's origin.
+- There is **no authentication**: anyone connecting can occupy the next match
+  slot. Signaling carries no secrets (SDP/ICE only), but do not expose the
+  lobby to the open internet without an origin/proxy policy.
 - No message contents are logged; the only log line is the startup banner.
 - Rate limiting and size caps exist to bound abuse, not to replace a real
   firewall or DDoS protection.
@@ -137,5 +116,6 @@ All limits are configurable via `createSignalingServer` options
 ## Tests
 
 ```bash
-npm test   # node --test test/
+npm test                          # node --test test/*.test.js
+node test/mm-lobby-proof.mjs      # protocol proof on port 8799; prints PASS
 ```

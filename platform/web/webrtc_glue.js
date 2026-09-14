@@ -19,6 +19,13 @@
  * Game packets still ride two native binary RTCDataChannels created here —
  * never p2pkit's RTCTransport JSON channel.
  *
+ * Signaling: a global matchmaking lobby (tools/webrtc-signaling). findMatch()
+ * sends {"t":"find"}; the lobby pairs the next two finders FIFO and assigns
+ * roles — the waiter hosts (creates the WebRTC offer), the newcomer joins
+ * (answers). Dialect envelopes ride the lobby's opaque sig channel wrapped as
+ * {"t":"sig","data":<envelope>}; there are no rooms, codes, or peer ids (the
+ * glue addresses its peer synthetically as 'host'/'joiner').
+ *
  * Wire contract (see docs/webrtc/IMPLEMENTATION-PLAN.md):
  *   - channel 0 ("control")  : RTCDataChannel { ordered: true }            — ENet channel 0 reliable
  *   - channel 1 ("commands") : RTCDataChannel { ordered: false, maxRetransmits: 0 } — ENet channel 1 unsequenced
@@ -52,13 +59,13 @@ const DUNECITY_WEBRTC_CONTROL_HIGH_WATER = 512 * 1024;
 const DUNECITY_WEBRTC_CONTROL_LOW_WATER = 128 * 1024;
 const DUNECITY_WEBRTC_COMMANDS_HIGH_WATER = 512 * 1024;
 const DUNECITY_WEBRTC_MAX_SIGNAL_BYTES = 256 * 1024;
-const DUNECITY_WEBRTC_SIGNAL_PROTOCOL_VERSION = 1;
 
 // Event codes passed to the C++ side (must match WebRtcTransport.h)
 const DUNECITY_WEBRTC_EVENT_CONNECT = 0;
 const DUNECITY_WEBRTC_EVENT_DISCONNECT = 1;
 const DUNECITY_WEBRTC_EVENT_MESSAGE = 2;
 const DUNECITY_WEBRTC_EVENT_STATE = 3;
+const DUNECITY_WEBRTC_EVENT_MATCHED = 4;
 
 // Transport states (must match WebRtcTransport.h)
 const DUNECITY_WEBRTC_STATE_IDLE = 0;
@@ -90,13 +97,6 @@ function resolveP2pkit(deps) {
         }
     }
     return null;
-}
-
-function isP2pkitDialectMessage(msg) {
-    if (!msg || typeof msg !== 'object' || Array.isArray(msg)) return false;
-    if (Object.prototype.hasOwnProperty.call(msg, 'v')) return false;
-    if (Object.prototype.hasOwnProperty.call(msg, 'type')) return false;
-    return msg.announce === true || msg.description !== undefined || msg.iceCandidate !== undefined;
 }
 
 function validateSignallingMessage(message) {
@@ -179,8 +179,8 @@ function createDuneCityWebRtc(deps) {
 
     // ---- passive telemetry (diagnostics only; no behavior depends on it) ----
     const stats = {
-        role: null,               // 'host' | 'client'
-        roomCode: null,
+        role: null,               // 'finding' | 'host' | 'joiner'
+        roomCode: null,           // always null: the lobby has no room codes
         signalingState: 'idle',   // idle|connecting|open|closed|error
         peerConnectionState: 'new',
         channels: {
@@ -208,7 +208,7 @@ function createDuneCityWebRtc(deps) {
 
     // ---- signaling ----
     let ws = null;
-    let selfPeerId = null;
+    let selfPeerId = null;      // synthetic dialect address: 'host' | 'joiner'
     let remotePeerId = null;
     let peerHandle = 0;         // stable C++-facing peer id (assigned on connect)
     let signallingChannel = null;
@@ -243,7 +243,16 @@ function createDuneCityWebRtc(deps) {
                     log('webrtc: cannot signal, socket not open');
                     return false;
                 }
-                ws.send(text);
+                // The lobby only understands {"t":"sig"}; the dialect envelope
+                // rides inside as an opaque payload and is relayed verbatim.
+                let envelope;
+                try {
+                    envelope = JSON.parse(text);
+                } catch (e) {
+                    log('webrtc: signalling adapter produced invalid JSON');
+                    return false;
+                }
+                ws.send(JSON.stringify({ t: 'sig', data: envelope }));
                 return true;
             },
             p2pkit: kit,
@@ -448,65 +457,50 @@ function createDuneCityWebRtc(deps) {
         }
     }
 
-    // The trimmed in-tree p2pkit has no negotiate module, so role selection
-    // uses the room semantics the signaling server already guarantees: exactly
-    // one host and one client per room, and the host always offers.
-    function maybeStartNegotiation() {
-        if (!selfPeerId || !remotePeerId) return;
-        const kit = getP2pkit();
-        if (!kit) {
-            fail('p2pkit unavailable');
+    // The lobby paired us with a peer and assigned a role: host = offerer
+    // (creates the two data channels and the SDP offer), joiner = answerer
+    // (passively waits for the offer on pc.ondatachannel).
+    function handleMatched(role) {
+        if (role !== 'host' && role !== 'joiner') {
+            fail('signaling: bad matched role ' + role);
             return;
         }
+        stats.role = role;
+        selfPeerId = role;
+        remotePeerId = role === 'host' ? 'joiner' : 'host';
+        log('webrtc: matched as ' + role);
+        if (deps.onEvent) deps.onEvent(DUNECITY_WEBRTC_EVENT_STATE, 0, 0, DUNECITY_WEBRTC_STATE_CONNECTING, null);
+        if (deps.onEvent) deps.onEvent(DUNECITY_WEBRTC_EVENT_MATCHED, 0, 0, role === 'joiner' ? 1 : 0, null);
         if (!ensureSignallingChannel()) {
             fail('p2pkit unavailable');
             return;
         }
-        if (stats.role === 'host' && !pc) {
-            log('webrtc: initiating offer (host, remote=' + remotePeerId + ')');
+        if (role === 'host' && !pc) {
             createOfferAndSend().catch(function (e) { fail('offer: ' + e); });
         }
     }
 
-    function handleSignalMessage(msg) {
-        if (!msg || msg.v !== DUNECITY_WEBRTC_SIGNAL_PROTOCOL_VERSION) return;
-        switch (msg.type) {
-            case 'created':
-                stats.roomCode = msg.room;
-                selfPeerId = msg.peerId;
-                log('webrtc: room created, code ' + msg.room);
-                if (deps.onRoom) deps.onRoom(msg.room);
-                if (deps.onEvent) deps.onEvent(DUNECITY_WEBRTC_EVENT_STATE, 0, 0, DUNECITY_WEBRTC_STATE_CONNECTING, null);
+    function handleLobbyMessage(msg) {
+        if (!msg || typeof msg !== 'object') return;
+        switch (msg.t) {
+            case 'waiting':
+                log('webrtc: waiting for an opponent');
                 break;
-            case 'joined':
-                stats.roomCode = msg.room;
-                selfPeerId = msg.peerId;
-                remotePeerId = msg.host;
-                log('webrtc: joined room ' + msg.room + ', host ' + msg.host);
-                if (deps.onRoom) deps.onRoom(msg.room);
-                maybeStartNegotiation();
+            case 'matched':
+                handleMatched(msg.role);
                 break;
-            case 'peer-joined':
-                remotePeerId = msg.peerId;
-                log('webrtc: peer joined');
-                maybeStartNegotiation();
+            case 'sig': {
+                // Opaque passthrough: the payload is the peer's dialect envelope.
+                const ch = ensureSignallingChannel();
+                if (ch && msg.data && typeof msg.data === 'object') ch._deliver(msg.data);
                 break;
-            case 'signal':
-                // The peer's p2pkit dialect message rides inside data; the
-                // outer from/to were stamped by the signaling server.
-                if (isP2pkitDialectMessage(msg.data)) {
-                    const ch = ensureSignallingChannel();
-                    if (ch) ch._deliver(msg.data);
-                } else {
-                    log('webrtc: ignoring non-dialect signal payload');
-                }
-                break;
-            case 'peer-left':
+            }
+            case 'peer_left':
                 log('webrtc: peer left');
                 notifyPeerLeft();
                 break;
             case 'error':
-                fail('signaling: ' + msg.code + ' ' + msg.message);
+                fail('signaling: ' + msg.code + (msg.message ? ' ' + msg.message : ''));
                 break;
             default:
                 break;
@@ -543,7 +537,7 @@ function createDuneCityWebRtc(deps) {
                 log('webrtc: invalid signaling JSON');
                 return;
             }
-            handleSignalMessage(msg);
+            handleLobbyMessage(msg);
         };
     }
 
@@ -571,6 +565,11 @@ function createDuneCityWebRtc(deps) {
             pc = null;
         }
         if (ws) {
+            // Detach handlers first so a deliberate close (disconnect/cancel)
+            // does not report itself as a signaling failure.
+            ws.onclose = null;
+            ws.onerror = null;
+            ws.onmessage = null;
             try { ws.close(); } catch (e) {}
             ws = null;
             stats.signalingState = 'closed';
@@ -623,28 +622,23 @@ function createDuneCityWebRtc(deps) {
 
     // ---- public api ----
     const api = {
-        hostRoom: function () {
+        findMatch: function () {
             if (stats.role) return false;
-            stats.role = 'host';
+            stats.role = 'finding';
             connectSignaling(function () {
-                signalSend({ v: DUNECITY_WEBRTC_SIGNAL_PROTOCOL_VERSION, type: 'create' });
+                signalSend({ t: 'find' });
             });
             return true;
         },
-        joinRoom: function (roomCode) {
-            if (stats.role) return false;
-            if (typeof roomCode !== 'string' || !/^[A-Z2-9]{4}$/.test(roomCode)) {
-                fail('invalid room code');
-                return false;
-            }
-            stats.role = 'client';
-            connectSignaling(function () {
-                signalSend({ v: DUNECITY_WEBRTC_SIGNAL_PROTOCOL_VERSION, type: 'join', room: roomCode });
-            });
+        cancelMatchmaking: function () {
+            // Only meaningful while queued: a pairing is left via disconnect().
+            if (stats.role !== 'finding') return false;
+            signalSend({ t: 'cancel' });
+            closeEverything();
+            stats.role = null;
             return true;
         },
         send: send,
-        getRoomCode: function () { return stats.roomCode; },
         getRole: function () { return stats.role; },
         getStats: function () { return stats; },
         getPeerHandle: function () { return peerHandle; },
@@ -680,6 +674,7 @@ if (typeof module !== 'undefined' && module.exports) {
         DUNECITY_WEBRTC_EVENT_DISCONNECT,
         DUNECITY_WEBRTC_EVENT_MESSAGE,
         DUNECITY_WEBRTC_EVENT_STATE,
+        DUNECITY_WEBRTC_EVENT_MATCHED,
         DUNECITY_WEBRTC_STATE_IDLE,
         DUNECITY_WEBRTC_STATE_CONNECTING,
         DUNECITY_WEBRTC_STATE_CONNECTED,
@@ -707,11 +702,11 @@ if (typeof mergeInto === 'function' && typeof LibraryManager !== 'undefined') {
         $DUNECITY_WEBRTC_CONTROL_LOW_WATER: '=(128 * 1024)',
         $DUNECITY_WEBRTC_COMMANDS_HIGH_WATER: '=(512 * 1024)',
         $DUNECITY_WEBRTC_MAX_SIGNAL_BYTES: '=(256 * 1024)',
-        $DUNECITY_WEBRTC_SIGNAL_PROTOCOL_VERSION: '=1',
         $DUNECITY_WEBRTC_EVENT_CONNECT: '=0',
         $DUNECITY_WEBRTC_EVENT_DISCONNECT: '=1',
         $DUNECITY_WEBRTC_EVENT_MESSAGE: '=2',
         $DUNECITY_WEBRTC_EVENT_STATE: '=3',
+        $DUNECITY_WEBRTC_EVENT_MATCHED: '=4',
         $DUNECITY_WEBRTC_STATE_IDLE: '=0',
         $DUNECITY_WEBRTC_STATE_CONNECTING: '=1',
         $DUNECITY_WEBRTC_STATE_CONNECTED: '=2',
@@ -720,7 +715,6 @@ if (typeof mergeInto === 'function' && typeof LibraryManager !== 'undefined') {
         $cachedP2pkit: '=null',
         $resolveP2pkit__deps: ['$cachedP2pkit'],
         $resolveP2pkit: resolveP2pkit,
-        $isP2pkitDialectMessage: isP2pkitDialectMessage,
         $validateSignallingMessage: validateSignallingMessage,
         $createDuneCitySignallingChannel__deps: [
             '$validateSignallingMessage', '$DUNECITY_WEBRTC_MAX_SIGNAL_BYTES',
@@ -735,12 +729,12 @@ if (typeof mergeInto === 'function' && typeof LibraryManager !== 'undefined') {
             '$DUNECITY_WEBRTC_CONTROL_OPTIONS', '$DUNECITY_WEBRTC_COMMANDS_OPTIONS',
             '$DUNECITY_WEBRTC_CONTROL_HIGH_WATER', '$DUNECITY_WEBRTC_CONTROL_LOW_WATER',
             '$DUNECITY_WEBRTC_COMMANDS_HIGH_WATER', '$DUNECITY_WEBRTC_MAX_SIGNAL_BYTES',
-            '$DUNECITY_WEBRTC_SIGNAL_PROTOCOL_VERSION',
             '$DUNECITY_WEBRTC_EVENT_CONNECT', '$DUNECITY_WEBRTC_EVENT_DISCONNECT',
             '$DUNECITY_WEBRTC_EVENT_MESSAGE', '$DUNECITY_WEBRTC_EVENT_STATE',
+            '$DUNECITY_WEBRTC_EVENT_MATCHED',
             '$DUNECITY_WEBRTC_STATE_IDLE', '$DUNECITY_WEBRTC_STATE_CONNECTING',
             '$DUNECITY_WEBRTC_STATE_CONNECTED', '$DUNECITY_WEBRTC_STATE_FAILED',
-            '$resolveP2pkit', '$createDuneCitySignallingChannel', '$isP2pkitDialectMessage',
+            '$resolveP2pkit', '$createDuneCitySignallingChannel',
         ],
         $createDuneCityWebRtc: createDuneCityWebRtc,
 
@@ -771,31 +765,22 @@ if (typeof mergeInto === 'function' && typeof LibraryManager !== 'undefined') {
             Module.dunecityWebrtcStats = Module.__dunecityWebrtc.getStats;
         },
 
-        webrtcHostRoom__deps: ['$webrtcInit'],
-        webrtcHostRoom: function () {
+        webrtcFindMatch__deps: ['$webrtcInit'],
+        webrtcFindMatch: function () {
             webrtcInit();
-            return Module.__dunecityWebrtc.hostRoom() ? 1 : 0;
+            return Module.__dunecityWebrtc.findMatch() ? 1 : 0;
         },
 
-        webrtcJoinRoom__deps: ['$webrtcInit'],
-        webrtcJoinRoom: function (roomPtr) {
+        webrtcCancelMatch__deps: ['$webrtcInit'],
+        webrtcCancelMatch: function () {
             webrtcInit();
-            const room = UTF8ToString(roomPtr);
-            return Module.__dunecityWebrtc.joinRoom(room) ? 1 : 0;
+            return Module.__dunecityWebrtc.cancelMatchmaking() ? 1 : 0;
         },
 
         webrtcSendTo: function (peer, channel, ptr, len) {
             if (!Module.__dunecityWebrtc) return 0;
             const bytes = HEAPU8.slice(ptr, ptr + len);
             return Module.__dunecityWebrtc.send(channel, bytes) ? 1 : 0;
-        },
-
-        webrtcGetRoomCode: function (bufPtr, bufLen) {
-            if (!Module.__dunecityWebrtc) return 0;
-            const code = Module.__dunecityWebrtc.getRoomCode();
-            if (!code) return 0;
-            stringToUTF8(code, bufPtr, bufLen);
-            return 1;
         },
 
         webrtcGetState: function () {

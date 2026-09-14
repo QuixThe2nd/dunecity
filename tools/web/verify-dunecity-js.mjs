@@ -41,8 +41,11 @@ if (mode === '--source') {
   if (!text.includes('$webrtcInit__deps')) {
     fail('webrtc_glue.js must declare $webrtcInit__deps');
   }
-  if (!text.includes('webrtcHostRoom__deps')) {
-    fail('webrtc_glue.js must declare webrtcHostRoom__deps');
+  if (!text.includes('webrtcFindMatch__deps')) {
+    fail('webrtc_glue.js must declare webrtcFindMatch__deps');
+  }
+  if (!text.includes('webrtcCancelMatch__deps')) {
+    fail('webrtc_glue.js must declare webrtcCancelMatch__deps');
   }
   if (text.includes('$createDuneCityWebRtc__postset')) {
     fail('webrtc_glue.js must not use $createDuneCityWebRtc__postset; $ keys emit unprefixed runtime ids');
@@ -72,11 +75,11 @@ if (
   fail('dunecity.js missing createDuneCityWebRtc factory (DCE or glue not linked)');
 }
 
-if (!/function _webrtcHostRoom\(\)\{webrtcInit\(\)/.test(text)) {
-  fail('dunecity.js _webrtcHostRoom must call webrtcInit() (Emscripten $ key emits unprefixed id)');
+if (!/function _webrtcFindMatch\(\)\{webrtcInit\(\)/.test(text)) {
+  fail('dunecity.js _webrtcFindMatch must call webrtcInit() (Emscripten $ key emits unprefixed id)');
 }
-if (/function _webrtcHostRoom\(\)\{\$webrtcInit\(\)/.test(text)) {
-  fail('dunecity.js _webrtcHostRoom calls literal $webrtcInit() (ReferenceError in browser)');
+if (/function _webrtcFindMatch\(\)\{\$webrtcInit\(\)/.test(text)) {
+  fail('dunecity.js _webrtcFindMatch calls literal $webrtcInit() (ReferenceError in browser)');
 }
 if (/\$createDuneCityWebRtc\s*\(/.test(text)) {
   fail('dunecity.js must not reference literal $createDuneCityWebRtc(...) at runtime');
@@ -86,10 +89,9 @@ if (/\$webrtcInit\s*\(/.test(text)) {
 }
 
 const exportNames = [
-  '_webrtcHostRoom',
-  '_webrtcJoinRoom',
+  '_webrtcFindMatch',
+  '_webrtcCancelMatch',
   '_webrtcSendTo',
-  '_webrtcGetRoomCode',
   '_webrtcGetState',
   '_webrtcGetRttMs',
   '_webrtcDisconnect',
@@ -128,17 +130,20 @@ const lib = globalThis.LibraryManager.library;
 if (typeof lib.$createDuneCityWebRtc !== 'function') {
   fail('LibraryManager.library missing $createDuneCityWebRtc after loading glue');
 }
-if (typeof lib.webrtcHostRoom !== 'function') {
-  fail('LibraryManager.library missing webrtcHostRoom wrapper');
+if (typeof lib.webrtcFindMatch !== 'function') {
+  fail('LibraryManager.library missing webrtcFindMatch wrapper');
+}
+if (typeof lib.webrtcCancelMatch !== 'function') {
+  fail('LibraryManager.library missing webrtcCancelMatch wrapper');
 }
 
 hoistEmscriptenLibraryHelpers(lib, globalThis);
 
 try {
-  lib.webrtcHostRoom();
+  lib.webrtcFindMatch();
 } catch (err) {
   if (err instanceof ReferenceError) {
-    fail(`webrtcHostRoom init path threw ReferenceError: ${err.message}`);
+    fail(`webrtcFindMatch init path threw ReferenceError: ${err.message}`);
   }
   throw err;
 }

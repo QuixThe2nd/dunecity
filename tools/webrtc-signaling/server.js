@@ -1,76 +1,42 @@
-// DuneCity WebRTC signaling server.
-//
-// Minimal relay for WebRTC SDP/ICE between exactly two peers in a room.
-// No persistence, no accounts, no matchmaking, no game relay, no TURN.
-//
+// DuneCity WebRTC signaling server: global matchmaking lobby.
+// {"t":"find"} queues; the next finder pairs with the waiter (server assigns
+// roles: waiter -> host, newcomer -> joiner). {"t":"sig"} relays an opaque
+// payload verbatim between the two paired peers. Socket close leaves; the
+// survivor gets {"t":"peer_left"}. No rooms, codes, HTTP API, or persistence.
 // Usable as a module (createSignalingServer) or run directly (node server.js).
 
 import { createServer } from 'node:http';
-import { randomBytes } from 'node:crypto';
 import { pathToFileURL } from 'node:url';
 import { WebSocketServer } from 'ws';
-
-export const ROOM_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-const ROOM_CODE_RE = new RegExp(`^[${ROOM_ALPHABET}]{4}$`);
-const PEER_ID_RE = /^p[0-9a-f]{8}$/;
 
 export const DEFAULTS = {
   host: '127.0.0.1',
   port: 8788,
-  // Rooms with 0 connected peers are swept after this grace period (<= 30 s).
-  emptyRoomTtlMs: 5_000,
-  // Rooms whose remaining peer(s) are idle longer than this are deleted; the
-  // remaining peers receive an error and are detached from the room.
-  idleRoomTtlMs: 10 * 60 * 1000,
-  // Periodic sweep interval (timer is unref'd).
-  sweepIntervalMs: 1_000,
-  // Application-level limit on a single incoming text message (serialized).
-  maxMessageBytes: 256 * 1024,
-  // Hard transport cap enforced by `ws` (larger than maxMessageBytes so the
-  // server can answer an oversized frame with a "too-large" error instead of
-  // the transport dropping the connection).
-  wsMaxPayloadBytes: 2 * 1024 * 1024,
-  rateLimit: {
-    max: 120,
-    windowMs: 5_000,
-    strikeLimit: 3,
-  },
-  // Empty array means "allow all origins" (dev default). Set in production.
-  allowedOrigins: [],
+  maxMessageBytes: 256 * 1024,          // cap on one incoming text frame
+  wsMaxPayloadBytes: 2 * 1024 * 1024,   // transport cap (room for a too_large error)
+  rateLimit: { max: 120, windowMs: 5_000, strikeLimit: 3 }, // sig frames per socket
+  maxQueue: 200,                        // waiting finders beyond this -> lobby_full
+  pingIntervalMs: 30_000,               // WS protocol keepalive
 };
 
 function envInt(name) {
-  const raw = process.env[name];
-  if (raw === undefined || raw === '') return undefined;
-  const value = Number(raw);
-  return Number.isFinite(value) ? value : undefined;
+  const value = Number(process.env[name]);
+  return process.env[name] && Number.isFinite(value) ? value : undefined;
 }
 
-function envAllowedOrigins() {
-  const raw = process.env.SIGNALING_ALLOWED_ORIGINS;
-  if (!raw) return [];
-  return raw
-    .split(',')
-    .map((s) => s.trim().toLowerCase())
-    .filter(Boolean);
-}
-
-function now() {
-  return Date.now();
-}
-
-function generateRoomCode() {
-  const bytes = randomBytes(4); // 256 % 32 === 0, so no modulo bias
-  let code = '';
-  for (const byte of bytes) code += ROOM_ALPHABET[byte % ROOM_ALPHABET.length];
-  return code;
-}
-
-function generatePeerId(peers) {
-  for (;;) {
-    const id = `p${randomBytes(4).toString('hex')}`;
-    if (!peers.has(id)) return id;
+// Allow non-browser clients (no Origin), same-host pages, and localhost.
+function originAllowed(req) {
+  const origin = req.headers.origin;
+  if (!origin) return true;
+  let originHost;
+  try {
+    originHost = new URL(origin).host.toLowerCase();
+  } catch {
+    return false;
   }
+  const hostname = originHost.split(':')[0];
+  return originHost === String(req.headers.host ?? '').toLowerCase()
+    || hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '[::1]';
 }
 
 export function createSignalingServer(userOptions = {}) {
@@ -78,312 +44,139 @@ export function createSignalingServer(userOptions = {}) {
     ...DEFAULTS,
     ...userOptions,
     rateLimit: { ...DEFAULTS.rateLimit, ...(userOptions.rateLimit ?? {}) },
-    allowedOrigins:
-      userOptions.allowedOrigins ?? envAllowedOrigins(),
   };
-  const allowedOrigins = options.allowedOrigins.map((o) => String(o).toLowerCase());
-
-  // code -> { code, hostPeerId, peers: Map<peerId, socketState>, createdAt, lastActivityAt, emptySince }
-  const rooms = new Map();
-  // peerId -> socketState
-  const peers = new Map();
-  // ws -> socketState { ws, peerId, roomCode, rate: { count, windowStart, strikes } }
-  const sockets = new Map();
-
-  function sendJson(state, payload) {
-    if (state.ws.readyState === state.ws.OPEN) {
-      state.ws.send(JSON.stringify(payload));
-    }
-  }
-
-  function sendError(state, code, message) {
-    sendJson(state, { v: 1, type: 'error', code, message });
-  }
+  // Global FIFO of waiting clients. state = { ws, partner, queued, rate, alive }.
+  const queue = [];
+  const states = new Set();
+  const send = (state, payload) => {
+    if (state.ws.readyState === state.ws.OPEN) state.ws.send(JSON.stringify(payload));
+  };
+  const sendError = (state, code) => send(state, { t: 'error', code });
 
   function stats() {
-    return { rooms: rooms.size, peers: sockets.size };
-  }
-
-  // ---- HTTP -------------------------------------------------------------
-
-  function healthPayload() {
-    return JSON.stringify({ status: 'ok', ...stats() });
-  }
-
-  function accessControlOrigin(req) {
-    if (allowedOrigins.length === 0) return null;
-    if (allowedOrigins.includes('*')) return '*';
-    const origin = String(req.headers.origin ?? '').toLowerCase();
-    if (origin && allowedOrigins.includes(origin)) return origin;
-    return allowedOrigins[0];
+    let paired = 0;
+    for (const state of states) if (state.partner) paired += 1;
+    return { waiting: queue.length, pairs: paired / 2, peers: states.size };
   }
 
   const httpServer = createServer((req, res) => {
-    const url = (req.url ?? '/').split('?')[0];
-    if (req.method === 'GET' && (url === '/health' || url === '/health/')) {
-      const headers = { 'content-type': 'application/json; charset=utf-8' };
-      const acao = accessControlOrigin(req);
-      if (acao) headers['access-control-allow-origin'] = acao;
-      res.writeHead(200, headers);
-      res.end(healthPayload());
-      return;
-    }
     res.writeHead(404, { 'content-type': 'application/json; charset=utf-8' });
     res.end(JSON.stringify({ error: 'not found' }));
   });
-
-  // ---- WebSocket ----------------------------------------------------------
-
-  const wss = new WebSocketServer({
-    noServer: true,
-    maxPayload: options.wsMaxPayloadBytes,
-  });
-
+  const wss = new WebSocketServer({ noServer: true, maxPayload: options.wsMaxPayloadBytes });
   httpServer.on('upgrade', (req, socket, head) => {
-    if (allowedOrigins.length > 0) {
-      const origin = String(req.headers.origin ?? '').toLowerCase();
-      if (!origin || !allowedOrigins.includes(origin)) {
-        socket.write('HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n');
-        socket.destroy();
-        return;
-      }
+    if (!originAllowed(req)) {
+      socket.write('HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n');
+      socket.destroy();
+      return;
     }
     wss.handleUpgrade(req, socket, head, (ws) => wss.emit('connection', ws, req));
   });
-
   wss.on('connection', (ws) => {
-    const state = { ws, peerId: null, roomCode: null, rate: { count: 0, windowStart: now(), strikes: 0 } };
-    sockets.set(ws, state);
+    const state = { ws, partner: null, queued: false, rate: { count: 0, windowStart: Date.now(), strikes: 0 }, alive: true };
+    states.add(state);
+    ws.on('pong', () => { state.alive = true; });
     ws.on('message', (data) => handleIncoming(state, data));
     ws.on('close', () => handleDisconnected(state));
-    ws.on('error', () => {
-      /* transport-level error; close handler performs cleanup */
-    });
+    ws.on('error', () => { /* close handler cleans up */ });
   });
 
-  wss.on('error', () => {
-    /* keep the process alive; individual sockets clean themselves up */
-  });
-
-  // ---- Rate limiting (fixed window per socket) ---------------------------
-
-  function checkRate(state, at) {
-    const { max, windowMs } = options.rateLimit;
+  function sigRateLimited(state) {
+    const { max, windowMs, strikeLimit } = options.rateLimit;
     const r = state.rate;
+    const at = Date.now();
     if (at - r.windowStart >= windowMs) {
       r.windowStart = at;
       r.count = 0;
       r.strikes = 0;
     }
-    r.count += 1;
-    if (r.count <= max) return { limited: false };
-    r.strikes += 1;
-    return { limited: true, close: r.strikes >= options.rateLimit.strikeLimit };
-  }
-
-  // ---- Message handling ----------------------------------------------------
-
-  function handleIncoming(state, data) {
-    const at = now();
-
-    const rate = checkRate(state, at);
-    if (rate.limited) {
-      sendError(
-        state,
-        'rate-limited',
-        `Rate limit exceeded (${options.rateLimit.max} messages per ${options.rateLimit.windowMs} ms); slow down`,
-      );
-      if (rate.close) state.ws.close(1008, 'rate limit exceeded');
-      return;
-    }
-
-    const text = data.toString('utf8');
-    if (Buffer.byteLength(text, 'utf8') > options.maxMessageBytes) {
-      sendError(state, 'too-large', `Message exceeds maximum size of ${options.maxMessageBytes} bytes`);
-      return;
-    }
-
-    let message;
-    try {
-      message = JSON.parse(text);
-    } catch {
-      sendError(state, 'invalid-message', 'Message must be a UTF-8 JSON object');
-      return;
-    }
-    if (message === null || typeof message !== 'object' || Array.isArray(message)) {
-      sendError(state, 'invalid-message', 'Message must be a JSON object');
-      return;
-    }
-    if (message.v !== 1) {
-      sendError(state, 'unsupported-version', `Unsupported protocol version ${JSON.stringify(message.v)}; expected 1`);
-      return;
-    }
-
-    switch (message.type) {
-      case 'create':
-        handleCreate(state, at);
-        return;
-      case 'join':
-        handleJoin(state, message, at);
-        return;
-      case 'signal':
-        handleSignal(state, message, at);
-        return;
-      default:
-        sendError(state, 'invalid-type', `Unknown message type ${JSON.stringify(message.type)}`);
-    }
-  }
-
-  function requireNotInRoom(state) {
-    if (state.roomCode !== null && rooms.has(state.roomCode)) {
-      sendError(state, 'already-in-room', 'Peer is already in a room; leave first');
-      return false;
-    }
-    state.roomCode = null;
-    if (state.peerId !== null) peers.delete(state.peerId);
-    state.peerId = null;
+    if (++r.count <= max) return false;
+    if (++r.strikes >= strikeLimit) state.ws.close(1008, 'rate limit exceeded');
     return true;
   }
 
-  function handleCreate(state, at) {
-    if (!requireNotInRoom(state)) return;
-
-    let code = generateRoomCode();
-    while (rooms.has(code)) code = generateRoomCode();
-
-    const room = {
-      code,
-      hostPeerId: null,
-      peers: new Map(),
-      createdAt: at,
-      lastActivityAt: at,
-      emptySince: null,
-    };
-    state.peerId = generatePeerId(peers);
-    peers.set(state.peerId, state);
-    room.peers.set(state.peerId, state);
-    room.hostPeerId = state.peerId;
-    state.roomCode = code;
-    rooms.set(code, room);
-
-    sendJson(state, { v: 1, type: 'created', room: code, peerId: state.peerId });
-  }
-
-  function handleJoin(state, message, at) {
-    if (typeof message.room !== 'string' || !ROOM_CODE_RE.test(message.room)) {
-      sendError(state, 'invalid-message', 'join requires "room": 4-character room code (A-HJ-NP-Z2-9)');
-      return;
+  function handleIncoming(state, data) {
+    const text = data.toString('utf8');
+    let message = null;
+    if (Buffer.byteLength(text, 'utf8') > options.maxMessageBytes) return sendError(state, 'too_large');
+    try {
+      message = JSON.parse(text);
+    } catch {
+      /* handled by the shape check below */
     }
-    if (!requireNotInRoom(state)) return;
-
-    const room = rooms.get(message.room);
-    if (!room) {
-      sendError(state, 'room-not-found', `Room ${message.room} does not exist`);
-      return;
+    if (message === null || typeof message !== 'object' || Array.isArray(message)) {
+      return sendError(state, 'invalid_message');
     }
-    if (room.peers.size >= 2) {
-      sendError(state, 'room-full', 'Room already has two peers');
-      return;
-    }
-
-    state.peerId = generatePeerId(peers);
-    peers.set(state.peerId, state);
-    room.peers.set(state.peerId, state);
-    state.roomCode = room.code;
-    room.lastActivityAt = at;
-    room.emptySince = null;
-
-    sendJson(state, { v: 1, type: 'joined', room: room.code, peerId: state.peerId, host: room.hostPeerId });
-
-    const hostState = room.peers.get(room.hostPeerId);
-    if (hostState && hostState !== state) {
-      sendJson(hostState, { v: 1, type: 'peer-joined', peerId: state.peerId });
+    switch (message.t) {
+      case 'find':
+        return handleFind(state);
+      case 'cancel':
+        return handleCancel(state);
+      case 'sig':
+        if (sigRateLimited(state)) return sendError(state, 'rate_limited');
+        // Routed only while paired; forwarded verbatim, data is never parsed.
+        if (state.partner) send(state.partner, { t: 'sig', data: message.data });
+        return;
+      default:
+        return sendError(state, 'unknown_type');
     }
   }
 
-  function handleSignal(state, message, at) {
-    if (typeof message.to !== 'string' || !('data' in message)) {
-      sendError(state, 'invalid-message', 'signal requires string "to" and a "data" payload');
-      return;
+  function handleFind(state) {
+    if (state.queued || state.partner) return; // idempotent
+    const waiter = queue.shift();
+    if (!waiter) {
+      if (queue.length >= options.maxQueue) return sendError(state, 'lobby_full');
+      state.queued = true;
+      queue.push(state);
+      return send(state, { t: 'waiting' });
     }
-    const room = state.roomCode !== null ? rooms.get(state.roomCode) : undefined;
-    if (!room || state.peerId === null || !room.peers.has(state.peerId)) {
-      sendError(state, 'invalid-target', 'Signal target invalid: sender is not in a room');
-      return;
-    }
-    const targetState = peers.get(message.to);
-    if (!targetState || targetState.roomCode !== room.code || targetState.peerId === state.peerId) {
-      sendError(state, 'invalid-target', `Signal target ${JSON.stringify(message.to)} is not valid`);
-      return;
-    }
-
-    room.lastActivityAt = at;
-    sendJson(targetState, { v: 1, type: 'signal', from: state.peerId, data: message.data });
+    // Pair: the waiter hosts, the newcomer joins; both learn it in this tick.
+    waiter.queued = false;
+    waiter.partner = state;
+    state.partner = waiter;
+    send(waiter, { t: 'matched', role: 'host' });
+    send(state, { t: 'matched', role: 'joiner' });
   }
 
-  // ---- Disconnection / rooms lifecycle ------------------------------------
+  function handleCancel(state) {
+    if (!state.queued) return; // a pairing is only left by closing the socket
+    state.queued = false;
+    const index = queue.indexOf(state);
+    if (index !== -1) queue.splice(index, 1);
+  }
 
   function handleDisconnected(state) {
-    sockets.delete(state.ws);
-    const peerId = state.peerId;
-    state.peerId = null;
-    if (peerId !== null) peers.delete(peerId);
-    if (state.roomCode === null) return;
-
-    const room = rooms.get(state.roomCode);
-    state.roomCode = null;
-    if (!room) return;
-
-    room.peers.delete(peerId);
-    for (const remaining of room.peers.values()) {
-      sendJson(remaining, { v: 1, type: 'peer-left', peerId });
-    }
-    room.lastActivityAt = now();
-    if (room.peers.size === 0) {
-      room.emptySince = now();
-    } else if (!room.peers.has(room.hostPeerId)) {
-      // Promote the remaining peer so later joiners get a valid "host".
-      room.hostPeerId = room.peers.keys().next().value;
+    states.delete(state);
+    if (state.queued) handleCancel(state);
+    const partner = state.partner;
+    state.partner = null;
+    if (partner) {
+      partner.partner = null;
+      send(partner, { t: 'peer_left' });
     }
   }
 
-  function sweep() {
-    const at = now();
-    for (const room of rooms.values()) {
-      if (room.peers.size === 0) {
-        if (room.emptySince === null) room.emptySince = at;
-        if (at - room.emptySince >= options.emptyRoomTtlMs) {
-          rooms.delete(room.code);
-        }
-      } else if (at - room.lastActivityAt >= options.idleRoomTtlMs) {
-        for (const member of room.peers.values()) {
-          const peerId = member.peerId;
-          member.roomCode = null;
-          member.peerId = null;
-          if (peerId !== null) peers.delete(peerId);
-          sendError(member, 'room-expired', 'Room closed due to inactivity');
-        }
-        room.peers.clear();
-        rooms.delete(room.code);
+  const pingTimer = setInterval(() => {
+    for (const state of states) {
+      if (!state.alive) {
+        state.ws.terminate();
+        continue;
       }
+      state.alive = false;
+      state.ws.ping();
     }
-  }
-
-  const sweepTimer = setInterval(sweep, Math.max(10, options.sweepIntervalMs));
-  sweepTimer.unref?.();
-
-  // ---- Shutdown ------------------------------------------------------------
+  }, Math.max(1_000, options.pingIntervalMs));
+  pingTimer.unref?.();
 
   let closed = false;
   function close() {
     if (closed) return Promise.resolve();
     closed = true;
-    clearInterval(sweepTimer);
+    clearInterval(pingTimer);
     for (const ws of wss.clients) ws.terminate();
-    rooms.clear();
-    peers.clear();
-    sockets.clear();
-    httpServer.closeIdleConnections?.();
+    queue.length = 0;
+    states.clear();
     return new Promise((resolve) => {
       wss.close(() => {});
       httpServer.close(() => resolve());
@@ -391,38 +184,23 @@ export function createSignalingServer(userOptions = {}) {
     });
   }
 
-  return { httpServer, wss, rooms, peers, sockets, options, stats, close };
+  return { httpServer, wss, queue, states, options, stats, close };
 }
 
-// ---- Direct execution -------------------------------------------------------
+const isMain = process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href;
 
-const isMain =
-  process.argv[1] !== undefined &&
-  import.meta.url === pathToFileURL(process.argv[1]).href;
-
-async function main() {
+function main() {
   const port = envInt('PORT') ?? DEFAULTS.port;
   const host = process.env.HOST || DEFAULTS.host;
-
   const ctx = createSignalingServer();
   ctx.httpServer.listen(port, host, () => {
     const address = ctx.httpServer.address();
     const boundPort = typeof address === 'object' && address ? address.port : port;
-    console.log(
-      `dunecity-webrtc-signaling listening on ws://${host}:${boundPort}/ (health: http://${host}:${boundPort}/health)` +
-        (ctx.options.allowedOrigins.length ? ` allowedOrigins=${ctx.options.allowedOrigins.join(',')}` : ' allowedOrigins=all'),
-    );
+    console.log(`dunecity-mm-lobby listening on ws://${host}:${boundPort}/`);
   });
-
-  let shuttingDown = false;
-  const shutdown = (signal) => {
-    if (shuttingDown) return;
-    shuttingDown = true;
-    console.log(`received ${signal}, shutting down`);
-    ctx.close().then(() => process.exit(0));
-  };
-  process.on('SIGINT', () => shutdown('SIGINT'));
-  process.on('SIGTERM', () => shutdown('SIGTERM'));
+  const shutdown = () => ctx.close().then(() => process.exit(0));
+  process.once('SIGINT', shutdown);
+  process.once('SIGTERM', shutdown);
 }
 
 if (isMain) {

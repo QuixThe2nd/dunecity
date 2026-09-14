@@ -47,8 +47,8 @@ build/emscripten/bin/
 
 `platform/web/webrtc_glue.js` is linked into the Emscripten output via
 `--js-library` in `src/CMakeLists.txt`. The C++ side (`WebRtcTransport.cpp`)
-calls exported `webrtcHostRoom`, `webrtcJoinRoom`, `webrtcSendTo`, etc.; the
-library block wires those to `createDuneCityWebRtc`.
+calls exported `webrtcFindMatch`, `webrtcCancelMatch`, `webrtcSendTo`, etc.;
+the library block wires those to `createDuneCityWebRtc`.
 
 Run the glue unit tests (Node, no browser):
 
