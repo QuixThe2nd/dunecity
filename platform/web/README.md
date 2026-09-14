@@ -58,24 +58,26 @@ cd platform/web && npm test
 
 ### p2pkit bundle
 
-`webrtc_glue.js` consumes the hardened in-tree p2pkit copy
-(`platform/web/p2pkit/src`, see `platform/web/p2pkit/UPSTREAM.md`) through the
-committed IIFE bundle at `platform/web/dist/p2pkit.iife.js`, which exposes
-`globalThis.P2PKIT_IIFE` (`RTCTransport`, `DEFAULT_ICE_SERVERS`, `Emitter`,
-`randomId`). `tools/web/build-emscripten.sh` prepends the bundle to
-`dunecity.js` so the runtime resolves it without a separate script tag, and no
-npm/network access is needed at build time.
+`webrtc_glue.js` consumes p2pkit through the committed IIFE bundle at
+`platform/web/dist/p2pkit.iife.js`, which exposes `globalThis.P2PKIT_IIFE`
+(`RTCTransport`, `DEFAULT_ICE_SERVERS`, `Emitter`, `randomId`, plus the
+negotiate/sdp helpers). The bundle is generated from the npm package pinned in
+`platform/web/package.json` (`github:QuixThe2nd/p2pkit#<exact-commit>`; bumping
+the pin is a deliberate upgrade).
+`tools/web/build-emscripten.sh` prepends the bundle to `dunecity.js` so the
+runtime resolves it without a separate script tag; because the bundle is
+committed, no npm/network access is needed at wasm build time.
 
-After changing `platform/web/p2pkit/src`, regenerate and re-commit the bundle:
+After bumping the p2pkit pin, regenerate and re-commit the bundle:
 
 ```bash
-npm ci --prefix tools/webrtc-signaling   # installs the esbuild devDependency
-node tools/web/build-p2pkit-iife.mjs     # or: cd platform/web && npm run build:p2pkit-iife
+node tools/web/build-p2pkit-iife.mjs     # or: cd platform/web && npm run build:iife
 ```
 
-The build script self-checks the export surface by loading the bundle in a
-bare vm context; `platform/web/test/p2pkit-iife.test.cjs` enforces the same
-contract in CI.
+The build script installs the pinned package (running `npm install` in
+`platform/web` if the install is missing or stale) and self-checks the export
+surface by loading the bundle in a bare vm context;
+`platform/web/test/p2pkit-iife.test.cjs` enforces the same contract in CI.
 
 ## Local smoke test
 
@@ -97,5 +99,5 @@ The verifier checks artifact presence and obvious pthread dependencies; it is
 not a security audit or a multiplayer test. Browser builds keep the existing
 HTTP implementation, which already separates Emscripten from native libcurl.
 The build foundation does not change gameplay routing: the WebRTC handshake
-runs through the in-tree p2pkit copy while game packets stay on native binary
+runs through the pinned p2pkit npm dependency while game packets stay on native binary
 data channels.

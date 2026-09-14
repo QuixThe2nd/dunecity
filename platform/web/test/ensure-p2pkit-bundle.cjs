@@ -5,21 +5,23 @@ const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 
 const ROOT = path.resolve(__dirname, '../../..');
-const BUNDLE = path.join(ROOT, 'platform/web/p2pkit/dist/p2pkit.iife.js');
-const FETCH_SCRIPT = path.join(ROOT, 'tools/web/fetch-p2pkit-bundle.sh');
+const BUNDLE = path.join(ROOT, 'platform/web/dist/p2pkit.iife.js');
+const BUILD_SCRIPT = path.join(ROOT, 'tools/web/build-p2pkit-iife.mjs');
 
-let fetched = false;
+let built = false;
 
 function ensureP2pkitBundle() {
   if (fs.existsSync(BUNDLE) && fs.statSync(BUNDLE).size > 0) {
     return;
   }
-  if (fetched) {
-    throw new Error(`p2pkit bundle still missing after fetch: ${BUNDLE}`);
+  if (built) {
+    throw new Error(`p2pkit bundle still missing after build: ${BUNDLE}`);
   }
-  fetched = true;
+  built = true;
 
-  const result = spawnSync('bash', [FETCH_SCRIPT], {
+  // The bundle is committed; this only runs after a checkout that lost it or a
+  // pin bump. The build script installs the pinned package if needed.
+  const result = spawnSync(process.execPath, [BUILD_SCRIPT], {
     cwd: ROOT,
     encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'pipe'],
@@ -28,13 +30,13 @@ function ensureP2pkitBundle() {
   if (result.status !== 0) {
     const detail = (result.stderr || result.stdout || '').trim();
     throw new Error(
-      `failed to fetch p2pkit bundle via ${FETCH_SCRIPT}` +
+      `failed to build p2pkit bundle via ${BUILD_SCRIPT}` +
         (detail ? `: ${detail}` : ` (exit ${result.status})`),
     );
   }
 
   if (!fs.existsSync(BUNDLE) || fs.statSync(BUNDLE).size === 0) {
-    throw new Error(`p2pkit bundle missing or empty after fetch: ${BUNDLE}`);
+    throw new Error(`p2pkit bundle missing or empty after build: ${BUNDLE}`);
   }
 }
 

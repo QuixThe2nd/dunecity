@@ -114,14 +114,26 @@ if [[ -f "${OUT_DIR}/dunecity.worker.js" ]]; then
     exit 1
 fi
 
-# Prepend the committed p2pkit IIFE bundle (built from platform/web/p2pkit/src
-# by tools/web/build-p2pkit-iife.mjs) so globalThis.P2PKIT_IIFE exists before
-# dunecity.js runs; webrtc_glue.js resolves it lazily at runtime.
+# Prepend the committed p2pkit IIFE bundle (bundled from the pinned GitHub
+# dependency by tools/web/build-p2pkit-iife.mjs) so globalThis.P2PKIT_IIFE
+# exists before dunecity.js runs; webrtc_glue.js resolves it lazily at runtime.
+# The bundle is committed, so this normally needs neither npm nor network. If
+# it is missing, build it from the installed package (the build script runs
+# npm install itself when needed). Set P2PKIT_SKIP_BUILD=1 to fail instead of
+# building (offline sandboxes).
 P2PKIT_IIFE="${ROOT}/platform/web/dist/p2pkit.iife.js"
 if [[ ! -s "${P2PKIT_IIFE}" ]]; then
-    echo "ERROR: p2pkit IIFE bundle missing: ${P2PKIT_IIFE}" >&2
-    echo "       regenerate with: node tools/web/build-p2pkit-iife.mjs" >&2
-    exit 1
+    if [[ -n "${P2PKIT_SKIP_BUILD:-}" ]]; then
+        echo "ERROR: p2pkit IIFE bundle missing: ${P2PKIT_IIFE}" >&2
+        echo "       regenerate with: node tools/web/build-p2pkit-iife.mjs" >&2
+        exit 1
+    fi
+    echo "==> p2pkit IIFE bundle missing; building it" >&2
+    node "${ROOT}/tools/web/build-p2pkit-iife.mjs" || exit 1
+    if [[ ! -s "${P2PKIT_IIFE}" ]]; then
+        echo "ERROR: p2pkit IIFE bundle still missing after build: ${P2PKIT_IIFE}" >&2
+        exit 1
+    fi
 fi
 echo "==> prepending p2pkit IIFE to ${JS}"
 cat "${P2PKIT_IIFE}" "${JS}" > "${JS}.tmp"

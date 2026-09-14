@@ -12,7 +12,8 @@
  *
  * p2pkit integration: the SignallingChannel dialect comes from the committed
  * IIFE bundle at platform/web/dist/p2pkit.iife.js (globalThis.P2PKIT_IIFE),
- * built from the in-tree hardened copy — see platform/web/p2pkit/UPSTREAM.md.
+ * bundled from the p2pkit GitHub dependency pinned in platform/web/package.json
+ * (see tools/web/build-p2pkit-iife.mjs to regenerate after a pin bump).
  * tools/web/build-emscripten.sh prepends the bundle to dunecity.js. Dialect
  * messages travel inside the signaling server's v:1 "signal" envelope, and the
  * room host always creates the offer (no negotiate-module helper needed).

@@ -14,7 +14,8 @@ const { webcrypto } = require('node:crypto');
 
 const BUNDLE = path.join(__dirname, '..', 'dist', 'p2pkit.iife.js');
 
-// Surface required by webrtc_glue.js and its unit tests (see ../p2pkit/UPSTREAM.md).
+// Surface required by webrtc_glue.js and its unit tests; mirrors the p2pkit
+// package's "p2pkit/iife" entry at the commit pinned in ../package.json.
 const EXPECTED_KEYS = [
   'DEFAULT_ICE_SERVERS',
   'DEFAULT_TRANSPORT_ORDER',
