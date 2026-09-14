@@ -49,9 +49,7 @@ CampaignDifficultyPolicy::Pressure QuantBot::campaignPressure() const {
 }
 
 int QuantBot::campaignRequiredArmy(int configuredThreshold) const {
-    int required = isCampaignEnemy()
-        ? CampaignDifficultyPolicy::requiredArmy(campaignProfile(), configuredThreshold)
-        : configuredThreshold;
+    int required = std::max(0, configuredThreshold);
     // Once the map is depleted, stop waiting for a larger army. A leftover
     // cash balance or a few cheap survivors must not keep the game idle.
     // Dispatch still enforces home reserves, opening and enemy wave limits.
@@ -63,12 +61,8 @@ int QuantBot::campaignRequiredArmy(int configuredThreshold) const {
 
 bool QuantBot::campaignCanLaunch() const {
     if (!isCampaignEnemy()) return true;
-    // The opening is the only timing gate. Survivors spend this house's budget
-    // but do not block fresh units from using its remaining capacity.
-    const auto profile=campaignProfile();
-    const auto pressure=campaignPressure();
-    return campaignWave.initialized && getGameCycleCount() >= campaignWave.opening
-        && (!profile.limitedWave || (pressure.units<profile.units && pressure.value<profile.value));
+    // Later waves depend on ready troops, not a cooldown or surviving attackers.
+    return campaignWave.initialized && getGameCycleCount() >= campaignWave.opening;
 }
 
 bool QuantBot::campaignLocalContact(const ObjectBase* target) const {

@@ -1,3 +1,30 @@
+## 2026-09-14 — Campaign readiness and separate waves, 1.0.686
+
+Stefan clarified that surviving attackers occupy military capacity, not the
+next wave's budget. This supersedes 685's concurrent-pressure interpretation.
+After the unchanged map opening, campaign enemies assemble available troops
+worth the configured fraction of their military limit (Easy 50%, Medium 40%,
+Hard/Brutal 30%). Busy, injured, repairing, manual, scripted and already
+committed troops cannot satisfy that fresh-wave check. Dispatch sends up to
+50/50/80/100% of those available troops, with existing Easy/Medium count/value
+ceilings applied per dispatch. Survivors retain their orders and membership;
+no repeat cooldown or survivor subtraction. Military production caps are
+unchanged. Removed the old readiness clamp to twice the wave value. The
+existing post-15-minute depleted-spice fallback remains. Save format 9839.
+
+Native build, signature/version/dependency checks and all seven CTest groups
+pass. Real-engine pressure and pacing probes pass: Easy/Medium assemble a
+second complete wave while every old attacker survives, insufficient ready
+reserves do not trickle out, Hard sends 32/40 tanks and Brutal 40/40, opening
+and saved-state handling remain intact. Evidence: `/tmp/dunecity-686-pressure/`,
+`/tmp/dunecity-686-pacing/`, `/tmp/dunecity-686-ctest.log`. The pressure fixture
+must run in vanilla: its unrelated helper power test assumes classic production;
+a Dune City trial passed the combat assertions but failed that power fixture.
+Built for local testing; no remote release or website changes.
+
+Engineering preference reiterated by Stefan: keep behavior simple; avoid extra
+accounting layers when a straightforward readiness-and-dispatch rule suffices.
+
 ## 2026-09-14 — Campaign attack capacity candidate 1.0.685
 
 Stefan approved capacity-driven attacks after the opening. This supersedes

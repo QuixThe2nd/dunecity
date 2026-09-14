@@ -6685,9 +6685,7 @@ void QuantBot::attack(int militaryValue) {
         : (militaryValueLimit * attackThreshold).lround();
     const bool campaign = isCampaignGameType(currentGame->gameType);
     if (campaign) requiredMilitary=campaignRequiredArmy(requiredMilitary);
-    // Enemy campaign dispatch is governed by available attack capacity after
-    // opening. Rebuilding an aggregate army threshold must not delay a top-up.
-    if (!isCampaignEnemy() && militaryValue < requiredMilitary) {
+    if (militaryValue < requiredMilitary) {
         // Recheck readiness promptly; do not miss a short-lived strength window.
         if (campaign || (vanillaCustom && difficulty == Difficulty::Brutal))
             attackTimer = std::min(attackTimer, static_cast<int>(MILLI2CYCLES(15000)));
@@ -6728,13 +6726,14 @@ void QuantBot::launchGroundHunt() {
     if (limited && !campaignCanLaunch()) return;
     const auto profile = limited ? campaignProfile()
         : CampaignDifficultyPolicy::profile(static_cast<int>(difficulty),currentGame->techLevel);
-    auto pressure = limited ? campaignPressure() : CampaignDifficultyPolicy::Pressure{};
+    // Caps apply to this dispatch. The roster separately tracks all survivors.
+    CampaignDifficultyPolicy::Pressure pressure;
     const float ratio = getQuantBotConfig().getSettings(static_cast<int>(difficulty)).attackForceMilitaryValueRatio;
     int percent = std::isfinite(ratio) ? static_cast<int>(std::clamp(ratio,0.0f,1.0f)*100.0f+0.5f) : 0;
     // Campaign roles define commitment even with older saved config defaults.
     // Keep an explicit zero as the opt-out; each house uses its own difficulty.
     if (limited && percent>0) percent=profile.enemyCommitPercent;
-    int armyValue=0, committedValue=0;
+    int armyValue=0, committedValue=0, availableValue=0, requiredReady=0;
     std::vector<SimpleArmyPolicy::Responder> candidates;
     for (const auto* unit : getUnitList()) {
         if (unit->getOwner()!=getHouse() || unit->getHealth()<=0 || !unit->isActive() || !unit->isRespondable()
@@ -6754,15 +6753,27 @@ void QuantBot::launchGroundHunt() {
         if (limited && unit->getItemID()==Unit_Ornithopter
             && !getQuantBotConfig().getSettings(static_cast<int>(difficulty)).ornithopterAttackEnabled) continue;
         candidates.push_back({unit->getObjectID(),price,0});
+        availableValue+=price;
     }
     std::stable_sort(candidates.begin(),candidates.end(),[](const auto& a,const auto& b){return a.id<b.id;});
-    if (limited) committedValue=pressure.value;
+    if (limited) committedValue=campaignPressure().value;
     std::vector<Uint32> selected;
     if (limited) {
+        const auto& settings=getQuantBotConfig().getSettings(static_cast<int>(difficulty));
+        const FixPoint threshold=FixPoint(static_cast<int>(settings.attackThresholdPercent*100))/100;
+        requiredReady=campaignRequiredArmy((militaryValueLimit*threshold).lround());
+        // Away, injured, repairing and busy troops cannot assemble a new wave.
+        // Requiring readiness here prevents repeated checks dripping out reserves.
+        if (availableValue<requiredReady) {
+            traceDecision("attack_deferred",AITelemetry::Record().set("reason","wave_readiness")
+                .set("available_value",availableValue).set("required_military",requiredReady)
+                .set("committed_value",committedValue));
+            return;
+        }
         const int houseUnits=profile.limitedWave ? profile.units : INT32_MAX;
         const int houseValue=profile.limitedWave ? profile.value : INT32_MAX;
         const int budget=std::max(0,std::min(houseValue,
-            SimpleArmyPolicy::attackBudget(armyValue,percent))-pressure.value);
+            SimpleArmyPolicy::attackBudget(availableValue,percent)));
         int value=0;
         for (const auto& candidate : candidates) {
             if (static_cast<int>(selected.size())>=houseUnits) break;
@@ -6770,8 +6781,7 @@ void QuantBot::launchGroundHunt() {
             selected.push_back(candidate.id); value+=candidate.value;
             ++pressure.units; pressure.value+=candidate.value;
         }
-        // A depleted Hard/Brutal army can send its last unit. This exception
-        // applies only with no existing attackers, never to budget top-ups.
+        // Avoid rounding a single ready Hard/Brutal unit down to no attack.
         if (selected.empty() && pressure.units==0 && percent>0 && difficulty>=Difficulty::Hard) {
             const SimpleArmyPolicy::Responder* cheapest=nullptr;
             for (const auto& candidate : candidates)
@@ -6820,7 +6830,10 @@ void QuantBot::launchGroundHunt() {
     if (count==0) return; // An empty house checking readiness is not an attack.
     traceDecision("ground_hunt",AITelemetry::Record().set("members",count).set("value",value)
         .set("campaign_limited",limited).set("army_value",armyValue).set("committed_value",committedValue)
-        .set("attack_percent",percent).set("attack_budget",limited ? SimpleArmyPolicy::attackBudget(armyValue,percent) : armyValue)
+        .set("available_value",availableValue).set("required_ready",requiredReady)
+        .set("attack_percent",percent).set("attack_budget",limited ? SimpleArmyPolicy::attackBudget(availableValue,percent) : armyValue)
+        .set("active_units",limited ? campaignPressure().units : count)
+        .set("active_value",limited ? campaignPressure().value : value)
         .set("alliance_units",pressure.units).set("alliance_value",pressure.value)
         .set("alliance_unit_cap",profile.limitedWave ? profile.units : -1)
         .set("alliance_value_cap",profile.limitedWave ? profile.value : -1)

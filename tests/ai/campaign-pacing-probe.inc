@@ -41,7 +41,7 @@ void runCampaignPacingProbe(Game& game) {
             }
     savedUnits=unitList;unitList.clear();for(auto* unit:army)unitList.push_back(unit);
     try {
-    bot->militaryValueLimit=9200;bot->attackTimer=0;
+    bot->militaryValueLimit=4800;bot->attackTimer=0;
     game.techLevel=4;bot->campaignWave.opening=game.getGameCycleCount()+100;
     bot->attack(2400);require(bot->campaignWave.members.empty(),"Small-wave readiness bypassed opening grace");
     game.gameCycleCount+=100;

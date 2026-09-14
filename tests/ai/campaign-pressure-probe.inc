@@ -63,8 +63,9 @@ void runCampaignPressureProbe(Game& game) {
         enemies[0]->launchGroundHunt();
         require(!enemies[0]->campaignWave.members.empty(),"First enemy failed to launch fixture wave");
         const auto first=enemies[0]->campaignWave.members;
+        enemies[0]->militaryValueLimit=1000000;
         enemies[0]->launchGroundHunt();
-        require(enemies[0]->campaignWave.members==first,"Repeated check exceeded available attack budget");
+        require(enemies[0]->campaignWave.members==first,"Away attackers bypassed fresh-wave readiness");
         enemies[1]->launchGroundHunt();
         require(!enemies[1]->campaignWave.members.empty(),"Another house incorrectly blocked independent attack");
         const auto profile=enemies[0]->campaignProfile();const auto used=enemies[0]->campaignPressure();
@@ -93,32 +94,37 @@ void runCampaignPressureProbe(Game& game) {
         for(auto tier:{QuantBot::Difficulty::Easy,QuantBot::Difficulty::Medium}) {
             reset(tier);
             auto* bot=enemies[0];
-            bot->militaryValueLimit=1000000;
-            bot->attack(0); // Capacity, not the old aggregate readiness threshold.
-            const auto initial=bot->campaignWave.members;
-            require(initial.size()>=2,"Budget fixture needs surviving attackers");
-            const auto cycle=game.getGameCycleCount();
-            const auto lost=*initial.begin();
-            auto* casualty=dynamic_cast<UnitBase*>(game.getObjectManager().getObject(lost));
-            require(casualty,"Budget fixture casualty missing");casualty->setHealth(0);
-            bot->updateCampaignWave();
-            require(!bot->campaignWave.members.empty(),"Fixture lost all survivors");
+            const int pct=int(getQuantBotConfig().getSettings(int(tier)).attackThresholdPercent*100);
+            const int price=game.objectData.data[Unit_Tank][bot->getHouse()->getHouseID()].price;
+            bot->militaryValueLimit=31*price*100/pct;
+            std::vector<UnitBase*> recovering;
+            for(auto* unit:assaultArmy) if(unit->getOwner()==bot->getHouse() && recovering.size()<5) {
+                unit->setHealth(1);recovering.push_back(unit);
+            }
             bot->attack(0);
-            require(game.getGameCycleCount()==cycle && bot->campaignWave.members.size()==initial.size(),
-                "Available budget did not replace casualty while survivors remain");
-            require(!bot->campaignWave.members.count(lost),"Dead attacker was selected again");
-            for(auto id:initial)if(id!=lost)
-                require(bot->campaignWave.members.count(id),"Top-up displaced surviving attacker");
-            const auto filled=bot->campaignWave.members;
-            for(int attempt=0;attempt<10;++attempt)bot->attack(0);
-            require(bot->campaignWave.members==filled,"Repeated same-cycle checks exceeded budget");
-            const auto profile=bot->campaignProfile();const auto pressure=bot->campaignPressure();
-            require(pressure.units<=profile.units && pressure.value<=profile.value,"Top-up exceeded Easy/Medium active limits");
+            require(bot->campaignWave.members.empty(),"Aggregate readiness was bypassed");
+            bot->attack(40*price);
+            const auto initial=bot->campaignWave.members;
+            const size_t expected=tier==QuantBot::Difficulty::Easy ? 5 : 8;
+            require(initial.size()==expected,"First wave missed its configured size");
+            for(int attempt=0;attempt<10;++attempt)bot->attack(40*price);
+            require(bot->campaignWave.members==initial,"Away or injured troops satisfied fresh-wave readiness");
+            // Enough repairs complete to assemble a second wave without waiting
+            // for any previous attacker to die or for another timer to expire.
+            const auto cycle=game.getGameCycleCount();
+            for(size_t i=0;i<expected-4;++i) recovering[i]->setHealth(recovering[i]->getMaxHealth());
+            bot->attack(40*price);
+            require(game.getGameCycleCount()==cycle && bot->campaignWave.members.size()==2*expected,
+                "Survivors reduced or blocked the second full wave");
+            for(auto id:initial)require(bot->campaignWave.members.count(id),"Second wave displaced survivors");
+            const auto second=bot->campaignWave.members;
+            for(int attempt=0;attempt<10;++attempt)bot->attack(40*price);
+            require(bot->campaignWave.members==second,"Insufficient reserves trickled into another wave");
         }
         for (auto tier:{QuantBot::Difficulty::Hard,QuantBot::Difficulty::Brutal}) {
             reset(tier);
             for(size_t i=0;i<enemies.size();++i) {
-                auto* bot=enemies[i];bot->launchGroundHunt();
+                auto* bot=enemies[i];bot->militaryValueLimit=12000;bot->launchGroundHunt();
                 const size_t expected=tier==QuantBot::Difficulty::Hard ? 32 : 40;
                 require(bot->campaignWave.members.size()==expected,"Hard/Brutal failed army commitment or house concurrency");
                 const auto members=bot->campaignWave.members;
@@ -260,6 +266,6 @@ void runCampaignPressureProbe(Game& game) {
         require(SavePNG(screenshot.get(),filename.c_str())==0,"Menu screenshot failed");
     }
     SDL_SetRenderTarget(renderer,nullptr);
-    SDL_Log("CAMPAIGN_PRESSURE_PROBE_PASS: opening gates, per-house budgets, casualty top-ups, reserve protection, saved cooldown migration, scripted cargo and sustained combat");
+    SDL_Log("CAMPAIGN_PRESSURE_PROBE_PASS: opening gates, fresh-wave readiness, surviving attackers, reserve protection, saved cooldown migration, scripted cargo and sustained combat");
     SDL_Log("CAMPAIGN_BALANCE_RESULT: probe=pressure outcome=passed");
 }

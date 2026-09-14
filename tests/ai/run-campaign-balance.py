@@ -29,7 +29,7 @@ parser.add_argument('--starport-probe', action='store_true', help='Exercise rese
 parser.add_argument('--helper-economy-probe', action='store_true', help='Verify advanced campaign helper worker investment and paid imports')
 parser.add_argument('--stats-probe', action='store_true', help='Verify campaign results with a shared human/AI house')
 parser.add_argument('--nuclear-probe', action='store_true')
-parser.add_argument('--pressure-probe', action='store_true', help='Verify campaign assault slots, recovery and save state')
+parser.add_argument('--pressure-probe', action='store_true', help='Verify campaign wave readiness, survivor independence and save state')
 parser.add_argument('--defence-probe', action='store_true', help='Verify retaliation and base/harvester reinforcements')
 parser.add_argument('--repair-probe', action='store_true', help='Verify experienced campaign bots replace missing repair yards')
 parser.add_argument('--pacing-probe', action='store_true', help='Verify enemy worker caps and small-wave readiness')
@@ -103,7 +103,7 @@ for row in rows:
         if (d['alliance_units']>d['alliance_unit_cap']
                 or d['alliance_value']>d['alliance_value_cap']
                 or d['alliance_value']>d['attack_budget']):
-            raise RuntimeError('Automatic campaign wave exceeded house budget')
+            raise RuntimeError('Automatic campaign dispatch exceeded its wave budget')
 summary = {'result':results[0],'sourceCommit':subprocess.check_output(['git','rev-parse','HEAD'],cwd=root,text=True).strip(),
            'workingTreeModified':bool(subprocess.check_output(['git','status','--porcelain'],cwd=root,text=True).strip()),
            'metadata':rows[0]['data'],'attacks':[r for r in rows if r['event']=='ground_hunt'],
