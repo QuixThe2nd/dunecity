@@ -64,7 +64,7 @@ void runCampaignPressureProbe(Game& game) {
         require(!enemies[0]->campaignWave.members.empty(),"First enemy failed to launch fixture wave");
         const auto first=enemies[0]->campaignWave.members;
         enemies[0]->launchGroundHunt();
-        require(enemies[0]->campaignWave.members==first,"Repeated check replenished active wave");
+        require(enemies[0]->campaignWave.members==first,"Repeated check exceeded available attack budget");
         enemies[1]->launchGroundHunt();
         require(!enemies[1]->campaignWave.members.empty(),"Another house incorrectly blocked independent attack");
         const auto profile=enemies[0]->campaignProfile();const auto used=enemies[0]->campaignPressure();
@@ -90,6 +90,31 @@ void runCampaignPressureProbe(Game& game) {
     unitList.clear();for(auto* unit:assaultArmy)unitList.push_back(unit);
     try {
         game.techLevel=9;
+        for(auto tier:{QuantBot::Difficulty::Easy,QuantBot::Difficulty::Medium}) {
+            reset(tier);
+            auto* bot=enemies[0];
+            bot->militaryValueLimit=1000000;
+            bot->attack(0); // Capacity, not the old aggregate readiness threshold.
+            const auto initial=bot->campaignWave.members;
+            require(initial.size()>=2,"Budget fixture needs surviving attackers");
+            const auto cycle=game.getGameCycleCount();
+            const auto lost=*initial.begin();
+            auto* casualty=dynamic_cast<UnitBase*>(game.getObjectManager().getObject(lost));
+            require(casualty,"Budget fixture casualty missing");casualty->setHealth(0);
+            bot->updateCampaignWave();
+            require(!bot->campaignWave.members.empty(),"Fixture lost all survivors");
+            bot->attack(0);
+            require(game.getGameCycleCount()==cycle && bot->campaignWave.members.size()==initial.size(),
+                "Available budget did not replace casualty while survivors remain");
+            require(!bot->campaignWave.members.count(lost),"Dead attacker was selected again");
+            for(auto id:initial)if(id!=lost)
+                require(bot->campaignWave.members.count(id),"Top-up displaced surviving attacker");
+            const auto filled=bot->campaignWave.members;
+            for(int attempt=0;attempt<10;++attempt)bot->attack(0);
+            require(bot->campaignWave.members==filled,"Repeated same-cycle checks exceeded budget");
+            const auto profile=bot->campaignProfile();const auto pressure=bot->campaignPressure();
+            require(pressure.units<=profile.units && pressure.value<=profile.value,"Top-up exceeded Easy/Medium active limits");
+        }
         for (auto tier:{QuantBot::Difficulty::Hard,QuantBot::Difficulty::Brutal}) {
             reset(tier);
             for(size_t i=0;i<enemies.size();++i) {
@@ -113,6 +138,10 @@ void runCampaignPressureProbe(Game& game) {
         require(!bot->campaignWave.members.count(manual->getObjectID())
             && !bot->campaignWave.members.count(repairing->getObjectID())
             && !bot->campaignWave.members.count(damaged->getObjectID()),"All-in overrode manual orders or repair");
+        damaged->setHealth(damaged->getMaxHealth());bot->doSetAttackMode(damaged,GUARD);
+        bot->attack(0);
+        require(bot->campaignWave.members.size()==38 && bot->campaignWave.members.count(damaged->getObjectID()),
+            "Newly ready Brutal unit waited for previous attackers to disappear");
         bot->manualUnitOrders.clear();
     } catch (...) {unitList=allUnits;throw;}
     unitList=allUnits;
@@ -186,11 +215,17 @@ void runCampaignPressureProbe(Game& game) {
     require(second->scriptedAssaults.size()==scriptedCount,"Home or economic delivery became attacker");
     second->attackTimer=0;
     require(second->campaignCanLaunch(),"Scripted cargo blocks the house's own scheduled attack");
-    // One house's remaining countdown has no effect on another ready house.
+    // Saved repeat cooldowns are ignored; only each house's opening gates it.
     first->campaignWave.members.clear();second->campaignWave.members.clear();
     first->attackTimer=MILLI2CYCLES(240000);second->attackTimer=0;
-    require(!first->campaignCanLaunch(),"House ignored own attack countdown");
+    require(first->campaignCanLaunch(),"Old repeat cooldown blocked available budget");
     require(second->campaignCanLaunch(),"Other house inherited attack countdown");
+    first->campaignWave.opening=game.getGameCycleCount()+MILLI2CYCLES(60000);
+    first->attackTimer=0;
+    require(!first->campaignCanLaunch(),"Budget bypassed opening timer");
+    first->campaignWave.opening=game.getGameCycleCount();
+    first->attackTimer=MILLI2CYCLES(240000);first->updateCampaignWave();
+    require(first->attackTimer==0,"Saved repeat cooldown survived opening");
     // Enemy helper-role changes are read from controllers, not legacy isAI flags.
     require(!partner->isCampaignEnemy(),"Shared human house was restricted");
     for (auto* bot : {first,second,partner}) {
@@ -225,6 +260,6 @@ void runCampaignPressureProbe(Game& game) {
         require(SavePNG(screenshot.get(),filename.c_str())==0,"Menu screenshot failed");
     }
     SDL_SetRenderTarget(renderer,nullptr);
-    SDL_Log("CAMPAIGN_PRESSURE_PROBE_PASS: difficulty slots, aggregate budgets, no top-ups, save/load, scripted cargo, landing, save/load, independent timers and sustained combat");
+    SDL_Log("CAMPAIGN_PRESSURE_PROBE_PASS: opening gates, per-house budgets, casualty top-ups, reserve protection, saved cooldown migration, scripted cargo and sustained combat");
     SDL_Log("CAMPAIGN_BALANCE_RESULT: probe=pressure outcome=passed");
 }

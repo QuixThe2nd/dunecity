@@ -6654,11 +6654,13 @@ void QuantBot::attack(int militaryValue) {
     const QuantBotConfig& config = getQuantBotConfig();
     const QuantBotConfig::DifficultySettings& diffSettings = config.getSettings(static_cast<int>(difficulty));
 
-    attackTimer = SimpleArmyPolicy::attackDelay(MILLI2CYCLES(config.attackTimerMs),
-        currentGame->getGameInitSettings().getRandomSeed(), getGameCycleCount(), getHouse()->getHouseID());
-    if (isCampaignEnemy()) attackTimer=MILLI2CYCLES(15000);
-    traceDecision("attack_schedule",AITelemetry::Record().set("delay_cycles",attackTimer)
-        .set("base_cycles",MILLI2CYCLES(config.attackTimerMs)));
+    if (isCampaignEnemy()) attackTimer=0;
+    else {
+        attackTimer = SimpleArmyPolicy::attackDelay(MILLI2CYCLES(config.attackTimerMs),
+            currentGame->getGameInitSettings().getRandomSeed(), getGameCycleCount(), getHouse()->getHouseID());
+        traceDecision("attack_schedule",AITelemetry::Record().set("delay_cycles",attackTimer)
+            .set("base_cycles",MILLI2CYCLES(config.attackTimerMs)));
+    }
 
 	// Check if this difficulty is allowed to attack at all
 	if (!diffSettings.attackEnabled) {
@@ -6683,7 +6685,9 @@ void QuantBot::attack(int militaryValue) {
         : (militaryValueLimit * attackThreshold).lround();
     const bool campaign = isCampaignGameType(currentGame->gameType);
     if (campaign) requiredMilitary=campaignRequiredArmy(requiredMilitary);
-    if (militaryValue < requiredMilitary) {
+    // Enemy campaign dispatch is governed by available attack capacity after
+    // opening. Rebuilding an aggregate army threshold must not delay a top-up.
+    if (!isCampaignEnemy() && militaryValue < requiredMilitary) {
         // Recheck readiness promptly; do not miss a short-lived strength window.
         if (campaign || (vanillaCustom && difficulty == Difficulty::Brutal))
             attackTimer = std::min(attackTimer, static_cast<int>(MILLI2CYCLES(15000)));
@@ -6721,8 +6725,7 @@ bool QuantBot::humanControls(const UnitBase* unit) const {
 void QuantBot::launchGroundHunt() {
     if (supportMode) return;
     const bool limited = isCampaignEnemy();
-    if (limited && (!campaignWave.initialized || !campaignWave.members.empty()
-        || getGameCycleCount()<campaignWave.opening)) return;
+    if (limited && !campaignCanLaunch()) return;
     const auto profile = limited ? campaignProfile()
         : CampaignDifficultyPolicy::profile(static_cast<int>(difficulty),currentGame->techLevel);
     auto pressure = limited ? campaignPressure() : CampaignDifficultyPolicy::Pressure{};
@@ -6734,7 +6737,7 @@ void QuantBot::launchGroundHunt() {
     int armyValue=0, committedValue=0;
     std::vector<SimpleArmyPolicy::Responder> candidates;
     for (const auto* unit : getUnitList()) {
-        if (unit->getOwner()!=getHouse() || !unit->isActive() || !unit->isRespondable()
+        if (unit->getOwner()!=getHouse() || unit->getHealth()<=0 || !unit->isActive() || !unit->isRespondable()
             || (!unit->canAttack() && unit->getItemID()!=Unit_Saboteur) || humanControls(unit)
             || unit->getItemID()==Unit_Harvester || unit->getItemID()==Unit_Sandworm) continue;
         // Summoned/scripted troops can have zero purchase price. They still
@@ -6746,17 +6749,20 @@ void QuantBot::launchGroundHunt() {
         if (unit->hasATarget()) continue;
         if (!limited && (!unit->isAGroundUnit() || unit->getItemID()==Unit_Saboteur
             || (unit->getAttackMode()==HUNT && !unit->wasForced()))) continue;
-        if (limited && scriptedAssaults.count(unit->getObjectID())) continue;
+        if (limited && (scriptedAssaults.count(unit->getObjectID())
+            || campaignWave.members.count(unit->getObjectID()))) continue;
         if (limited && unit->getItemID()==Unit_Ornithopter
             && !getQuantBotConfig().getSettings(static_cast<int>(difficulty)).ornithopterAttackEnabled) continue;
         candidates.push_back({unit->getObjectID(),price,0});
     }
     std::stable_sort(candidates.begin(),candidates.end(),[](const auto& a,const auto& b){return a.id<b.id;});
+    if (limited) committedValue=pressure.value;
     std::vector<Uint32> selected;
     if (limited) {
         const int houseUnits=profile.limitedWave ? profile.units : INT32_MAX;
         const int houseValue=profile.limitedWave ? profile.value : INT32_MAX;
-        const int budget=std::min(houseValue,SimpleArmyPolicy::attackBudget(armyValue,percent));
+        const int budget=std::max(0,std::min(houseValue,
+            SimpleArmyPolicy::attackBudget(armyValue,percent))-pressure.value);
         int value=0;
         for (const auto& candidate : candidates) {
             if (static_cast<int>(selected.size())>=houseUnits) break;
@@ -6764,9 +6770,9 @@ void QuantBot::launchGroundHunt() {
             selected.push_back(candidate.id); value+=candidate.value;
             ++pressure.units; pressure.value+=candidate.value;
         }
-        // A depleted army can field one affordable unit without bypassing the
-        // house ceiling or adding replacements to an existing wave.
-        if (selected.empty() && percent>0 && difficulty>=Difficulty::Hard) {
+        // A depleted Hard/Brutal army can send its last unit. This exception
+        // applies only with no existing attackers, never to budget top-ups.
+        if (selected.empty() && pressure.units==0 && percent>0 && difficulty>=Difficulty::Hard) {
             const SimpleArmyPolicy::Responder* cheapest=nullptr;
             for (const auto& candidate : candidates)
                 if (CampaignDifficultyPolicy::fits(profile,pressure,candidate.value)
@@ -6812,13 +6818,6 @@ void QuantBot::launchGroundHunt() {
         ++count; value+=std::max(100,currentGame->objectData.data[unit->getItemID()][unit->getOriginalHouseID()].price);
     }
     if (count==0) return; // An empty house checking readiness is not an attack.
-    if (limited) {
-        const auto interval=CampaignDifficultyPolicy::attackIntervalMs(getGameInitSettings().getRandomSeed(),
-            getGameCycleCount(),getHouse()->getHouseID());
-        attackTimer=MILLI2CYCLES(interval);
-        traceDecision("campaign_attack_timer",AITelemetry::Record().set("interval_ms",interval)
-            .set("next_due_cycle",getGameCycleCount()+attackTimer));
-    }
     traceDecision("ground_hunt",AITelemetry::Record().set("members",count).set("value",value)
         .set("campaign_limited",limited).set("army_value",armyValue).set("committed_value",committedValue)
         .set("attack_percent",percent).set("attack_budget",limited ? SimpleArmyPolicy::attackBudget(armyValue,percent) : armyValue)

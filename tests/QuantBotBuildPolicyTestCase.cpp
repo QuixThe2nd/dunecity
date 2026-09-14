@@ -1451,7 +1451,7 @@ TEST_CASE("MCVs choose nearby usable rock without chasing distant space or clear
 
 }
 
-TEST_CASE("Campaign opening follows authored trigger and houses have bounded independent cadence", "[quantbot][campaign]") {
+TEST_CASE("Campaign opening follows authored trigger with independent bounded delays", "[quantbot][campaign]") {
     using namespace CampaignDifficultyPolicy;
     std::set<uint32_t> offsets;
     for(uint32_t seed=0;seed<32;++seed) for(uint32_t house=0;house<6;++house) {
@@ -1463,9 +1463,6 @@ TEST_CASE("Campaign opening follows authored trigger and houses have bounded ind
         }
         CHECK(openingDelayMs(2,seed,45000,house)==0);
         CHECK(openingDelayMs(3,seed,45000,house)==0);
-        const auto repeat=attackIntervalMs(seed,62500,house);
-        CHECK(repeat>=120000);CHECK(repeat<=240000);
-        CHECK(repeat==attackIntervalMs(seed,62500,house));
     }
     CHECK(offsets.size()>100);
 }

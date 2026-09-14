@@ -1,3 +1,37 @@
+## 2026-09-14 — Campaign attack capacity candidate 1.0.685
+
+Stefan approved capacity-driven attacks after the opening. This supersedes
+684's recurring 2–4 minute timers and requirement that the old wave disappear.
+Campaign enemy houses retain the exact 684 opening signals/delays, then check
+available capacity on ordinary AI updates (50 cycles, about 0.8 game seconds).
+Surviving automatic attackers count against both the per-house count/value cap
+and the army commitment budget: Easy/Medium 50%, Hard 80%, Brutal 100%.
+New candidates exclude already committed units; repeated checks cannot
+gradually spend the reserve. Scripted arrivals remain separate. The existing
+last-unit Hard/Brutal fallback is allowed only when no automatic attackers
+remain. Injured, repairing and manually controlled units stay protected.
+
+Campaign enemy dispatch no longer waits for the old aggregate army-readiness
+threshold once its opening is met. Helpers and custom-game cadence/readiness
+are unchanged. Old saved repeat cooldowns are cleared after their stored
+opening; save format remains 9839. No additional serialization was needed.
+
+Native dependency/version checks and all seven CTest groups pass. The actual
+engine pressure fixture verifies same-cycle Easy/Medium loss replacement with
+survivors, ten repeated full-budget checks, 32/40 Hard versus 40/40 Brutal tank
+commitment, a newly ready Brutal unit joining an existing assault, old-cooldown
+discard, opening enforcement, scripted cargo and save/load. The simulation
+driver now checks total active count/value and commitment, not only the latest
+dispatch. Evidence: `/tmp/dunecity-685-budget-probe/summary.json` and
+`/tmp/dunecity-685-ctest.log`. Built locally; not installed or published.
+The level-9 Dune City Easy simulation also passes total-active budget checks:
+Ordos made 9 dispatches (8 additions with survivors), Harkonnen 5 (4 additions),
+Sardaukar 2 (1 addition). Ordos never exceeded 4 active units / 1,500 credits;
+Harkonnen 3 / 1,450; Sardaukar 2 / 1,050. Openings remained
+12.039/13.667/13.679 minutes. Observer run ended naturally at 15.487 minutes;
+this is not a human difficulty/win-rate measurement. Evidence is under
+`/tmp/dunecity-685-easy-budget-run/`.
+
 ## 2026-09-14 — Campaign attack candidate 1.0.684 (not installed or published)
 
 Branch `fix/campaign-active-attacks` follows installed 1.0.683. Easy's military

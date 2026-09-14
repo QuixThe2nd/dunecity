@@ -31,9 +31,6 @@ inline uint32_t staggerMs(uint32_t seed, uint32_t cycle, uint32_t house, uint32_
 inline uint32_t openingDelayMs(int difficulty, uint32_t seed, uint32_t triggerCycle, uint32_t house) {
     return difficulty >= 2 ? 0 : staggerMs(seed,triggerCycle,house,120000);
 }
-inline uint32_t attackIntervalMs(uint32_t seed, uint32_t cycle, uint32_t house) {
-    return 120000+staggerMs(seed,cycle,house,120000);
-}
 struct Wave {
     bool initialized = false;
     uint32_t opening = 0, launched = 0, lastActive = 0;

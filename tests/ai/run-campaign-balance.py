@@ -100,7 +100,9 @@ for row in rows:
     # itself; its Hard/Brutal waves must not inherit the CLI's default Easy cap.
     if not args.pressure_probe and row['event']=='ground_hunt' and row['data'].get('campaign_limited') and args.enemy_difficulty in ('easy','medium'):
         d=row['data']
-        if d['members']>d['alliance_unit_cap'] or d['value']>d['alliance_value_cap']:
+        if (d['alliance_units']>d['alliance_unit_cap']
+                or d['alliance_value']>d['alliance_value_cap']
+                or d['alliance_value']>d['attack_budget']):
             raise RuntimeError('Automatic campaign wave exceeded house budget')
 summary = {'result':results[0],'sourceCommit':subprocess.check_output(['git','rev-parse','HEAD'],cwd=root,text=True).strip(),
            'workingTreeModified':bool(subprocess.check_output(['git','status','--porcelain'],cwd=root,text=True).strip()),
