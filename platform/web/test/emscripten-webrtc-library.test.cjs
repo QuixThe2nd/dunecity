@@ -23,8 +23,8 @@ test('webrtc_glue.js uses Emscripten $ deps and retains createDuneCityWebRtc', (
   const text = fs.readFileSync(GLUE, 'utf8');
   assert.match(text, /\$createDuneCityWebRtc:\s*createDuneCityWebRtc/);
   assert.match(text, /\$webrtcInit__deps:/);
-  assert.match(text, /webrtcHostRoom__deps:\s*\[\s*'\$webrtcInit'\s*\]/);
-  assert.match(text, /webrtcJoinRoom__deps:\s*\[\s*'\$webrtcInit'/);
+  assert.match(text, /webrtcFindMatch__deps:\s*\[\s*'\$webrtcInit'\s*\]/);
+  assert.match(text, /webrtcCancelMatch__deps:\s*\[\s*'\$webrtcInit'/);
   assert.doesNotMatch(text, /\$createDuneCityWebRtc__postset/);
   assert.match(text, /createDuneCityWebRtc\s*\(/);
   assert.match(text, /\bwebrtcInit\s*\(/);
@@ -74,16 +74,17 @@ test('Emscripten library wrappers init without ReferenceError', () => {
 
   const lib = global.LibraryManager.library;
   assert.equal(typeof lib.$createDuneCityWebRtc, 'function');
-  assert.equal(typeof lib.webrtcHostRoom, 'function');
-  assert.equal(typeof lib.webrtcJoinRoom, 'function');
+  assert.equal(typeof lib.webrtcFindMatch, 'function');
+  assert.equal(typeof lib.webrtcCancelMatch, 'function');
   assert.equal(typeof lib.webrtcGetState, 'function');
 
   // Emscripten emits $-prefixed library keys as unprefixed runtime identifiers.
   hoistEmscriptenLibraryHelpers(lib, global);
 
-  assert.doesNotThrow(() => lib.webrtcHostRoom());
-  assert.equal(lib.webrtcGetState(), 1, 'hostRoom leaves transport connecting');
-  assert.doesNotThrow(() => lib.webrtcGetRoomCode(0, 0));
+  assert.doesNotThrow(() => lib.webrtcFindMatch());
+  assert.equal(lib.webrtcGetState(), 1, 'findMatch leaves transport connecting');
+  assert.doesNotThrow(() => lib.webrtcCancelMatch());
+  assert.equal(lib.webrtcGetState(), 0, 'cancel returns the transport to idle');
   assert.doesNotThrow(() => lib.webrtcDisconnect());
 });
 
@@ -149,11 +150,11 @@ const EXPECTED_WEBRTC_CONSTANTS = {
   DUNECITY_WEBRTC_CONTROL_LOW_WATER: 128 * 1024,
   DUNECITY_WEBRTC_COMMANDS_HIGH_WATER: 512 * 1024,
   DUNECITY_WEBRTC_MAX_SIGNAL_BYTES: 256 * 1024,
-  DUNECITY_WEBRTC_SIGNAL_PROTOCOL_VERSION: 1,
   DUNECITY_WEBRTC_EVENT_CONNECT: 0,
   DUNECITY_WEBRTC_EVENT_DISCONNECT: 1,
   DUNECITY_WEBRTC_EVENT_MESSAGE: 2,
   DUNECITY_WEBRTC_EVENT_STATE: 3,
+  DUNECITY_WEBRTC_EVENT_MATCHED: 4,
   DUNECITY_WEBRTC_STATE_IDLE: 0,
   DUNECITY_WEBRTC_STATE_CONNECTING: 1,
   DUNECITY_WEBRTC_STATE_CONNECTED: 2,
@@ -163,7 +164,6 @@ const EXPECTED_WEBRTC_CONSTANTS = {
 const EXPECTED_WEBRTC_HELPERS = [
   'resolveP2pkit',
   'createDuneCitySignallingChannel',
-  'isP2pkitDialectMessage',
 ];
 
 function loadGlueLibrary() {
