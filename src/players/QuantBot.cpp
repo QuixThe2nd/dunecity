@@ -306,6 +306,12 @@ QuantBot::QuantBot(InputStream& stream, House* associatedHouse) : Player(stream,
         }
     }
     if (currentGame->getLoadedSavegameVersion() >= 9838) campaignWave.load(stream);
+    if (currentGame->getLoadedSavegameVersion() >= 9839) {
+        const auto count=stream.readUint32();
+        for(Uint32 i=0;i<count;++i) scriptedAssaults.insert(stream.readUint32());
+    }
+    // Preserve an older save's initialized opening: fired triggers have already
+    // been removed from TriggerManager, so rescanning could delay it forever.
     if (supportMode) {
         gameMode = GameMode::Custom;
         attackTimer = std::numeric_limits<Sint32>::max();
@@ -385,6 +391,8 @@ void QuantBot::save(OutputStream& stream) const {
     stream.writeSint32(groundSquadProgressLocation.y);
     writeMap(defenceResponseCycles);
     campaignWave.save(stream);
+    stream.writeUint32(static_cast<Uint32>(scriptedAssaults.size()));
+    for(auto id:scriptedAssaults) stream.writeUint32(id);
 
 }
 
@@ -4291,10 +4299,30 @@ void QuantBot::build(int militaryValue) {
 						std::string itemName = getItemNameByID(itemID);
 						logDebug("Queuing %s (ID:%d)", itemName.c_str(), itemID);
 					}
+                    Coord nuclearSite=Coord::Invalid();
+                    if (itemID==Structure_NuclearPlant) {
+                        // Campaign rebuild/power orders bypass the general site
+                        // reservation path. Recheck and reserve at queue acceptance.
+                        placementCache.erase(itemID);
+                        nuclearSite=findPlaceLocation(itemID);
+                        if (!nuclearSite.isValid()) {
+                            traceDecision("construction_rejected",AITelemetry::Record()
+                                .set("builder",planningBuilder).set("item",itemID).set("reason","no_nuclear_site"));
+                            return false;
+                        }
+                    }
 					const int before = pBuilder->getProductionQueueSize();
                     const auto preOrder = AITelemetry::log().enabled() ? decisionState() : AITelemetry::Record();
 					doProduceItem(pBuilder, itemID);
 					const bool accepted = pBuilder->getProductionQueueSize() > before;
+                    if (accepted && nuclearSite.isValid()) {
+                        reservedStructures[planningBuilder]={itemID,nuclearSite};
+                        auto& sites=builderPlaceLocations[planningBuilder];
+                        if (sites.empty()) sites.push_back(nuclearSite);
+                        clearPlacementCache();
+                        traceDecision("site_reserved",AITelemetry::Record().set("builder",planningBuilder)
+                            .set("item",itemID).set("x",nuclearSite.x).set("y",nuclearSite.y));
+                    }
                     if (AITelemetry::log().enabled()) traceDecision("production_order", AITelemetry::Record()
                         .set("builder", pBuilder->getObjectID()).set("builder_item", pBuilder->getItemID())
                         .set("item", itemID).set("item_name", getItemNameByID(itemID)).set("accepted", accepted)
@@ -4960,8 +4988,8 @@ void QuantBot::build(int militaryValue) {
 								// Prefer nuclear plant over windtrap
 								if ((!powerGenerationPending() && pBuilder->isAvailableToBuild(Structure_NuclearPlant))
 									&& findPlaceLocation(Structure_NuclearPlant).isValid()) {
-									produceItemWithLogging(Structure_NuclearPlant, __LINE__);
-									itemCount[Structure_NuclearPlant]++;
+                                    if (produceItemWithLogging(Structure_NuclearPlant, __LINE__))
+                                        itemCount[Structure_NuclearPlant]++;
 									logDebug("***CampAI Build Nuclear Plant: power %d/%d", getHouse()->getProducedPower(), getHouse()->getPowerRequirement());
 								} else if ((!powerGenerationPending() && pBuilder->isAvailableToBuild(Structure_WindTrap))
 									&& findPlaceLocation(Structure_WindTrap).isValid()) {
@@ -6309,6 +6337,32 @@ void QuantBot::build(int militaryValue) {
                                     .set("x",location.x).set("y",location.y).set("risk",bestRisk));
                             }
                         }
+                        if (location.isInvalid() && itemToBePlaced==Structure_NuclearPlant) {
+                            const Coord size=getStructureSize(itemToBePlaced);
+                            bool potentialSite=false;
+                            for (int y=0;y<=getMap().getSizeY()-size.y && !potentialSite;++y)
+                                for (int x=0;x<=getMap().getSizeX()-size.x && !potentialSite;++x) {
+                                    if (!getMap().okayToPlaceStructure(x,y,size.x,size.y,false,getHouse(),true,itemToBePlaced)
+                                        || overlapsReservedStructure(x,y,size.x,size.y)) continue;
+                                    bool structure=false;
+                                    for(int dy=0;dy<size.y;++dy) for(int dx=0;dx<size.x;++dx) {
+                                        const auto* object=getMap().getTile(x+dx,y+dy)->getGroundObject();
+                                        structure |= object && object->isAStructure();
+                                    }
+                                    potentialSite=!structure;
+                                }
+                            if (!potentialSite) {
+                                // Refund through the ordinary production API. The
+                                // next planning pass can buy a smaller windtrap.
+                                tracePlacementIssue("placement_cancel","nuclear_footprint_lost",Coord::Invalid());
+                                doCancelItem(pConstYard,itemToBePlaced);
+                                placeLocations.clear();
+                                reservedStructures.erase(planningBuilder);
+                                --itemCount[itemToBePlaced];
+                                clearPlacementCache();
+                                placementIssueHandled=true;
+                            }
+                        }
                         if (location.isValid() && !preservesGroundAccess(itemToBePlaced,location)) {
                             tracePlacementIssue("placement_deferred", "ground_exit_blocked", location);
                             location=Coord::Invalid();
@@ -6602,6 +6656,7 @@ void QuantBot::attack(int militaryValue) {
 
     attackTimer = SimpleArmyPolicy::attackDelay(MILLI2CYCLES(config.attackTimerMs),
         currentGame->getGameInitSettings().getRandomSeed(), getGameCycleCount(), getHouse()->getHouseID());
+    if (isCampaignEnemy()) attackTimer=MILLI2CYCLES(15000);
     traceDecision("attack_schedule",AITelemetry::Record().set("delay_cycles",attackTimer)
         .set("base_cycles",MILLI2CYCLES(config.attackTimerMs)));
 
@@ -6666,14 +6721,15 @@ bool QuantBot::humanControls(const UnitBase* unit) const {
 void QuantBot::launchGroundHunt() {
     if (supportMode) return;
     const bool limited = isCampaignEnemy();
-    if (limited && !campaignCanLaunch()) return;
+    if (limited && (!campaignWave.initialized || !campaignWave.members.empty()
+        || getGameCycleCount()<campaignWave.opening)) return;
     const auto profile = limited ? campaignProfile()
         : CampaignDifficultyPolicy::profile(static_cast<int>(difficulty),currentGame->techLevel);
     auto pressure = limited ? campaignPressure() : CampaignDifficultyPolicy::Pressure{};
     const float ratio = getQuantBotConfig().getSettings(static_cast<int>(difficulty)).attackForceMilitaryValueRatio;
     int percent = std::isfinite(ratio) ? static_cast<int>(std::clamp(ratio,0.0f,1.0f)*100.0f+0.5f) : 0;
     // Campaign roles define commitment even with older saved config defaults.
-    // Keep an explicit zero as the opt-out, and use the alliance's easiest tier.
+    // Keep an explicit zero as the opt-out; each house uses its own difficulty.
     if (limited && percent>0) percent=profile.enemyCommitPercent;
     int armyValue=0, committedValue=0;
     std::vector<SimpleArmyPolicy::Responder> candidates;
@@ -6690,6 +6746,7 @@ void QuantBot::launchGroundHunt() {
         if (unit->hasATarget()) continue;
         if (!limited && (!unit->isAGroundUnit() || unit->getItemID()==Unit_Saboteur
             || (unit->getAttackMode()==HUNT && !unit->wasForced()))) continue;
+        if (limited && scriptedAssaults.count(unit->getObjectID())) continue;
         if (limited && unit->getItemID()==Unit_Ornithopter
             && !getQuantBotConfig().getSettings(static_cast<int>(difficulty)).ornithopterAttackEnabled) continue;
         candidates.push_back({unit->getObjectID(),price,0});
@@ -6697,9 +6754,8 @@ void QuantBot::launchGroundHunt() {
     std::stable_sort(candidates.begin(),candidates.end(),[](const auto& a,const auto& b){return a.id<b.id;});
     std::vector<Uint32> selected;
     if (limited) {
-        const int sharing=std::min<int>(profile.houses,campaignAlliance().size());
-        const int houseUnits=profile.limitedWave ? (profile.units+sharing-1)/sharing : INT32_MAX;
-        const int houseValue=profile.limitedWave ? (profile.value+sharing-1)/sharing : INT32_MAX;
+        const int houseUnits=profile.limitedWave ? profile.units : INT32_MAX;
+        const int houseValue=profile.limitedWave ? profile.value : INT32_MAX;
         const int budget=std::min(houseValue,SimpleArmyPolicy::attackBudget(armyValue,percent));
         int value=0;
         for (const auto& candidate : candidates) {
@@ -6709,7 +6765,7 @@ void QuantBot::launchGroundHunt() {
             ++pressure.units; pressure.value+=candidate.value;
         }
         // A depleted army can field one affordable unit without bypassing the
-        // alliance ceiling or adding replacements to an existing house's wave.
+        // house ceiling or adding replacements to an existing wave.
         if (selected.empty() && percent>0 && difficulty>=Difficulty::Hard) {
             const SimpleArmyPolicy::Responder* cheapest=nullptr;
             for (const auto& candidate : candidates)
@@ -6756,6 +6812,13 @@ void QuantBot::launchGroundHunt() {
         ++count; value+=std::max(100,currentGame->objectData.data[unit->getItemID()][unit->getOriginalHouseID()].price);
     }
     if (count==0) return; // An empty house checking readiness is not an attack.
+    if (limited) {
+        const auto interval=CampaignDifficultyPolicy::attackIntervalMs(getGameInitSettings().getRandomSeed(),
+            getGameCycleCount(),getHouse()->getHouseID());
+        attackTimer=MILLI2CYCLES(interval);
+        traceDecision("campaign_attack_timer",AITelemetry::Record().set("interval_ms",interval)
+            .set("next_due_cycle",getGameCycleCount()+attackTimer));
+    }
     traceDecision("ground_hunt",AITelemetry::Record().set("members",count).set("value",value)
         .set("campaign_limited",limited).set("army_value",armyValue).set("committed_value",committedValue)
         .set("attack_percent",percent).set("attack_budget",limited ? SimpleArmyPolicy::attackBudget(armyValue,percent) : armyValue)

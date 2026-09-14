@@ -1450,3 +1450,22 @@ TEST_CASE("MCVs choose nearby usable rock without chasing distant space or clear
     REQUIRE(result.valid());CHECK(result.x>=20);CHECK(result.x<28); // MCV beside far island
 
 }
+
+TEST_CASE("Campaign opening follows authored trigger and houses have bounded independent cadence", "[quantbot][campaign]") {
+    using namespace CampaignDifficultyPolicy;
+    std::set<uint32_t> offsets;
+    for(uint32_t seed=0;seed<32;++seed) for(uint32_t house=0;house<6;++house) {
+        for(int tier=0;tier<2;++tier) {
+            const auto delay=openingDelayMs(tier,seed,45000,house);
+            CHECK(delay<=120000);
+            CHECK(delay==openingDelayMs(tier,seed,45000,house));
+            offsets.insert(delay);
+        }
+        CHECK(openingDelayMs(2,seed,45000,house)==0);
+        CHECK(openingDelayMs(3,seed,45000,house)==0);
+        const auto repeat=attackIntervalMs(seed,62500,house);
+        CHECK(repeat>=120000);CHECK(repeat<=240000);
+        CHECK(repeat==attackIntervalMs(seed,62500,house));
+    }
+    CHECK(offsets.size()>100);
+}

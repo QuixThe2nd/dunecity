@@ -2,9 +2,11 @@
 #include <misc/IMemoryStream.h>
 #include <misc/OMemoryStream.h>
 #include <Menu/HouseChoiceMenu.h>
+#include <Trigger/ReinforcementTrigger.h>
+#include <units/Carryall.h>
 
 void runCampaignPressureProbe(Game& game) {
-    auto require=[](bool ok,const char* reason){if(!ok)throw std::runtime_error(reason);};
+    auto require=[](bool ok,const char* reason){if(!ok){SDL_Log("PRESSURE_FAIL: %s",reason);throw std::runtime_error(reason);}};
     std::vector<QuantBot*> enemies;
     QuantBot* partner=nullptr;
     for (int h=0;h<NUM_HOUSES;++h) if (auto* house=game.getHouse(h))
@@ -14,13 +16,43 @@ void runCampaignPressureProbe(Game& game) {
         }
     require(enemies.size()>=2,"Pressure probe needs two campaign enemy houses");
     require(partner && !partner->isCampaignEnemy(),"Human partner inherited enemy restrictions");
+    // Earliest offensive trigger, excluding earlier home and worker deliveries.
+    auto savedTriggers=std::move(game.getTriggerManager().triggers);
+    game.getTriggerManager().addTrigger(std::make_unique<ReinforcementTrigger>(enemies[0]->getHouse()->getHouseID(),Unit_Tank,Drop_Homebase,false,100));
+    game.getTriggerManager().addTrigger(std::make_unique<ReinforcementTrigger>(enemies[0]->getHouse()->getHouseID(),Unit_Harvester,Drop_Enemybase,false,200));
+    game.getTriggerManager().addTrigger(std::make_unique<ReinforcementTrigger>(enemies[0]->getHouse()->getHouseID(),Unit_Tank,Drop_Enemybase,false,30000));
+    for(auto* bot:enemies) for(auto tier:{QuantBot::Difficulty::Easy,QuantBot::Difficulty::Medium,QuantBot::Difficulty::Hard,QuantBot::Difficulty::Brutal}) {
+        bot->difficulty=tier;bot->campaignWave={};bot->attackTimer=INT32_MAX;
+        bot->updateCampaignWave();
+        require(bot->campaignWave.opening>=30000,"AI opened before map attack trigger");
+        require(bot->campaignWave.opening<=30000+MILLI2CYCLES(120000),"Opening delay exceeds two minutes");
+        if(tier>=QuantBot::Difficulty::Hard) require(bot->campaignWave.opening==30000,"Hard/Brutal delayed opening");
+    }
+    game.getTriggerManager().triggers.clear();
+    enemies[0]->difficulty=QuantBot::Difficulty::Brutal;enemies[0]->campaignWave={};
+    enemies[0]->updateCampaignWave();
+    require(enemies[0]->campaignWave.opening==UINT32_MAX && !enemies[0]->campaignCanLaunch(),"Missing trigger allowed immediate Brutal attack");
+    const auto savedMission=game.gameInitSettings.mission;
+    const auto savedMod=game.gameInitSettings.modName;
+    const auto savedHouse=game.gameInitSettings.houseID;
+    for (const auto* mod:{"vanilla","dunecity"}) for(auto house:{HOUSE_ATREIDES,HOUSE_HARKONNEN,HOUSE_ORDOS})
+        for(int mission=1;mission<=4;++mission) for(auto tier:{QuantBot::Difficulty::Easy,QuantBot::Difficulty::Medium,QuantBot::Difficulty::Hard,QuantBot::Difficulty::Brutal}) {
+            game.gameInitSettings.mission=mission;game.gameInitSettings.modName=mod;game.gameInitSettings.houseID=house;
+            auto* bot=enemies[0];bot->difficulty=tier;bot->campaignWave={};bot->updateCampaignWave();
+            require(bot->campaignWave.opening>=MILLI2CYCLES(4*60000)
+                && bot->campaignWave.opening<=MILLI2CYCLES(6*60000),"Early map opening outside minutes 4–6");
+            if(tier>=QuantBot::Difficulty::Hard)
+                require(bot->campaignWave.opening==MILLI2CYCLES(4*60000),"Early Hard/Brutal missed start signal");
+        }
+    game.gameInitSettings.mission=savedMission;game.gameInitSettings.modName=savedMod;game.gameInitSettings.houseID=savedHouse;
+    game.getTriggerManager().triggers=std::move(savedTriggers);
     game.gameCycleCount=1000;
     game.techLevel=3; // No repair-yard prerequisite in the controlled wave fixture.
     auto reset=[&](QuantBot::Difficulty difficulty) {
         for (auto* bot:enemies) {
             bot->difficulty=difficulty;bot->gameMode=QuantBot::GameMode::Campaign;
             bot->militaryValueLimit=0;bot->attackTimer=0;
-            bot->campaignWave={};bot->campaignWave.initialized=true;
+            bot->campaignWave={};bot->campaignWave.initialized=true;bot->scriptedAssaults.clear();
             for (auto* unit:unitList) if (unit->getOwner()==bot->getHouse()) {
                 unit->setHealth(unit->getMaxHealth()); bot->doSetAttackMode(unit,GUARD);
             }
@@ -34,7 +66,7 @@ void runCampaignPressureProbe(Game& game) {
         enemies[0]->launchGroundHunt();
         require(enemies[0]->campaignWave.members==first,"Repeated check replenished active wave");
         enemies[1]->launchGroundHunt();
-        require(enemies[1]->campaignWave.members.empty()==(tier<=QuantBot::Difficulty::Medium),"Incorrect simultaneous-house rule");
+        require(!enemies[1]->campaignWave.members.empty(),"Another house incorrectly blocked independent attack");
         const auto profile=enemies[0]->campaignProfile();const auto used=enemies[0]->campaignPressure();
         require(!profile.limitedWave || (used.units<=profile.units && used.value<=profile.value),"Alliance exceeded count/value cap");
         require(used.houses<=profile.houses,"Alliance exceeded house cap");
@@ -62,7 +94,7 @@ void runCampaignPressureProbe(Game& game) {
             reset(tier);
             for(size_t i=0;i<enemies.size();++i) {
                 auto* bot=enemies[i];bot->launchGroundHunt();
-                const size_t expected=tier==QuantBot::Difficulty::Hard ? (i<2 ? 32 : 0) : 40;
+                const size_t expected=tier==QuantBot::Difficulty::Hard ? 32 : 40;
                 require(bot->campaignWave.members.size()==expected,"Hard/Brutal failed army commitment or house concurrency");
                 const auto members=bot->campaignWave.members;
                 bot->launchGroundHunt();
@@ -95,27 +127,70 @@ void runCampaignPressureProbe(Game& game) {
         require(restored.campaignWave.members==first->campaignWave.members,"Bot save lost assault membership");
         require(restored.campaignWave.launched==first->campaignWave.launched,"Bot save lost launch time");
     }
+    game.loadedSavegameVersion=9838;
+    IMemoryStream previousInput(out.getData(),out.getDataLength());
+    {QuantBot previous(previousInput,const_cast<House*>(first->getHouse()));
+        require(previous.campaignWave.initialized==first->campaignWave.initialized
+            && previous.campaignWave.opening==first->campaignWave.opening,
+            "Previous save lost its opening after consumed map triggers");
+        require(previous.scriptedAssaults.empty(),"Previous save invented scripted attackers");
+    }
     game.loadedSavegameVersion=9837;
     IMemoryStream legacyInput(out.getData(),out.getDataLength());
     {QuantBot legacy(legacyInput,const_cast<House*>(first->getHouse()));
         require(!legacy.campaignWave.initialized && legacy.campaignWave.members.empty(),"Legacy save invented wave state");
     }
     game.loadedSavegameVersion=previousVersion;
-    // Scripted HUNT arrivals cannot become an unbudgeted second assault.
+    // An unregistered HUNT defender still cannot bypass the attack scheduler.
     const UnitBase* held=nullptr;
     for (auto* unit:unitList) if(second->campaignCombatUnit(unit) && unit->isActive()) {held=unit;break;}
     require(held,"Missing reinforcement stand-in");second->doSetAttackMode(held,HUNT);second->updateCampaignWave();
-    require(held->getAttackMode()!=HUNT,"Unbudgeted reinforcement kept HUNT");
-    // End the first sortie through the real expiration path, then verify the
-    // next house waits for the entire post-wave recovery interval.
-    game.gameCycleCount+=MILLI2CYCLES(first->campaignProfile().sortieMs);
-    first->updateCampaignWave();require(first->campaignWave.members.empty(),"Expired sortie retained slot");
-    const auto recovery=MILLI2CYCLES(first->campaignProfile().recoveryMs);
-    second->launchGroundHunt();require(second->campaignWave.members.empty(),"No recovery interval after wave");
-    game.gameCycleCount+=recovery-1;second->launchGroundHunt();
-    require(second->campaignWave.members.empty(),"Recovery ended early");
-    ++game.gameCycleCount;second->launchGroundHunt();
-    require(!second->campaignWave.members.empty(),"Next enemy did not get its turn after recovery");
+    require(held->getAttackMode()!=HUNT,"Unassigned defender kept HUNT");
+    // Real authored drops join the assault even while their carryall is in transit.
+    const auto before=second->scriptedAssaults;
+    ReinforcementTrigger drop(second->getHouse()->getHouseID(),Unit_Tank,Drop_Enemybase,false,game.getGameCycleCount());
+    drop.trigger();
+    require(second->scriptedAssaults.size()==before.size()+1,"Scripted attack cargo not registered");
+    const UnitBase* cargo=nullptr;
+    for(auto id:second->scriptedAssaults) if(!before.count(id))cargo=dynamic_cast<const UnitBase*>(second->getObject(id));
+    require(cargo && !cargo->isActive(),"Fixture needs actual carried reinforcement");
+    second->updateCampaignWave();
+    require(second->scriptedAssaults.count(cargo->getObjectID()),"In-flight attacker lost membership");
+    // Save/load retains scripted intent, not merely ordinary wave membership.
+    game.loadedSavegameVersion=SAVEGAMEVERSION;
+    OMemoryStream scriptedOut;scriptedOut.open();second->save(scriptedOut);
+    IMemoryStream scriptedIn(scriptedOut.getData(),scriptedOut.getDataLength());
+    {QuantBot restored(scriptedIn,const_cast<House*>(second->getHouse()));
+        require(restored.scriptedAssaults.count(cargo->getObjectID()),"Save lost scripted cargo intent");}
+    game.loadedSavegameVersion=previousVersion;
+    Carryall* transport=nullptr;
+    for(auto* unit:unitList) if(auto* carrier=dynamic_cast<Carryall*>(unit))
+        for(auto id:carrier->pickedUpUnitList)if(id==cargo->getObjectID())transport=carrier;
+    require(transport,"Scripted cargo missing transport");
+    transport->deployUnit(cargo->getObjectID());
+    require(cargo->isActive(),"Actual carryall failed deployment");
+    second->doMove2Pos(cargo,cargo->getX(),cargo->getY(),false);
+    second->campaignControlsUnit(cargo);
+    require(cargo->hasATarget() || cargo->isMoving() || cargo->getAttackMode()==HUNT,"Landed attack received no offensive order");
+    game.gameCycleCount+=MILLI2CYCLES(second->campaignProfile().sortieMs)+1;
+    // A real attack target must survive the former unconditional sortie recall.
+    const StructureBase* target=nullptr;
+    for(auto* building:structureList)if(building->getOwner()->getTeamID()!=second->getHouse()->getTeamID()){target=building;break;}
+    require(target,"Missing enemy objective");second->doAttackObject(cargo,target,true);
+    second->updateCampaignWave();
+    require(second->scriptedAssaults.count(cargo->getObjectID()),"Fighting scripted attacker recalled by timer");
+    // Home/economic deliveries never create an offensive wave.
+    const auto scriptedCount=second->scriptedAssaults.size();
+    ReinforcementTrigger home(second->getHouse()->getHouseID(),Unit_Tank,Drop_Homebase,false,game.getGameCycleCount());home.trigger();
+    ReinforcementTrigger worker(second->getHouse()->getHouseID(),Unit_Harvester,Drop_Enemybase,false,game.getGameCycleCount());worker.trigger();
+    require(second->scriptedAssaults.size()==scriptedCount,"Home or economic delivery became attacker");
+    second->attackTimer=0;
+    require(second->campaignCanLaunch(),"Scripted cargo blocks the house's own scheduled attack");
+    // One house's remaining countdown has no effect on another ready house.
+    first->campaignWave.members.clear();second->campaignWave.members.clear();
+    first->attackTimer=MILLI2CYCLES(240000);second->attackTimer=0;
+    require(!first->campaignCanLaunch(),"House ignored own attack countdown");
+    require(second->campaignCanLaunch(),"Other house inherited attack countdown");
     // Enemy helper-role changes are read from controllers, not legacy isAI flags.
     require(!partner->isCampaignEnemy(),"Shared human house was restricted");
     for (auto* bot : {first,second,partner}) {
@@ -150,6 +225,6 @@ void runCampaignPressureProbe(Game& game) {
         require(SavePNG(screenshot.get(),filename.c_str())==0,"Menu screenshot failed");
     }
     SDL_SetRenderTarget(renderer,nullptr);
-    SDL_Log("CAMPAIGN_PRESSURE_PROBE_PASS: difficulty slots, aggregate budgets, no top-ups, save/load, reinforcement holding, expiration and recovery");
+    SDL_Log("CAMPAIGN_PRESSURE_PROBE_PASS: difficulty slots, aggregate budgets, no top-ups, save/load, scripted cargo, landing, save/load, independent timers and sustained combat");
     SDL_Log("CAMPAIGN_BALANCE_RESULT: probe=pressure outcome=passed");
 }

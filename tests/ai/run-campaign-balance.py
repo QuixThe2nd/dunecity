@@ -4,7 +4,7 @@
 Uses the existing macOS Ninja build. Access-control relaxation is restricted to
 this diagnostic executable; no test hooks are compiled into the shipped game.
 --attack-percent sets the legacy Easy fraction (zero disables dispatch); campaign
-Easy/Medium use the half-army policy plus alliance caps. Results
+Easy/Medium use the half-army policy plus per-house wave caps. Results
 and structured AI decision logs remain in --output-dir. This is a simulation
 comparison, not a substitute for the browser playtest or human playtesting.
 """
@@ -20,6 +20,7 @@ parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('--build-dir', type=Path, default=root / 'build')
 parser.add_argument('--output-dir', type=Path, required=True)
 parser.add_argument('--level', type=int, choices=range(1,10), default=4)
+parser.add_argument('--mod', choices=('vanilla','dunecity'), default='vanilla')
 parser.add_argument('--house', choices=('harkonnen','atreides','ordos'), default='harkonnen')
 parser.add_argument('--harvester-limit', type=int, choices=range(-1,101), default=-1)
 parser.add_argument('--partner-difficulty', choices=('easy','medium','hard','brutal'), default='easy')
@@ -27,6 +28,7 @@ parser.add_argument('--enemy-difficulty', choices=('easy','medium','hard','bruta
 parser.add_argument('--starport-probe', action='store_true', help='Exercise reserved cash with above-normal Starport prices')
 parser.add_argument('--helper-economy-probe', action='store_true', help='Verify advanced campaign helper worker investment and paid imports')
 parser.add_argument('--stats-probe', action='store_true', help='Verify campaign results with a shared human/AI house')
+parser.add_argument('--nuclear-probe', action='store_true')
 parser.add_argument('--pressure-probe', action='store_true', help='Verify campaign assault slots, recovery and save state')
 parser.add_argument('--defence-probe', action='store_true', help='Verify retaliation and base/harvester reinforcements')
 parser.add_argument('--repair-probe', action='store_true', help='Verify experienced campaign bots replace missing repair yards')
@@ -75,9 +77,10 @@ with (out/'build.log').open('w') as log:
     subprocess.run(compile_command,cwd=build,stdout=log,stderr=subprocess.STDOUT,check=True)
     subprocess.run(link,cwd=build,stdout=log,stderr=subprocess.STDOUT,check=True)
 env = dict(os.environ,DUNECITY_USERDIR=str(out/'profile'),SDL_VIDEODRIVER='dummy',SDL_AUDIODRIVER='dummy',
-           BALANCE_LEVEL=str(args.level),BALANCE_PARTNER=args.partner_difficulty,BALANCE_SEED=str(args.seed),BALANCE_MINUTES=str(args.minutes),
+           BALANCE_MOD=args.mod,BALANCE_LEVEL=str(args.level),BALANCE_PARTNER=args.partner_difficulty,BALANCE_SEED=str(args.seed),BALANCE_MINUTES=str(args.minutes),
            BALANCE_ATTACK_PERCENT=str(args.attack_percent),BALANCE_ENEMY=args.enemy_difficulty,
            BALANCE_HOUSE=str(('harkonnen','atreides','ordos').index(args.house)),BALANCE_HARVESTER_LIMIT=str(args.harvester_limit))
+if args.nuclear_probe: env['BALANCE_NUCLEAR_PROBE'] = '1'
 if args.starport_probe: env['BALANCE_STARPORT_PROBE'] = '1'
 if args.helper_economy_probe: env['BALANCE_HELPER_ECONOMY_PROBE'] = '1'
 if args.stats_probe: env['BALANCE_STATS_PROBE'] = '1'
@@ -92,6 +95,13 @@ results = [line for line in (out/'run.log').read_text().splitlines() if 'CAMPAIG
 if len(results) != 1: raise RuntimeError('Missing campaign result.')
 events = next((out/'profile').rglob('events.jsonl'))
 rows = [json.loads(line) for line in events.read_text().splitlines()]
+for row in rows:
+    # The pressure fixture switches difficulty in-engine and checks each tier
+    # itself; its Hard/Brutal waves must not inherit the CLI's default Easy cap.
+    if not args.pressure_probe and row['event']=='ground_hunt' and row['data'].get('campaign_limited') and args.enemy_difficulty in ('easy','medium'):
+        d=row['data']
+        if d['members']>d['alliance_unit_cap'] or d['value']>d['alliance_value_cap']:
+            raise RuntimeError('Automatic campaign wave exceeded house budget')
 summary = {'result':results[0],'sourceCommit':subprocess.check_output(['git','rev-parse','HEAD'],cwd=root,text=True).strip(),
            'workingTreeModified':bool(subprocess.check_output(['git','status','--porcelain'],cwd=root,text=True).strip()),
            'metadata':rows[0]['data'],'attacks':[r for r in rows if r['event']=='ground_hunt'],

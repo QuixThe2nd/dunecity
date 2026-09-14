@@ -61,6 +61,7 @@ public:
 
     void update() override;
     void onHumanUnitOrder(Uint32 id);
+    void onScriptedReinforcement(const UnitBase* unit);
     void finishTelemetry() override;
     void onCombatReward(Uint32 attacker, Uint32 target, const CombatReward::Totals& reward) override;
 
@@ -123,8 +124,8 @@ private:
     std::map<Uint32, Uint32> manualUnitOrders, defenceAssignments;
     void launchGroundHunt();
     CampaignDifficultyPolicy::Wave campaignWave;
+    std::set<Uint32> scriptedAssaults;
     bool isCampaignEnemy() const;
-    std::vector<const QuantBot*> campaignAlliance() const;
     CampaignDifficultyPolicy::Profile campaignProfile() const;
     CampaignDifficultyPolicy::Pressure campaignPressure() const;
     bool campaignCanLaunch() const;

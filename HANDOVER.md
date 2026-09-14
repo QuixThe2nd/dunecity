@@ -1,3 +1,56 @@
+## 2026-09-14 — Campaign attack candidate 1.0.684 (not installed or published)
+
+Branch `fix/campaign-active-attacks` follows installed 1.0.683. Easy's military
+cap remains 200% of starting combat credit value. Automatic campaign attacks
+now use each enemy house's own wave budget and timer; allies do not take turns.
+Opening is anchored to the map's first offensive allied-enemy reinforcement:
+Easy/Medium delay 0–2 game minutes, Hard/Brutal delay zero. No tier launches
+before the trigger. Successful launches schedule a separate 2–4 minute timer
+per house; another wave waits for the existing wave to finish. Fighting/moving
+survivors are not recalled merely because the old sortie clock expired.
+
+Offensive reinforcement cargo is registered separately from automatic waves,
+including while carried, and keeps assault intent after landing. Ordinary
+Carryall combat drops use AREAGUARD, not HUNT, in this source; QuantBot must
+explicitly recognize them. Home/economic deliveries are excluded. Save format
+9839 persists this separate roster. Initialized 9838 saves retain their stored
+opening because fired triggers no longer exist in TriggerManager; older saves
+cannot retroactively identify already-landed scripted troops. New campaigns
+receive the new opening timing.
+
+Nuclear orders require a fresh valid site and reserve it on acceptance. A
+finished reactor with no remaining geometric footprint is cancelled/refunded
+through the normal API, allowing a smaller windtrap next. Temporary unit
+blockage retains the reactor. Real-engine fixtures cover reservation, temporary
+blockage, lost footprint/refund and windtrap fallback.
+
+`tests/ai/audit-campaign-triggers.py` audits the canonical SCENARIO.PAK used by
+both vanilla and Dune City: 66 maps, 54 with offensive reinforcements, 12 with
+none (SCEN[A/H/O]001–004, levels 1–2). Level 3 starts at 5 minutes, levels 4–5
+at 11, levels 6–9 at 12. Loose scenario INIs are separate Tornie content.
+Stefan requested minutes 4–6 for the early maps. Their existing troops receive
+an explicit four-minute opening signal: Easy/Medium add their usual 0–2 minute
+delay; Hard/Brutal start at four. No extra units are granted. The fallback is
+restricted to scenarios 001–004 in vanilla/Dune City and only applies when no
+offensive reinforcement exists. Unknown missing triggers remain disabled.
+The engine fixture covers all 12 maps, both mods and all four difficulties.
+
+Native dependency audit and all seven CTest groups pass. Engine pressure,
+pacing and nuclear probes pass, including saved scripted cargo, immediate
+Hard/Brutal trigger boundaries, independent timers and active combat retention.
+Level-9 Dune City Easy simulation opened at 12.039/13.667/13.679 game minutes
+after the 12-minute trigger; vanilla Hard opened at 12.012–12.013 (AI tick).
+Repeat intervals were 136570–238795 ms across those runs. These isolated
+observer simulations are not human win-rate measurements. Evidence is under
+`/tmp/dunecity-684-*`; the 66-map audit is retained in
+`../outputs/dunecity-campaign-684/campaign-triggers.{json,md}`.
+The final early-level-2 Dune City Easy run dispatched three units at 4.106 game
+minutes. The final pressure probe also verifies 9838 opening preservation and
+all 12 early maps across both mods/four tiers. Its driver excludes its deliberate
+Hard/Brutal tier switches from the CLI Easy-only postcheck; the engine fixture
+asserts each actual tier's budget. Final seven-group CTest run and dependency
+audit pass. No installed app, active game, public build or website was changed.
+
 ## 2026-09-14 — Cursor rendering candidate 1.0.683
 
 Desktop and browser now draw the original game cursor sprites as the last

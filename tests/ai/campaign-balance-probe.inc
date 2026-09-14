@@ -11,6 +11,7 @@
 #include "starport-economy-probe.inc"
 #include "campaign-stats-probe.inc"
 #include "campaign-pressure-probe.inc"
+#include "campaign-nuclear-probe.inc"
 #include "campaign-defence-probe.inc"
 #include "campaign-pacing-probe.inc"
 #include "campaign-repair-probe.inc"
@@ -28,7 +29,7 @@ int runCampaignBalanceProbe() {
         : enemy == "brutal" ? "qBotBrutal" : "qBotEasy";
     const int percent = std::atoi(std::getenv("BALANCE_ATTACK_PERCENT"));
     const auto humanHouse=static_cast<HOUSETYPE>(std::getenv("BALANCE_HOUSE") ? std::atoi(std::getenv("BALANCE_HOUSE")) : HOUSE_HARKONNEN);
-    ModManager::instance().setActiveMod("vanilla");
+    ModManager::instance().setActiveMod(std::getenv("BALANCE_MOD") ? std::getenv("BALANCE_MOD") : "vanilla");
     getQuantBotConfig().easy.attackForceMilitaryValueRatio = percent / 100.0f;
     settings.general.playerName = "Campaign balance observer";
     settings.network.metaServer = "http://127.0.0.1:1/";
@@ -55,6 +56,10 @@ int runCampaignBalanceProbe() {
     game->initGame(init);
     game->bReplay = false;
     game->initializeGameLoop();
+    if (std::getenv("BALANCE_NUCLEAR_PROBE")) {
+        runCampaignNuclearProbe(*game);game.reset();currentGame=nullptr;pLocalPlayer=nullptr;
+        return MENU_QUIT_DEFAULT;
+    }
     if (std::getenv("BALANCE_REPAIR_PROBE")) {
         runCampaignRepairProbe(*game);
         game.reset();currentGame=nullptr;pLocalPlayer=nullptr;
@@ -93,16 +98,7 @@ int runCampaignBalanceProbe() {
     const Uint32 end = MILLI2CYCLES(minutes * 60000);
     while (!game->finished && game->getGameCycleCount() < end) {
         game->updateGameState();
-        if (game->getGameCycleCount()%250==0) {
-            for (int h=0;h<NUM_HOUSES;++h) if (const auto* house=game->getHouse(h))
-                for (const auto& player:house->getPlayerList())
-                    if (const auto* bot=dynamic_cast<const QuantBot*>(player.get());bot && bot->isCampaignEnemy()) {
-                        const auto used=bot->campaignPressure();const auto limit=bot->campaignProfile();
-                        if (used.houses>limit.houses
-                            || (limit.limitedWave && (used.units>limit.units || used.value>limit.value)))
-                            throw std::runtime_error("Live campaign exceeded shared assault limits");
-                    }
-        }
+
     }
     SDL_Log("CAMPAIGN_BALANCE_RESULT: level=%d seed=%u attack_percent=%d partner=%s enemy=%s cycle=%u outcome=%s",
         level, seed, percent, partner.c_str(), enemy.c_str(), game->getGameCycleCount(), game->finished ? (game->won ? "won" : "lost") : "time_limit");
