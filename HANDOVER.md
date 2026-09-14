@@ -1,3 +1,28 @@
+## 2026-09-14 — Easy/Medium one wave then a break, 1.0.688
+
+Stefan reported a large Easy Atreides attack and explicitly clarified one wave
+at a time, then a break. Live 686 SCENH022 seed1294169503 sent 4/3/3 units in
+about two seconds at 13.89–13.92 minutes: 10 active attackers/4,350 credits.
+Each dispatch fit its cap, but the separate waves accumulated.
+
+Easy/Medium now wait for their active automatic wave to end, then wait an
+independent deterministic 2–4 game minutes using the existing serialized
+attackTimer. Readiness is still required after that break. No survivor-budget
+subtraction or new state. Hard/Brutal retain readiness-driven larger attacks
+after the same map opening. Scripted arrivals remain separate. Includes 687's
+city campaign construction fix. This supersedes 686's overlapping small waves
+and removal of repeat cooldowns for Easy/Medium.
+
+All seven CTest groups, dependency/signature/version checks, and the actual
+engine pressure fixture pass (no stacking even with ready replacements,
+break boundaries and preserved countdown). Same-map/seed Easy Dune City
+observer run: Atreides sent4/1500 at13.89min, wave ended15.32min, break127.792s;
+Ordos4/1400; Sardaukar3/1500 then another3/1500 only after a194.080s break.
+City zoning continued for all three. Observer naturally lost at17.31min;
+this is not a human difficulty assessment. Evidence `/tmp/dunecity-688-easy/`,
+`/tmp/dunecity-688-pressure/`, `/tmp/dunecity-688-ctest.log`.
+Local test build only; no remote release or website change.
+
 ## 2026-09-14 — Dune City campaign construction routing, 1.0.687
 
 Live 686 SCENH022.INI, seed 1294169503, Easy enemies: Atreides, Ordos and

@@ -61,8 +61,10 @@ int QuantBot::campaignRequiredArmy(int configuredThreshold) const {
 
 bool QuantBot::campaignCanLaunch() const {
     if (!isCampaignEnemy()) return true;
-    // Later waves depend on ready troops, not a cooldown or surviving attackers.
-    return campaignWave.initialized && getGameCycleCount() >= campaignWave.opening;
+    // Easy/Medium send one small wave at a time; consecutive AI updates must
+    // not merge several individually capped waves into one large assault.
+    return campaignWave.initialized && getGameCycleCount() >= campaignWave.opening
+        && (!campaignProfile().limitedWave || (campaignPressure().units == 0 && attackTimer <= 0));
 }
 
 bool QuantBot::campaignLocalContact(const ObjectBase* target) const {
@@ -167,9 +169,9 @@ void QuantBot::updateCampaignWave() {
             .set("delay_ms",delay).set("opening_cycle",campaignWave.opening)
             .set("early_map_signal",earlySignal));
     }
-    // Discard old saved repeat cooldowns once the preserved opening is met.
-    // Ready houses are reconsidered on their ordinary AI update, not a wave timer.
-    if (now>=campaignWave.opening) attackTimer=0;
+    // Easy/Medium retain their saved break between waves. Hard/Brutal use
+    // readiness alone after the opening signal.
+    if (now>=campaignWave.opening && !profile.limitedWave) attackTimer=0;
     for(auto it=scriptedAssaults.begin();it!=scriptedAssaults.end();) {
         const auto* unit=dynamic_cast<const UnitBase*>(getObject(*it));
         if (!campaignCombatUnit(unit)) it=scriptedAssaults.erase(it);
@@ -189,8 +191,12 @@ void QuantBot::updateCampaignWave() {
         ++it;
     }
     if (hadWave || !campaignWave.members.empty()) campaignWave.lastActive=now;
-    if (hadWave && campaignWave.members.empty())
+    if (hadWave && campaignWave.members.empty()) {
+        if (profile.limitedWave) attackTimer=MILLI2CYCLES(120000+
+            CampaignDifficultyPolicy::staggerMs(getGameInitSettings().getRandomSeed(),
+                now,getHouse()->getHouseID(),120000));
         traceDecision("campaign_wave_end",AITelemetry::Record().set("next_attack_in_cycles",std::max(0,attackTimer)));
+    }
     for (const auto* unit : getUnitList()) if (campaignCombatUnit(unit) && unit->isActive()
         && !campaignWave.members.count(unit->getObjectID())
         && !scriptedAssaults.count(unit->getObjectID())) {

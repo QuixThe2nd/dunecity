@@ -109,14 +109,32 @@ void runCampaignPressureProbe(Game& game) {
             require(initial.size()==expected,"First wave missed its configured size");
             for(int attempt=0;attempt<10;++attempt)bot->attack(40*price);
             require(bot->campaignWave.members==initial,"Away or injured troops satisfied fresh-wave readiness");
-            // Enough repairs complete to assemble a second wave without waiting
-            // for any previous attacker to die or for another timer to expire.
+            // Replacements can become ready while the first wave is fighting,
+            // but Easy/Medium must not stack them into a larger assault.
             const auto cycle=game.getGameCycleCount();
             for(size_t i=0;i<expected-4;++i) recovering[i]->setHealth(recovering[i]->getMaxHealth());
+            for(int attempt=0;attempt<10;++attempt)bot->attack(40*price);
+            require(bot->campaignWave.members==initial,"Easy/Medium stacked multiple small waves");
+            for(auto id:initial) {
+                auto* casualty=dynamic_cast<UnitBase*>(game.getObjectManager().getObject(id));
+                require(casualty,"First-wave unit missing");casualty->setHealth(0);
+            }
+            bot->updateCampaignWave();
+            require(bot->attackTimer>=MILLI2CYCLES(120000) && bot->attackTimer<=MILLI2CYCLES(240000),
+                "Easy/Medium break is outside two to four minutes");
             bot->attack(40*price);
-            require(game.getGameCycleCount()==cycle && bot->campaignWave.members.size()==2*expected,
-                "Survivors reduced or blocked the second full wave");
-            for(auto id:initial)require(bot->campaignWave.members.count(id),"Second wave displaced survivors");
+            require(bot->campaignWave.members.empty(),"Ready army skipped the post-wave break");
+            const int pause=bot->attackTimer;
+            bot->updateCampaignWave();
+            require(bot->attackTimer==pause,"Ordinary wave update discarded the break");
+            // The main AI update decrements the already serialized attackTimer.
+            game.gameCycleCount+=pause;bot->attackTimer=1;
+            bot->attack(40*price);
+            require(bot->campaignWave.members.empty(),"Wave launched before timer expired");
+            bot->attackTimer=0;bot->attack(40*price);
+            require(game.getGameCycleCount()>cycle && bot->campaignWave.members.size()==expected,
+                "Ready second wave failed after the break expired");
+            for(auto id:initial)require(!bot->campaignWave.members.count(id),"Dead attacker rejoined next wave");
             const auto second=bot->campaignWave.members;
             for(int attempt=0;attempt<10;++attempt)bot->attack(40*price);
             require(bot->campaignWave.members==second,"Insufficient reserves trickled into another wave");
@@ -224,14 +242,14 @@ void runCampaignPressureProbe(Game& game) {
     // Saved repeat cooldowns are ignored; only each house's opening gates it.
     first->campaignWave.members.clear();second->campaignWave.members.clear();
     first->attackTimer=MILLI2CYCLES(240000);second->attackTimer=0;
-    require(first->campaignCanLaunch(),"Old repeat cooldown blocked available budget");
+    require(!first->campaignCanLaunch(),"Easy ignored its repeat cooldown");
     require(second->campaignCanLaunch(),"Other house inherited attack countdown");
     first->campaignWave.opening=game.getGameCycleCount()+MILLI2CYCLES(60000);
     first->attackTimer=0;
     require(!first->campaignCanLaunch(),"Budget bypassed opening timer");
     first->campaignWave.opening=game.getGameCycleCount();
     first->attackTimer=MILLI2CYCLES(240000);first->updateCampaignWave();
-    require(first->attackTimer==0,"Saved repeat cooldown survived opening");
+    require(first->attackTimer==MILLI2CYCLES(240000),"Saved repeat cooldown was discarded after opening");
     // Enemy helper-role changes are read from controllers, not legacy isAI flags.
     require(!partner->isCampaignEnemy(),"Shared human house was restricted");
     for (auto* bot : {first,second,partner}) {
@@ -266,6 +284,6 @@ void runCampaignPressureProbe(Game& game) {
         require(SavePNG(screenshot.get(),filename.c_str())==0,"Menu screenshot failed");
     }
     SDL_SetRenderTarget(renderer,nullptr);
-    SDL_Log("CAMPAIGN_PRESSURE_PROBE_PASS: opening gates, fresh-wave readiness, surviving attackers, reserve protection, saved cooldown migration, scripted cargo and sustained combat");
+    SDL_Log("CAMPAIGN_PRESSURE_PROBE_PASS: opening gates, fresh-wave readiness, Easy/Medium no stacking and post-wave break, reserve protection, saved cooldown, scripted cargo and sustained combat");
     SDL_Log("CAMPAIGN_BALANCE_RESULT: probe=pressure outcome=passed");
 }

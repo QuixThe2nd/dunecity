@@ -102,8 +102,10 @@ for row in rows:
         d=row['data']
         if (d['alliance_units']>d['alliance_unit_cap']
                 or d['alliance_value']>d['alliance_value_cap']
+                or d['active_units']>d['alliance_unit_cap']
+                or d['active_value']>d['alliance_value_cap']
                 or d['alliance_value']>d['attack_budget']):
-            raise RuntimeError('Automatic campaign dispatch exceeded its wave budget')
+            raise RuntimeError('Automatic campaign force exceeded its wave budget')
 summary = {'result':results[0],'sourceCommit':subprocess.check_output(['git','rev-parse','HEAD'],cwd=root,text=True).strip(),
            'workingTreeModified':bool(subprocess.check_output(['git','status','--porcelain'],cwd=root,text=True).strip()),
            'metadata':rows[0]['data'],'attacks':[r for r in rows if r['event']=='ground_hunt'],
