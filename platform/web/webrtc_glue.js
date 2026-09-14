@@ -134,13 +134,9 @@ function createDuneCitySignallingChannel({ sendRaw, p2pkit, log }) {
             log('webrtc: invalid signalling send: ' + err);
             return false;
         }
-        // The matchmaking server relays {"t":"sig"} payloads verbatim between
-        // paired peers; the dialect message (from/to stamped by us) is opaque.
-        const envelope = {
-            t: 'sig',
-            data: message,
-        };
-        const text = JSON.stringify(envelope);
+        // sendRaw receives the p2pkit dialect envelope (from/to + payload).
+        // The websocket glue wraps it as {"t":"sig","data":<dialect>} once.
+        const text = JSON.stringify(message);
         if (text.length > DUNECITY_WEBRTC_MAX_SIGNAL_BYTES) {
             log('webrtc: signal message too large');
             return false;
@@ -240,17 +236,15 @@ function createDuneCityWebRtc(deps) {
                     log('webrtc: cannot signal, socket not open');
                     return false;
                 }
-                // The lobby only understands {"t":"sig"}; the dialect envelope
-                // rides inside as an opaque payload and is relayed verbatim.
-                let envelope;
+                // Adapter send() emits dialect JSON; wrap once for the lobby relay.
+                let dialect;
                 try {
-                    envelope = JSON.parse(text);
+                    dialect = JSON.parse(text);
                 } catch (e) {
                     log('webrtc: signalling adapter produced invalid JSON');
                     return false;
                 }
-                ws.send(JSON.stringify({ t: 'sig', data: envelope }));
-                return true;
+                return signalSend({ t: 'sig', data: dialect });
             },
             p2pkit: kit,
             log: log,

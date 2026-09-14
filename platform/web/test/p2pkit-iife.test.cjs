@@ -14,9 +14,18 @@ const { webcrypto } = require('node:crypto');
 
 const BUNDLE = path.join(__dirname, '..', 'dist', 'p2pkit.iife.js');
 
-// The trimmed in-tree p2pkit copy (see ../p2pkit/UPSTREAM.md) has no negotiate
-// or sdp modules, so those upstream helpers are intentionally not bundled.
-const EXPECTED_KEYS = ['DEFAULT_ICE_SERVERS', 'Emitter', 'RTCTransport', 'randomId'];
+// Surface required by webrtc_glue.js and its unit tests (see ../p2pkit/UPSTREAM.md).
+const EXPECTED_KEYS = [
+  'DEFAULT_ICE_SERVERS',
+  'DEFAULT_TRANSPORT_ORDER',
+  'Emitter',
+  'RTCTransport',
+  'capsFor',
+  'chooseTransport',
+  'extractIP',
+  'isInitiator',
+  'randomId',
+];
 
 function loadBundleInFreshContext() {
   const source = fs.readFileSync(BUNDLE, 'utf8');
