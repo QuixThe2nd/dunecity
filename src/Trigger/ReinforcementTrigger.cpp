@@ -21,6 +21,7 @@
 #include <Game.h>
 #include <Map.h>
 #include <House.h>
+#include <players/QuantBot.h>
 
 #include <DataTypes.h>
 
@@ -62,6 +63,12 @@ void ReinforcementTrigger::trigger()
     if(dropHouse == nullptr) {
         return;
     }
+
+    auto registerAssault = [&](const UnitBase* unit) {
+        if (dropLocation == Drop_Homebase) return;
+        for (const auto& player : dropHouse->getPlayerList())
+            if (auto* bot=dynamic_cast<QuantBot*>(player.get())) bot->onScriptedReinforcement(unit);
+    };
 
     switch(dropLocation) {
         case Drop_North:
@@ -118,6 +125,7 @@ void ReinforcementTrigger::trigger()
                     units2Drop.erase(units2Drop.begin());
 
                     pUnit2Drop->deploy(newCoord);
+                    registerAssault(pUnit2Drop);
 
                     if (newCoord.x == 0) {
                         pUnit2Drop->setAngle(RIGHT);
@@ -225,6 +233,7 @@ void ReinforcementTrigger::trigger()
                         UnitBase* pUnit2Drop = dropHouse->createUnit(itemID2Drop);
                         pUnit2Drop->setActive(false);
                         carryall->giveCargo(pUnit2Drop);
+                        registerAssault(pUnit2Drop);
                     }
 
                     Coord closestPos = currentGameMap->findClosestEdgePoint(dropCoord, Coord(1,1));

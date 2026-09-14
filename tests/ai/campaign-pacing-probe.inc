@@ -41,11 +41,12 @@ void runCampaignPacingProbe(Game& game) {
             }
     savedUnits=unitList;unitList.clear();for(auto* unit:army)unitList.push_back(unit);
     try {
-    bot->militaryValueLimit=9200;bot->attackTimer=0;
+    bot->militaryValueLimit=4800;bot->attackTimer=0;
     game.techLevel=4;bot->campaignWave.opening=game.getGameCycleCount()+100;
     bot->attack(2400);require(bot->campaignWave.members.empty(),"Small-wave readiness bypassed opening grace");
     game.gameCycleCount+=100;
     bot->attack(2399);require(bot->campaignWave.members.empty(),"Easy launched without its defensive reserve");
+    bot->attackTimer=0; // Readiness retry after its ordinary countdown.
     bot->attack(2400);
     require(bot->campaignWave.members.size()==4,"Eight tanks did not send four while keeping four defenders");
     const auto first=bot->campaignWave.members;bot->attack(2400);
@@ -63,7 +64,7 @@ void runCampaignPacingProbe(Game& game) {
     require(partner->campaignRequiredArmy(8000)==8000,"Live economy lost its normal readiness goal");
     bot->campaignWave={};bot->campaignWave.initialized=true;
     require(!owner->hasRepairYard(),"Fixture must lack a repair yard");
-    bot->attack(2400);
+    bot->attackTimer=0;bot->attack(2400);
     require(!bot->campaignWave.members.empty(),"Late-game survivors did not attack without a repair yard");
     } catch (...) {unitList=savedUnits;throw;}
     unitList=savedUnits;

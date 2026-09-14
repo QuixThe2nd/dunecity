@@ -16,6 +16,7 @@ target_sources(dunelegacy_tests
         CityTrafficPolicyTestCase.cpp
         CitySpritePolicyTestCase.cpp
         RendererSizeTestCase.cpp
+        CursorRendererTestCase.cpp
         QuantBotBuildPolicyTestCase.cpp
         AIDecisionLogTestCase.cpp
         CityPlacementPolicyTestCase.cpp

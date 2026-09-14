@@ -50,4 +50,7 @@ void applyCursorVisibilitySetting();
  */
 void updateCursorVisibilityForInput(const SDL_Event& event);
 
+/** Present the final frame with a software action cursor on desktop and web. */
+void presentWithCursor(int mode = 0);
+
 #endif // CURSORMANAGER_H

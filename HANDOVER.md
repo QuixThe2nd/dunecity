@@ -1,3 +1,260 @@
+## 2026-09-15 — Independent saboteurs, 1.0.690
+
+Stefan's live 689 SCENH022 seed282721298 appeared cleared but victory did not
+trigger. At 44min Ordos had no structures, two carryalls and one saboteur;
+the saboteur legitimately kept House::isAlive true (carryalls do not). Logs
+repeated its position (21,5), Area Guard, target assigned and forced order.
+Campaign wave/defender control included saboteurs, while the normal Hunt
+restoration skipped forced orders. Palace already spawns AI saboteurs in Hunt.
+
+Stefan explicitly clarified: AI must leave saboteurs alone and never change
+their orders. QuantBot now excludes them from campaign wave/holding/retaliation,
+initial rally, ordinary attack selection, retreat, legacy squad conversion,
+defence assignment maintenance and periodic tactical commands. Removed the
+periodic Hunt setter and noisy saboteur diagnostic. No new timers/state or
+victory-rule changes. Manual orders and saved orders remain untouched: this
+prevents future corruption but does not rewrite an already stuck save's order.
+
+The original engine regression reproduced the campaign override on 689.
+Final defence fixture tests explicit forced orders preserved despite damage
+and stale defence assignment; Palace-style Hunt survives pre-opening wave
+control and a valid army retreat, then the real saboteur walks to and detonates
+on an enemy launcher. Ordinary defence checks pass for all four difficulties.
+All seven CTest groups and dependency/version/signature checks pass.
+Evidence: /tmp/dunecity-690-saboteur-verified/, /tmp/dunecity-690-ctest.log;
+live evidence ../outputs/dunecity-690-saboteur/.
+Built and installed locally as 1.0.690 after the game exited; no remote release.
+
+Separate outstanding Ordos economy finding (reported, not changed here):
+its sole CY waited on an already-existing road (21,10) from ~2 to23.5min,
+with 42 road_waiting_for_useful_gap events, then saved for a reactor until
+34.44min. Only one refinery/harvester and no zones until35min. It lost its
+combat army around26–28min and then waited for 3300 military readiness.
+Road redirection must not indefinitely block the only yard when no gap exists;
+reactor investment should not starve income recovery. These need a separate fix.
+
+## 2026-09-14 — Hard co-op helper opening deadlock, 1.0.689
+
+Live 688 Harkonnen human + Hard QuantBot helper, SCENH022 seed1221113892:
+helper correctly used normal Custom logic, but its cramped starting rock
+triggered an expansion-MCV reserve. With 1,000 credits, no factory, no power
+and no income, reserving 900 left only 100 for a 300-credit first windtrap.
+Repeated construction_rejected/committed_cash events explain the inactivity.
+Evidence: ../outputs/dunecity-689-helper/live-688.json.
+
+Only reserve expansion-MCV cash when an existing living heavy factory can
+actually build an MCV. Uses the existing producer scan; no new timers, saved
+state or changes to the attack/economy policy. Expansion production and its
+upgrade path remain intact.
+
+Extended the existing helper-economy engine fixture with this city opening:
+it fails on 688 and passes on 689, requiring the first windtrap and power,
+refinery and harvester within five game minutes. An independent ten-minute
+normal same-map/seed run ordered three refineries, additional harvesters,
+R/C/I, both factories, a high-tech factory, a carryall and military units.
+Last snapshot (9.63min): three refineries, four harvesters, 5R/1C/1I;
+5,665 spice credits refined, 2,804 city credits collected. This is an isolated
+observer reproduction, not an exact replay of human commands.
+
+All seven CTest groups and dependency/version/signature checks pass.
+Evidence: /tmp/dunecity-689-helper-before/, /tmp/dunecity-689-helper-after/,
+/tmp/dunecity-689-helper-natural/, /tmp/dunecity-689-ctest.log.
+Built and installed locally as 1.0.689 after the running game exited.
+No remote release, website update or save-format change.
+
+## 2026-09-14 — Easy/Medium one wave then a break, 1.0.688
+
+Stefan reported a large Easy Atreides attack and explicitly clarified one wave
+at a time, then a break. Live 686 SCENH022 seed1294169503 sent 4/3/3 units in
+about two seconds at 13.89–13.92 minutes: 10 active attackers/4,350 credits.
+Each dispatch fit its cap, but the separate waves accumulated.
+
+Easy/Medium now wait for their active automatic wave to end, then wait an
+independent deterministic 2–4 game minutes using the existing serialized
+attackTimer. Readiness is still required after that break. No survivor-budget
+subtraction or new state. Hard/Brutal retain readiness-driven larger attacks
+after the same map opening. Scripted arrivals remain separate. Includes 687's
+city campaign construction fix. This supersedes 686's overlapping small waves
+and removal of repeat cooldowns for Easy/Medium.
+
+All seven CTest groups, dependency/signature/version checks, and the actual
+engine pressure fixture pass (no stacking even with ready replacements,
+break boundaries and preserved countdown). Same-map/seed Easy Dune City
+observer run: Atreides sent4/1500 at13.89min, wave ended15.32min, break127.792s;
+Ordos4/1400; Sardaukar3/1500 then another3/1500 only after a194.080s break.
+City zoning continued for all three. Observer naturally lost at17.31min;
+this is not a human difficulty assessment. Evidence `/tmp/dunecity-688-easy/`,
+`/tmp/dunecity-688-pressure/`, `/tmp/dunecity-688-ctest.log`.
+Local test build only; no remote release or website change.
+
+## 2026-09-14 — Dune City campaign construction routing, 1.0.687
+
+Live 686 SCENH022.INI, seed 1294169503, Easy enemies: Atreides, Ordos and
+Sardaukar had no R/C/I zones despite positive residential demand. Classic
+campaign rebuilding/upgrades took precedence, power deficits blocked the
+last-resort zoning branch, Ordos spent its funds on a reactor, and Sardaukar
+could not place a completed windtrap. Evidence preserved in
+`../outputs/dunecity-687-city-campaign/live-686-evidence.json`.
+
+One-condition fix: the classic campaign Construction Yard branch now requires
+city simulation to be disabled. City campaigns use the existing city planner,
+including its power investment and income priorities. Campaign mode, army
+limits, attack timing/readiness and worker limits are unchanged. No new policy.
+
+A ten-minute isolated observer run on the same map/seed confirms actual zone
+construction: last sampled Atreides 6R/2C/1I, Ordos 3R/1C (I ordered at 9.93min),
+Sardaukar 13R/4C/5I. The observer has an AI helper, so this verifies behavior,
+not exact replay equivalence to Stefan's ongoing match. Evidence:
+`/tmp/dunecity-687-city-campaign/summary.json`. Native dependency audit,
+version/signature checks and all seven CTest groups pass. Built 687 locally;
+the running/installed 686 app remains untouched. No remote publication.
+
+## 2026-09-14 — Campaign readiness and separate waves, 1.0.686
+
+Stefan clarified that surviving attackers occupy military capacity, not the
+next wave's budget. This supersedes 685's concurrent-pressure interpretation.
+After the unchanged map opening, campaign enemies assemble available troops
+worth the configured fraction of their military limit (Easy 50%, Medium 40%,
+Hard/Brutal 30%). Busy, injured, repairing, manual, scripted and already
+committed troops cannot satisfy that fresh-wave check. Dispatch sends up to
+50/50/80/100% of those available troops, with existing Easy/Medium count/value
+ceilings applied per dispatch. Survivors retain their orders and membership;
+no repeat cooldown or survivor subtraction. Military production caps are
+unchanged. Removed the old readiness clamp to twice the wave value. The
+existing post-15-minute depleted-spice fallback remains. Save format 9839.
+
+Native build, signature/version/dependency checks and all seven CTest groups
+pass. Real-engine pressure and pacing probes pass: Easy/Medium assemble a
+second complete wave while every old attacker survives, insufficient ready
+reserves do not trickle out, Hard sends 32/40 tanks and Brutal 40/40, opening
+and saved-state handling remain intact. Evidence: `/tmp/dunecity-686-pressure/`,
+`/tmp/dunecity-686-pacing/`, `/tmp/dunecity-686-ctest.log`. The pressure fixture
+must run in vanilla: its unrelated helper power test assumes classic production;
+a Dune City trial passed the combat assertions but failed that power fixture.
+Built for local testing; no remote release or website changes.
+
+Engineering preference reiterated by Stefan: keep behavior simple; avoid extra
+accounting layers when a straightforward readiness-and-dispatch rule suffices.
+
+## 2026-09-14 — Campaign attack capacity candidate 1.0.685
+
+Stefan approved capacity-driven attacks after the opening. This supersedes
+684's recurring 2–4 minute timers and requirement that the old wave disappear.
+Campaign enemy houses retain the exact 684 opening signals/delays, then check
+available capacity on ordinary AI updates (50 cycles, about 0.8 game seconds).
+Surviving automatic attackers count against both the per-house count/value cap
+and the army commitment budget: Easy/Medium 50%, Hard 80%, Brutal 100%.
+New candidates exclude already committed units; repeated checks cannot
+gradually spend the reserve. Scripted arrivals remain separate. The existing
+last-unit Hard/Brutal fallback is allowed only when no automatic attackers
+remain. Injured, repairing and manually controlled units stay protected.
+
+Campaign enemy dispatch no longer waits for the old aggregate army-readiness
+threshold once its opening is met. Helpers and custom-game cadence/readiness
+are unchanged. Old saved repeat cooldowns are cleared after their stored
+opening; save format remains 9839. No additional serialization was needed.
+
+Native dependency/version checks and all seven CTest groups pass. The actual
+engine pressure fixture verifies same-cycle Easy/Medium loss replacement with
+survivors, ten repeated full-budget checks, 32/40 Hard versus 40/40 Brutal tank
+commitment, a newly ready Brutal unit joining an existing assault, old-cooldown
+discard, opening enforcement, scripted cargo and save/load. The simulation
+driver now checks total active count/value and commitment, not only the latest
+dispatch. Evidence: `/tmp/dunecity-685-budget-probe/summary.json` and
+`/tmp/dunecity-685-ctest.log`. Built locally; not installed or published.
+The level-9 Dune City Easy simulation also passes total-active budget checks:
+Ordos made 9 dispatches (8 additions with survivors), Harkonnen 5 (4 additions),
+Sardaukar 2 (1 addition). Ordos never exceeded 4 active units / 1,500 credits;
+Harkonnen 3 / 1,450; Sardaukar 2 / 1,050. Openings remained
+12.039/13.667/13.679 minutes. Observer run ended naturally at 15.487 minutes;
+this is not a human difficulty/win-rate measurement. Evidence is under
+`/tmp/dunecity-685-easy-budget-run/`.
+
+## 2026-09-14 — Campaign attack candidate 1.0.684 (not installed or published)
+
+Branch `fix/campaign-active-attacks` follows installed 1.0.683. Easy's military
+cap remains 200% of starting combat credit value. Automatic campaign attacks
+now use each enemy house's own wave budget and timer; allies do not take turns.
+Opening is anchored to the map's first offensive allied-enemy reinforcement:
+Easy/Medium delay 0–2 game minutes, Hard/Brutal delay zero. No tier launches
+before the trigger. Successful launches schedule a separate 2–4 minute timer
+per house; another wave waits for the existing wave to finish. Fighting/moving
+survivors are not recalled merely because the old sortie clock expired.
+
+Offensive reinforcement cargo is registered separately from automatic waves,
+including while carried, and keeps assault intent after landing. Ordinary
+Carryall combat drops use AREAGUARD, not HUNT, in this source; QuantBot must
+explicitly recognize them. Home/economic deliveries are excluded. Save format
+9839 persists this separate roster. Initialized 9838 saves retain their stored
+opening because fired triggers no longer exist in TriggerManager; older saves
+cannot retroactively identify already-landed scripted troops. New campaigns
+receive the new opening timing.
+
+Nuclear orders require a fresh valid site and reserve it on acceptance. A
+finished reactor with no remaining geometric footprint is cancelled/refunded
+through the normal API, allowing a smaller windtrap next. Temporary unit
+blockage retains the reactor. Real-engine fixtures cover reservation, temporary
+blockage, lost footprint/refund and windtrap fallback.
+
+`tests/ai/audit-campaign-triggers.py` audits the canonical SCENARIO.PAK used by
+both vanilla and Dune City: 66 maps, 54 with offensive reinforcements, 12 with
+none (SCEN[A/H/O]001–004, levels 1–2). Level 3 starts at 5 minutes, levels 4–5
+at 11, levels 6–9 at 12. Loose scenario INIs are separate Tornie content.
+Stefan requested minutes 4–6 for the early maps. Their existing troops receive
+an explicit four-minute opening signal: Easy/Medium add their usual 0–2 minute
+delay; Hard/Brutal start at four. No extra units are granted. The fallback is
+restricted to scenarios 001–004 in vanilla/Dune City and only applies when no
+offensive reinforcement exists. Unknown missing triggers remain disabled.
+The engine fixture covers all 12 maps, both mods and all four difficulties.
+
+Native dependency audit and all seven CTest groups pass. Engine pressure,
+pacing and nuclear probes pass, including saved scripted cargo, immediate
+Hard/Brutal trigger boundaries, independent timers and active combat retention.
+Level-9 Dune City Easy simulation opened at 12.039/13.667/13.679 game minutes
+after the 12-minute trigger; vanilla Hard opened at 12.012–12.013 (AI tick).
+Repeat intervals were 136570–238795 ms across those runs. These isolated
+observer simulations are not human win-rate measurements. Evidence is under
+`/tmp/dunecity-684-*`; the 66-map audit is retained in
+`../outputs/dunecity-campaign-684/campaign-triggers.{json,md}`.
+The final early-level-2 Dune City Easy run dispatched three units at 4.106 game
+minutes. The final pressure probe also verifies 9838 opening preservation and
+all 12 early maps across both mods/four tiers. Its driver excludes its deliberate
+Hard/Brutal tier switches from the CLI Easy-only postcheck; the engine fixture
+asserts each actual tier's budget. Final seven-group CTest run and dependency
+audit pass. No installed app, active game, public build or website was changed.
+
+## 2026-09-14 — Cursor rendering candidate 1.0.683
+
+Desktop and browser now draw the original game cursor sprites as the last
+frame overlay in every menu, briefing/cutscene, editor and gameplay frame.
+Normal, move, attack, heal, capture and carryall-drop shapes are preserved.
+Focus and visibility are re-evaluated on every presentation; Android retains
+its existing touch/physical-pointer policy. Window coordinates are converted
+to drawable pixels independently of scene zoom, letterboxing and clip state.
+
+Auto uses original 1x size in window units, with explicit 1x–4x preferences
+retained. Physical monitor DPI must not enlarge this again: the former 224-DPI
+Mac default selected 3x and made the candidate cursor visibly too large.
+The overlay already handles Retina/backing density once, equally on desktop
+and web. Pixel-readback tests cover 100/125/150/200% backing density, all four
+explicit scales, clipped/letterboxed content and renderer-state restoration.
+Native SDL2 and sdl2-compat expose different explicit/logical scale behavior;
+restoration handles both without multiplying the scene scale each frame.
+
+Native and Emscripten builds and dependency audits pass; all seven native
+CTest groups pass, including the new cursor readback cases and menu probes.
+Browser package audit preserves Tornie's 769 files and Dune2R's six files.
+Browser interaction verified main menu, campaign selection, briefing/letterbox,
+normal/move/attack gameplay pointers, canvas leave/re-entry, and modal arrow
+restoration (pause menu uses the arrow; closing it restores the attack cursor).
+Native menu and Settings screenshots show the original-sized arrow. Installed
+the final signed build in /Applications/dunecity.app only after checking the
+installed app was closed; previous app is preserved under the task's
+outputs/dunecity-menu-acceptance/cursor-683-small/previous-installed.app.
+All seven CTest groups passed again after the modal correction. Native Windows
+UI has not been exercised; the density regression tests run the shared renderer,
+not Windows automation. Source is committed locally; no public 683 release yet.
+
 ## 2026-09-14 — Campaign AI release 1.0.682 published
 
 PR #33 merged/tagged at d2dc426. Stable CI 34764559810 passed all platform builds

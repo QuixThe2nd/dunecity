@@ -306,6 +306,12 @@ QuantBot::QuantBot(InputStream& stream, House* associatedHouse) : Player(stream,
         }
     }
     if (currentGame->getLoadedSavegameVersion() >= 9838) campaignWave.load(stream);
+    if (currentGame->getLoadedSavegameVersion() >= 9839) {
+        const auto count=stream.readUint32();
+        for(Uint32 i=0;i<count;++i) scriptedAssaults.insert(stream.readUint32());
+    }
+    // Preserve an older save's initialized opening: fired triggers have already
+    // been removed from TriggerManager, so rescanning could delay it forever.
     if (supportMode) {
         gameMode = GameMode::Custom;
         attackTimer = std::numeric_limits<Sint32>::max();
@@ -385,6 +391,8 @@ void QuantBot::save(OutputStream& stream) const {
     stream.writeSint32(groundSquadProgressLocation.y);
     writeMap(defenceResponseCycles);
     campaignWave.save(stream);
+    stream.writeUint32(static_cast<Uint32>(scriptedAssaults.size()));
+    for(auto id:scriptedAssaults) stream.writeUint32(id);
 
 }
 
@@ -558,7 +566,8 @@ void QuantBot::update() {
 						&& pUnit->getItemID() != Unit_Sandworm
 						&& pUnit->getItemID() != Unit_Harvester
 						&& pUnit->getItemID() != Unit_MCV
-						&& pUnit->getItemID() != Unit_Frigate) {
+						&& pUnit->getItemID() != Unit_Frigate
+                        && pUnit->getItemID() != Unit_Saboteur) {
 
 						doMove2Pos(pUnit, squadRallyLocation.x, squadRallyLocation.y, true);
 						unitsMoved++;
@@ -587,7 +596,8 @@ void QuantBot::update() {
 					&& pUnit->getItemID() != Unit_Sandworm
 					&& pUnit->getItemID() != Unit_Harvester
 					&& pUnit->getItemID() != Unit_MCV
-					&& pUnit->getItemID() != Unit_Frigate) {
+					&& pUnit->getItemID() != Unit_Frigate
+                        && pUnit->getItemID() != Unit_Saboteur) {
 
 					doMove2Pos(pUnit, squadRallyLocation.x, squadRallyLocation.y, true);
 					unitsMoved++;
@@ -911,7 +921,7 @@ void QuantBot::onIncrementUnitKills(int itemID) {
 void QuantBot::onDamage(const ObjectBase* pObject, int damage, Uint32 damagerID) {
 	const ObjectBase* pDamager = getObject(damagerID);
 
-	if (pDamager == nullptr || pDamager->getOwner() == getHouse() || pObject->getItemID() == Unit_Sandworm) {
+	if (pDamager == nullptr || pDamager->getOwner() == getHouse() || pObject->getItemID() == Unit_Sandworm || pObject->getItemID() == Unit_Saboteur) {
 		return;
 	}
 
@@ -3127,6 +3137,7 @@ void QuantBot::build(int militaryValue) {
 	int activeHeavyFactoryCount = 0;
     std::vector<const BuilderBase*> harvesterFactories;
     bool carryallBuildAvailable = false;
+    bool mcvBuildAvailable = false;
     bool nuclearBuildAvailable = false;
     int activeLightFactoryCount = 0;
 	int activeHighTechFactoryCount = 0;
@@ -3160,6 +3171,8 @@ void QuantBot::build(int militaryValue) {
                     && pBuilder->isAvailableToBuild(Unit_Ornithopter)) ++ornithopterCapableFactoryCount;
                 if (pBuilder->getItemID() == Structure_HeavyFactory && pBuilder->getHealth() > 0
                     && pBuilder->isAvailableToBuild(Unit_Harvester)) harvesterFactories.push_back(pBuilder);
+                if (pBuilder->getItemID() == Structure_HeavyFactory && pBuilder->getHealth() > 0
+                    && pBuilder->isAvailableToBuild(Unit_MCV)) mcvBuildAvailable = true;
                 if (pBuilder->getItemID() == Structure_HeavyFactory && pBuilder->isUpgrading()
                     && !pBuilder->isAvailableToBuild(Unit_MCV)) ++mcvUpgradesInProgress;
                 if (currentGame->isCitySimEnabled() && pBuilder->isUpgrading())
@@ -4291,10 +4304,30 @@ void QuantBot::build(int militaryValue) {
 						std::string itemName = getItemNameByID(itemID);
 						logDebug("Queuing %s (ID:%d)", itemName.c_str(), itemID);
 					}
+                    Coord nuclearSite=Coord::Invalid();
+                    if (itemID==Structure_NuclearPlant) {
+                        // Campaign rebuild/power orders bypass the general site
+                        // reservation path. Recheck and reserve at queue acceptance.
+                        placementCache.erase(itemID);
+                        nuclearSite=findPlaceLocation(itemID);
+                        if (!nuclearSite.isValid()) {
+                            traceDecision("construction_rejected",AITelemetry::Record()
+                                .set("builder",planningBuilder).set("item",itemID).set("reason","no_nuclear_site"));
+                            return false;
+                        }
+                    }
 					const int before = pBuilder->getProductionQueueSize();
                     const auto preOrder = AITelemetry::log().enabled() ? decisionState() : AITelemetry::Record();
 					doProduceItem(pBuilder, itemID);
 					const bool accepted = pBuilder->getProductionQueueSize() > before;
+                    if (accepted && nuclearSite.isValid()) {
+                        reservedStructures[planningBuilder]={itemID,nuclearSite};
+                        auto& sites=builderPlaceLocations[planningBuilder];
+                        if (sites.empty()) sites.push_back(nuclearSite);
+                        clearPlacementCache();
+                        traceDecision("site_reserved",AITelemetry::Record().set("builder",planningBuilder)
+                            .set("item",itemID).set("x",nuclearSite.x).set("y",nuclearSite.y));
+                    }
                     if (AITelemetry::log().enabled()) traceDecision("production_order", AITelemetry::Record()
                         .set("builder", pBuilder->getObjectID()).set("builder_item", pBuilder->getItemID())
                         .set("item", itemID).set("item_name", getItemNameByID(itemID)).set("accepted", accepted)
@@ -4373,7 +4406,9 @@ void QuantBot::build(int militaryValue) {
                     && pBuilder->isAvailableToBuild(Unit_Carryall);
                 int protectedCash = pBuilder->getItemID() == Structure_ConstructionYard || transportProducer || workerProducer || expansionProducer
                     ? 0 : std::max({strategicReserveCost,economyReserve,civicReserveCost});
-                if (rockExpansionNeeded && itemCount[Unit_MCV]==0 && !expansionProducer)
+                // A cramped start still needs power, income and a factory before
+                // it can expand. Don't protect cash for an MCV we cannot build.
+                if (rockExpansionNeeded && mcvBuildAvailable && itemCount[Unit_MCV]==0 && !expansionProducer)
                     protectedCash=std::max(protectedCash,int(data[Unit_MCV][houseID].price));
                 if (!openingWorker && !expansionProducer && pBuilder->getItemID() != Structure_ConstructionYard)
                     protectedCash = std::max(protectedCash,civicReserveCost);
@@ -4922,7 +4957,10 @@ void QuantBot::build(int militaryValue) {
 						// Campaign Build order, iterate through the buildings, if the number that exist
 						// is less than the number that should exist, then build the one that is missing
 
-						if (gameMode == GameMode::Campaign && difficulty != Difficulty::Brutal) {
+                        // City campaigns need the same economy/civic planner as
+                        // city custom games. The classic rebuild list puts zones
+                        // behind upgrades and defences and can starve them forever.
+						if (!citySimEnabled && gameMode == GameMode::Campaign && difficulty != Difficulty::Brutal) {
 							//logDebug("GameMode Campaign.. ");
 
 						for (int i = Structure_FirstID; i <= Structure_LastID; i++) {
@@ -4960,8 +4998,8 @@ void QuantBot::build(int militaryValue) {
 								// Prefer nuclear plant over windtrap
 								if ((!powerGenerationPending() && pBuilder->isAvailableToBuild(Structure_NuclearPlant))
 									&& findPlaceLocation(Structure_NuclearPlant).isValid()) {
-									produceItemWithLogging(Structure_NuclearPlant, __LINE__);
-									itemCount[Structure_NuclearPlant]++;
+                                    if (produceItemWithLogging(Structure_NuclearPlant, __LINE__))
+                                        itemCount[Structure_NuclearPlant]++;
 									logDebug("***CampAI Build Nuclear Plant: power %d/%d", getHouse()->getProducedPower(), getHouse()->getPowerRequirement());
 								} else if ((!powerGenerationPending() && pBuilder->isAvailableToBuild(Structure_WindTrap))
 									&& findPlaceLocation(Structure_WindTrap).isValid()) {
@@ -6309,6 +6347,32 @@ void QuantBot::build(int militaryValue) {
                                     .set("x",location.x).set("y",location.y).set("risk",bestRisk));
                             }
                         }
+                        if (location.isInvalid() && itemToBePlaced==Structure_NuclearPlant) {
+                            const Coord size=getStructureSize(itemToBePlaced);
+                            bool potentialSite=false;
+                            for (int y=0;y<=getMap().getSizeY()-size.y && !potentialSite;++y)
+                                for (int x=0;x<=getMap().getSizeX()-size.x && !potentialSite;++x) {
+                                    if (!getMap().okayToPlaceStructure(x,y,size.x,size.y,false,getHouse(),true,itemToBePlaced)
+                                        || overlapsReservedStructure(x,y,size.x,size.y)) continue;
+                                    bool structure=false;
+                                    for(int dy=0;dy<size.y;++dy) for(int dx=0;dx<size.x;++dx) {
+                                        const auto* object=getMap().getTile(x+dx,y+dy)->getGroundObject();
+                                        structure |= object && object->isAStructure();
+                                    }
+                                    potentialSite=!structure;
+                                }
+                            if (!potentialSite) {
+                                // Refund through the ordinary production API. The
+                                // next planning pass can buy a smaller windtrap.
+                                tracePlacementIssue("placement_cancel","nuclear_footprint_lost",Coord::Invalid());
+                                doCancelItem(pConstYard,itemToBePlaced);
+                                placeLocations.clear();
+                                reservedStructures.erase(planningBuilder);
+                                --itemCount[itemToBePlaced];
+                                clearPlacementCache();
+                                placementIssueHandled=true;
+                            }
+                        }
                         if (location.isValid() && !preservesGroundAccess(itemToBePlaced,location)) {
                             tracePlacementIssue("placement_deferred", "ground_exit_blocked", location);
                             location=Coord::Invalid();
@@ -6600,10 +6664,13 @@ void QuantBot::attack(int militaryValue) {
     const QuantBotConfig& config = getQuantBotConfig();
     const QuantBotConfig::DifficultySettings& diffSettings = config.getSettings(static_cast<int>(difficulty));
 
-    attackTimer = SimpleArmyPolicy::attackDelay(MILLI2CYCLES(config.attackTimerMs),
-        currentGame->getGameInitSettings().getRandomSeed(), getGameCycleCount(), getHouse()->getHouseID());
-    traceDecision("attack_schedule",AITelemetry::Record().set("delay_cycles",attackTimer)
-        .set("base_cycles",MILLI2CYCLES(config.attackTimerMs)));
+    if (isCampaignEnemy()) attackTimer=0;
+    else {
+        attackTimer = SimpleArmyPolicy::attackDelay(MILLI2CYCLES(config.attackTimerMs),
+            currentGame->getGameInitSettings().getRandomSeed(), getGameCycleCount(), getHouse()->getHouseID());
+        traceDecision("attack_schedule",AITelemetry::Record().set("delay_cycles",attackTimer)
+            .set("base_cycles",MILLI2CYCLES(config.attackTimerMs)));
+    }
 
 	// Check if this difficulty is allowed to attack at all
 	if (!diffSettings.attackEnabled) {
@@ -6669,17 +6736,18 @@ void QuantBot::launchGroundHunt() {
     if (limited && !campaignCanLaunch()) return;
     const auto profile = limited ? campaignProfile()
         : CampaignDifficultyPolicy::profile(static_cast<int>(difficulty),currentGame->techLevel);
-    auto pressure = limited ? campaignPressure() : CampaignDifficultyPolicy::Pressure{};
+    // Caps apply to this dispatch. The roster separately tracks all survivors.
+    CampaignDifficultyPolicy::Pressure pressure;
     const float ratio = getQuantBotConfig().getSettings(static_cast<int>(difficulty)).attackForceMilitaryValueRatio;
     int percent = std::isfinite(ratio) ? static_cast<int>(std::clamp(ratio,0.0f,1.0f)*100.0f+0.5f) : 0;
     // Campaign roles define commitment even with older saved config defaults.
-    // Keep an explicit zero as the opt-out, and use the alliance's easiest tier.
+    // Keep an explicit zero as the opt-out; each house uses its own difficulty.
     if (limited && percent>0) percent=profile.enemyCommitPercent;
-    int armyValue=0, committedValue=0;
+    int armyValue=0, committedValue=0, availableValue=0, requiredReady=0;
     std::vector<SimpleArmyPolicy::Responder> candidates;
     for (const auto* unit : getUnitList()) {
-        if (unit->getOwner()!=getHouse() || !unit->isActive() || !unit->isRespondable()
-            || (!unit->canAttack() && unit->getItemID()!=Unit_Saboteur) || humanControls(unit)
+        if (unit->getOwner()!=getHouse() || unit->getHealth()<=0 || !unit->isActive() || !unit->isRespondable()
+            || !unit->canAttack() || unit->getItemID()==Unit_Saboteur || humanControls(unit)
             || unit->getItemID()==Unit_Harvester || unit->getItemID()==Unit_Sandworm) continue;
         // Summoned/scripted troops can have zero purchase price. They still
         // consume combat pressure rather than being effectively free attackers.
@@ -6690,17 +6758,32 @@ void QuantBot::launchGroundHunt() {
         if (unit->hasATarget()) continue;
         if (!limited && (!unit->isAGroundUnit() || unit->getItemID()==Unit_Saboteur
             || (unit->getAttackMode()==HUNT && !unit->wasForced()))) continue;
+        if (limited && (scriptedAssaults.count(unit->getObjectID())
+            || campaignWave.members.count(unit->getObjectID()))) continue;
         if (limited && unit->getItemID()==Unit_Ornithopter
             && !getQuantBotConfig().getSettings(static_cast<int>(difficulty)).ornithopterAttackEnabled) continue;
         candidates.push_back({unit->getObjectID(),price,0});
+        availableValue+=price;
     }
     std::stable_sort(candidates.begin(),candidates.end(),[](const auto& a,const auto& b){return a.id<b.id;});
+    if (limited) committedValue=campaignPressure().value;
     std::vector<Uint32> selected;
     if (limited) {
-        const int sharing=std::min<int>(profile.houses,campaignAlliance().size());
-        const int houseUnits=profile.limitedWave ? (profile.units+sharing-1)/sharing : INT32_MAX;
-        const int houseValue=profile.limitedWave ? (profile.value+sharing-1)/sharing : INT32_MAX;
-        const int budget=std::min(houseValue,SimpleArmyPolicy::attackBudget(armyValue,percent));
+        const auto& settings=getQuantBotConfig().getSettings(static_cast<int>(difficulty));
+        const FixPoint threshold=FixPoint(static_cast<int>(settings.attackThresholdPercent*100))/100;
+        requiredReady=campaignRequiredArmy((militaryValueLimit*threshold).lround());
+        // Away, injured, repairing and busy troops cannot assemble a new wave.
+        // Requiring readiness here prevents repeated checks dripping out reserves.
+        if (availableValue<requiredReady) {
+            traceDecision("attack_deferred",AITelemetry::Record().set("reason","wave_readiness")
+                .set("available_value",availableValue).set("required_military",requiredReady)
+                .set("committed_value",committedValue));
+            return;
+        }
+        const int houseUnits=profile.limitedWave ? profile.units : INT32_MAX;
+        const int houseValue=profile.limitedWave ? profile.value : INT32_MAX;
+        const int budget=std::max(0,std::min(houseValue,
+            SimpleArmyPolicy::attackBudget(availableValue,percent)));
         int value=0;
         for (const auto& candidate : candidates) {
             if (static_cast<int>(selected.size())>=houseUnits) break;
@@ -6708,9 +6791,8 @@ void QuantBot::launchGroundHunt() {
             selected.push_back(candidate.id); value+=candidate.value;
             ++pressure.units; pressure.value+=candidate.value;
         }
-        // A depleted army can field one affordable unit without bypassing the
-        // alliance ceiling or adding replacements to an existing house's wave.
-        if (selected.empty() && percent>0 && difficulty>=Difficulty::Hard) {
+        // Avoid rounding a single ready Hard/Brutal unit down to no attack.
+        if (selected.empty() && pressure.units==0 && percent>0 && difficulty>=Difficulty::Hard) {
             const SimpleArmyPolicy::Responder* cheapest=nullptr;
             for (const auto& candidate : candidates)
                 if (CampaignDifficultyPolicy::fits(profile,pressure,candidate.value)
@@ -6758,7 +6840,10 @@ void QuantBot::launchGroundHunt() {
     if (count==0) return; // An empty house checking readiness is not an attack.
     traceDecision("ground_hunt",AITelemetry::Record().set("members",count).set("value",value)
         .set("campaign_limited",limited).set("army_value",armyValue).set("committed_value",committedValue)
-        .set("attack_percent",percent).set("attack_budget",limited ? SimpleArmyPolicy::attackBudget(armyValue,percent) : armyValue)
+        .set("available_value",availableValue).set("required_ready",requiredReady)
+        .set("attack_percent",percent).set("attack_budget",limited ? SimpleArmyPolicy::attackBudget(availableValue,percent) : armyValue)
+        .set("active_units",limited ? campaignPressure().units : count)
+        .set("active_value",limited ? campaignPressure().value : value)
         .set("alliance_units",pressure.units).set("alliance_value",pressure.value)
         .set("alliance_unit_cap",profile.limitedWave ? profile.units : -1)
         .set("alliance_value_cap",profile.limitedWave ? profile.value : -1)
@@ -6769,7 +6854,7 @@ void QuantBot::releaseLegacyGroundSquad() {
     if (!groundSquadPhase && groundSquad.empty()) return;
     for (const auto id:groundSquad) {
         const auto* unit=dynamic_cast<const UnitBase*>(getObject(id));
-        if (!unit || unit->getOwner()!=getHouse() || humanControls(unit)) continue;
+        if (!unit || unit->getOwner()!=getHouse() || humanControls(unit) || unit->getItemID()==Unit_Saboteur) continue;
         doSetAttackMode(unit,GUARD);
         doSetAttackMode(unit,groundSquadPhase==2 ? HUNT : AREAGUARD);
     }
@@ -7285,7 +7370,7 @@ void QuantBot::kiteAwayFromThreat(const UnitBase* pUnit, const ObjectBase* pThre
  * @param squadRadius The acceptable radius around either position (unit won't move if within this radius)
  */
 void QuantBot::moveToOptimalSquadPosition(const UnitBase* unit, FixPoint radius, int* orderBudget) {
-    if (!unit || !unit->isRespondable() || humanControls(unit) || unit->hasATarget()
+    if (!unit || unit->getItemID()==Unit_Saboteur || !unit->isRespondable() || humanControls(unit) || unit->hasATarget()
         || unit->wasForced() || unit->isMoving() || squadRallyLocation.isInvalid()) return;
     const_cast<UnitBase*>(unit)->setGuardPoint(squadRallyLocation);
     if (unit->getAttackMode()!=RETREAT && unit->getAttackMode()!=AREAGUARD) doSetAttackMode(unit,AREAGUARD);
@@ -7332,7 +7417,8 @@ void QuantBot::retreatAllUnits() {
 				&& pUnit->getItemID() != Unit_Sandworm
 				&& pUnit->getItemID() != Unit_Harvester
 				&& pUnit->getItemID() != Unit_MCV
-				&& pUnit->getItemID() != Unit_Frigate) {
+				&& pUnit->getItemID() != Unit_Frigate
+                        && pUnit->getItemID() != Unit_Saboteur) {
 
 				doSetAttackMode(pUnit, RETREAT);
 			}
@@ -7367,6 +7453,10 @@ void QuantBot::retreatAllUnits() {
         for (auto it=defenceAssignments.begin();it!=defenceAssignments.end();) {
             const auto* unit=dynamic_cast<const UnitBase*>(getObject(it->first));
             const auto* target=getObject(it->second);
+            if (unit && unit->getItemID()==Unit_Saboteur) {
+                it=defenceAssignments.erase(it);
+                continue;
+            }
             if (!unit || unit->getOwner()!=getHouse() || humanControls(unit)
                 || unit->getItemID()==Unit_Ornithopter
                 || !target || target->getHealth()<=0 || !target->isActive()
@@ -7412,6 +7502,9 @@ void QuantBot::retreatAllUnits() {
                 continue;
             }
 
+            // Palace saboteurs already hunt autonomously. No tactical or army
+            // controller may replace their orders, including forced orders.
+            if (pUnit->getItemID()==Unit_Saboteur) continue;
             if (pUnit->getOwner()==getHouse() && humanControls(pUnit)) continue;
             // Combat spacing applies to defenders and escorts too, before their
             // strategic-role early return. Guard orders already leave targets alone.
@@ -7462,14 +7555,6 @@ void QuantBot::retreatAllUnits() {
                 && squadRallyLocation.isValid()) {
                 moveToOptimalSquadPosition(pUnit,rallyRadius,&rallyOrdersRemaining);
                 continue;
-            }
-
-            if (pUnit->getItemID() == Unit_Saboteur && pUnit->getOwner() == getHouse()) {
-                logDebug("SABOTEUR CHECK: At (%d,%d) Mode=%d Target=%s Forced=%d", 
-                    pUnit->getLocation().x, pUnit->getLocation().y,
-                    pUnit->getAttackMode(),
-                    pUnit->hasATarget() ? "Yes" : "No",
-                    pUnit->wasForced() ? 1 : 0);
             }
 
             // Safety check: skip units with invalid owner
@@ -7582,15 +7667,6 @@ void QuantBot::retreatAllUnits() {
 
                 case Unit_Ornithopter: {
                     // Safe strike/defence planner owns targeting and patrol locations.
-                } break;
-
-                case Unit_Saboteur: {
-                    // Saboteurs operate independently - always keep them in HUNT mode
-                    if (pUnit->getAttackMode() != HUNT && !pUnit->wasForced()) {
-                        logDebug("SABOTEUR: Unit at (%d,%d) was in mode %d, setting to HUNT", 
-                            pUnit->getLocation().x, pUnit->getLocation().y, pUnit->getAttackMode());
-                        doSetAttackMode(pUnit, HUNT);
-                    }
                 } break;
 
                 default: {
