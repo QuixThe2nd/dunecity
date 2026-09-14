@@ -1,3 +1,38 @@
+## 2026-09-15 — Independent saboteurs, 1.0.690
+
+Stefan's live 689 SCENH022 seed282721298 appeared cleared but victory did not
+trigger. At 44min Ordos had no structures, two carryalls and one saboteur;
+the saboteur legitimately kept House::isAlive true (carryalls do not). Logs
+repeated its position (21,5), Area Guard, target assigned and forced order.
+Campaign wave/defender control included saboteurs, while the normal Hunt
+restoration skipped forced orders. Palace already spawns AI saboteurs in Hunt.
+
+Stefan explicitly clarified: AI must leave saboteurs alone and never change
+their orders. QuantBot now excludes them from campaign wave/holding/retaliation,
+initial rally, ordinary attack selection, retreat, legacy squad conversion,
+defence assignment maintenance and periodic tactical commands. Removed the
+periodic Hunt setter and noisy saboteur diagnostic. No new timers/state or
+victory-rule changes. Manual orders and saved orders remain untouched: this
+prevents future corruption but does not rewrite an already stuck save's order.
+
+The original engine regression reproduced the campaign override on 689.
+Final defence fixture tests explicit forced orders preserved despite damage
+and stale defence assignment; Palace-style Hunt survives pre-opening wave
+control and a valid army retreat, then the real saboteur walks to and detonates
+on an enemy launcher. Ordinary defence checks pass for all four difficulties.
+All seven CTest groups and dependency/version/signature checks pass.
+Evidence: /tmp/dunecity-690-saboteur-verified/, /tmp/dunecity-690-ctest.log;
+live evidence ../outputs/dunecity-690-saboteur/.
+Built and installed locally as 1.0.690 after the game exited; no remote release.
+
+Separate outstanding Ordos economy finding (reported, not changed here):
+its sole CY waited on an already-existing road (21,10) from ~2 to23.5min,
+with 42 road_waiting_for_useful_gap events, then saved for a reactor until
+34.44min. Only one refinery/harvester and no zones until35min. It lost its
+combat army around26–28min and then waited for 3300 military readiness.
+Road redirection must not indefinitely block the only yard when no gap exists;
+reactor investment should not starve income recovery. These need a separate fix.
+
 ## 2026-09-14 — Hard co-op helper opening deadlock, 1.0.689
 
 Live 688 Harkonnen human + Hard QuantBot helper, SCENH022 seed1221113892:

@@ -566,7 +566,8 @@ void QuantBot::update() {
 						&& pUnit->getItemID() != Unit_Sandworm
 						&& pUnit->getItemID() != Unit_Harvester
 						&& pUnit->getItemID() != Unit_MCV
-						&& pUnit->getItemID() != Unit_Frigate) {
+						&& pUnit->getItemID() != Unit_Frigate
+                        && pUnit->getItemID() != Unit_Saboteur) {
 
 						doMove2Pos(pUnit, squadRallyLocation.x, squadRallyLocation.y, true);
 						unitsMoved++;
@@ -595,7 +596,8 @@ void QuantBot::update() {
 					&& pUnit->getItemID() != Unit_Sandworm
 					&& pUnit->getItemID() != Unit_Harvester
 					&& pUnit->getItemID() != Unit_MCV
-					&& pUnit->getItemID() != Unit_Frigate) {
+					&& pUnit->getItemID() != Unit_Frigate
+                        && pUnit->getItemID() != Unit_Saboteur) {
 
 					doMove2Pos(pUnit, squadRallyLocation.x, squadRallyLocation.y, true);
 					unitsMoved++;
@@ -919,7 +921,7 @@ void QuantBot::onIncrementUnitKills(int itemID) {
 void QuantBot::onDamage(const ObjectBase* pObject, int damage, Uint32 damagerID) {
 	const ObjectBase* pDamager = getObject(damagerID);
 
-	if (pDamager == nullptr || pDamager->getOwner() == getHouse() || pObject->getItemID() == Unit_Sandworm) {
+	if (pDamager == nullptr || pDamager->getOwner() == getHouse() || pObject->getItemID() == Unit_Sandworm || pObject->getItemID() == Unit_Saboteur) {
 		return;
 	}
 
@@ -6745,7 +6747,7 @@ void QuantBot::launchGroundHunt() {
     std::vector<SimpleArmyPolicy::Responder> candidates;
     for (const auto* unit : getUnitList()) {
         if (unit->getOwner()!=getHouse() || unit->getHealth()<=0 || !unit->isActive() || !unit->isRespondable()
-            || (!unit->canAttack() && unit->getItemID()!=Unit_Saboteur) || humanControls(unit)
+            || !unit->canAttack() || unit->getItemID()==Unit_Saboteur || humanControls(unit)
             || unit->getItemID()==Unit_Harvester || unit->getItemID()==Unit_Sandworm) continue;
         // Summoned/scripted troops can have zero purchase price. They still
         // consume combat pressure rather than being effectively free attackers.
@@ -6852,7 +6854,7 @@ void QuantBot::releaseLegacyGroundSquad() {
     if (!groundSquadPhase && groundSquad.empty()) return;
     for (const auto id:groundSquad) {
         const auto* unit=dynamic_cast<const UnitBase*>(getObject(id));
-        if (!unit || unit->getOwner()!=getHouse() || humanControls(unit)) continue;
+        if (!unit || unit->getOwner()!=getHouse() || humanControls(unit) || unit->getItemID()==Unit_Saboteur) continue;
         doSetAttackMode(unit,GUARD);
         doSetAttackMode(unit,groundSquadPhase==2 ? HUNT : AREAGUARD);
     }
@@ -7368,7 +7370,7 @@ void QuantBot::kiteAwayFromThreat(const UnitBase* pUnit, const ObjectBase* pThre
  * @param squadRadius The acceptable radius around either position (unit won't move if within this radius)
  */
 void QuantBot::moveToOptimalSquadPosition(const UnitBase* unit, FixPoint radius, int* orderBudget) {
-    if (!unit || !unit->isRespondable() || humanControls(unit) || unit->hasATarget()
+    if (!unit || unit->getItemID()==Unit_Saboteur || !unit->isRespondable() || humanControls(unit) || unit->hasATarget()
         || unit->wasForced() || unit->isMoving() || squadRallyLocation.isInvalid()) return;
     const_cast<UnitBase*>(unit)->setGuardPoint(squadRallyLocation);
     if (unit->getAttackMode()!=RETREAT && unit->getAttackMode()!=AREAGUARD) doSetAttackMode(unit,AREAGUARD);
@@ -7415,7 +7417,8 @@ void QuantBot::retreatAllUnits() {
 				&& pUnit->getItemID() != Unit_Sandworm
 				&& pUnit->getItemID() != Unit_Harvester
 				&& pUnit->getItemID() != Unit_MCV
-				&& pUnit->getItemID() != Unit_Frigate) {
+				&& pUnit->getItemID() != Unit_Frigate
+                        && pUnit->getItemID() != Unit_Saboteur) {
 
 				doSetAttackMode(pUnit, RETREAT);
 			}
@@ -7450,6 +7453,10 @@ void QuantBot::retreatAllUnits() {
         for (auto it=defenceAssignments.begin();it!=defenceAssignments.end();) {
             const auto* unit=dynamic_cast<const UnitBase*>(getObject(it->first));
             const auto* target=getObject(it->second);
+            if (unit && unit->getItemID()==Unit_Saboteur) {
+                it=defenceAssignments.erase(it);
+                continue;
+            }
             if (!unit || unit->getOwner()!=getHouse() || humanControls(unit)
                 || unit->getItemID()==Unit_Ornithopter
                 || !target || target->getHealth()<=0 || !target->isActive()
@@ -7495,6 +7502,9 @@ void QuantBot::retreatAllUnits() {
                 continue;
             }
 
+            // Palace saboteurs already hunt autonomously. No tactical or army
+            // controller may replace their orders, including forced orders.
+            if (pUnit->getItemID()==Unit_Saboteur) continue;
             if (pUnit->getOwner()==getHouse() && humanControls(pUnit)) continue;
             // Combat spacing applies to defenders and escorts too, before their
             // strategic-role early return. Guard orders already leave targets alone.
@@ -7545,14 +7555,6 @@ void QuantBot::retreatAllUnits() {
                 && squadRallyLocation.isValid()) {
                 moveToOptimalSquadPosition(pUnit,rallyRadius,&rallyOrdersRemaining);
                 continue;
-            }
-
-            if (pUnit->getItemID() == Unit_Saboteur && pUnit->getOwner() == getHouse()) {
-                logDebug("SABOTEUR CHECK: At (%d,%d) Mode=%d Target=%s Forced=%d", 
-                    pUnit->getLocation().x, pUnit->getLocation().y,
-                    pUnit->getAttackMode(),
-                    pUnit->hasATarget() ? "Yes" : "No",
-                    pUnit->wasForced() ? 1 : 0);
             }
 
             // Safety check: skip units with invalid owner
@@ -7665,15 +7667,6 @@ void QuantBot::retreatAllUnits() {
 
                 case Unit_Ornithopter: {
                     // Safe strike/defence planner owns targeting and patrol locations.
-                } break;
-
-                case Unit_Saboteur: {
-                    // Saboteurs operate independently - always keep them in HUNT mode
-                    if (pUnit->getAttackMode() != HUNT && !pUnit->wasForced()) {
-                        logDebug("SABOTEUR: Unit at (%d,%d) was in mode %d, setting to HUNT", 
-                            pUnit->getLocation().x, pUnit->getLocation().y, pUnit->getAttackMode());
-                        doSetAttackMode(pUnit, HUNT);
-                    }
                 } break;
 
                 default: {

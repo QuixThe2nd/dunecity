@@ -29,7 +29,7 @@ CampaignDifficultyPolicy::Profile QuantBot::campaignProfile() const {
 
 bool QuantBot::campaignCombatUnit(const UnitBase* unit) const {
     return unit && unit->getOwner()==getHouse() && unit->getHealth()>0
-        && (unit->canAttack() || unit->getItemID()==Unit_Saboteur)
+        && unit->canAttack() && unit->getItemID()!=Unit_Saboteur
         && unit->getItemID()!=Unit_Harvester && unit->getItemID()!=Unit_Sandworm
         && unit->getItemID()!=Unit_MCV && unit->getItemID()!=Unit_Carryall;
 }
@@ -106,7 +106,7 @@ void QuantBot::onScriptedReinforcement(const UnitBase* unit) {
 }
 
 void QuantBot::holdCampaignUnit(const UnitBase* unit) {
-    if (!unit->isActive() || !unit->isRespondable() || unit->getAttackMode()==RETREAT) return;
+    if (!campaignCombatUnit(unit) || !unit->isActive() || !unit->isRespondable() || unit->getAttackMode()==RETREAT) return;
     const StructureBase* home=nullptr; int distance=INT32_MAX;
     for (const auto* building : getStructureList()) {
         if (building->getOwner()!=getHouse() || building->getHealth()<=0) continue;
@@ -262,7 +262,7 @@ bool QuantBot::campaignControlsUnit(const UnitBase* unit) {
     }
     if (!campaignWave.members.count(unit->getObjectID()) && !scriptedAssaults.count(unit->getObjectID())) {
         if (!campaignDefensiveContact(unit,unit->getTarget())) {holdCampaignUnit(unit);return true;}
-        return unit->getItemID()==Unit_Saboteur; // Other defenders retain combat micro.
+        return false; // Defenders retain combat micro.
     }
     if (!unit->isActive() || !unit->isRespondable() || unit->isBadlyDamaged()) return true;
     // Ordinary combat micro may respond to close threats. Only redirect idle
