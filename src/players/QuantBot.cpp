@@ -429,10 +429,16 @@ void QuantBot::update() {
         initialMilitaryValue = -1;
         const auto& config = getQuantBotConfig();
         attackTimer = supportMode ? std::numeric_limits<Sint32>::max()
+            : isCampaignGameType(currentGame->gameType) ? MILLI2CYCLES(60000)
             : SimpleArmyPolicy::attackDelay(MILLI2CYCLES(config.attackTimerMs),
                 currentGame->getGameInitSettings().getRandomSeed(), getGameCycleCount(), getHouse()->getHouseID());
         logDebug("Human-allied house: using economy development instead of campaign enemy rebuild limits");
     }
+
+    // Loaded helpers may still carry the older, longer attack countdown.
+    if (!supportMode && difficulty != Difficulty::Defend && isAlliedWithHuman()
+        && isCampaignGameType(currentGame->gameType))
+        attackTimer = std::min(attackTimer, static_cast<int>(MILLI2CYCLES(60000)));
 
 	if (initialMilitaryValue < 0) {
 		// Run once after objects exist, including a new partner added to a
@@ -772,11 +778,12 @@ void QuantBot::update() {
 
     if (harvesterOverride < 0 && gameMode == GameMode::Custom && !getHouse()->isPowerRequired())
         baseHarvesterLimit = DuneCity::vanillaHarvesterCapacity(baseHarvesterLimit);
+    if (const int alliedLimit = campaignAllyHarvesterLimit(); alliedLimit > 0) baseHarvesterLimit = alliedLimit;
     // The engine cap may come from an older save or an explicit scenario limit.
     if (getHouse()->getMaxHarvesters() > 0)
         baseHarvesterLimit = std::min(baseHarvesterLimit, getHouse()->getMaxHarvesters());
 
-    // Only opposing Brutal houses receive the six-worker difficulty ceiling.
+    // Only opposing Brutal houses receive the seven-worker difficulty ceiling.
     if (const int ceiling = harvesterCountCeiling(); ceiling > 0)
         baseHarvesterLimit = std::min(baseHarvesterLimit, ceiling);
 	// Apply spice-based reduction for all modes and difficulties
@@ -6722,10 +6729,12 @@ void QuantBot::attack(int militaryValue) {
 
     if (isCampaignEnemy()) attackTimer=0;
     else {
-        attackTimer = SimpleArmyPolicy::attackDelay(MILLI2CYCLES(config.attackTimerMs),
-            currentGame->getGameInitSettings().getRandomSeed(), getGameCycleCount(), getHouse()->getHouseID());
+        const bool campaignAlly = isCampaignGameType(currentGame->gameType) && isAlliedWithHuman();
+        attackTimer = campaignAlly ? MILLI2CYCLES(60000)
+            : SimpleArmyPolicy::attackDelay(MILLI2CYCLES(config.attackTimerMs),
+                currentGame->getGameInitSettings().getRandomSeed(), getGameCycleCount(), getHouse()->getHouseID());
         traceDecision("attack_schedule",AITelemetry::Record().set("delay_cycles",attackTimer)
-            .set("base_cycles",MILLI2CYCLES(config.attackTimerMs)));
+            .set("base_cycles",MILLI2CYCLES(campaignAlly ? 60000 : config.attackTimerMs)));
     }
 
 	// Check if this difficulty is allowed to attack at all
@@ -7262,46 +7271,22 @@ Coord QuantBot::findBestDeathHandTarget(int enemyHouseID) {
 
 
 Coord QuantBot::findSquadCenter(int houseID) {
-	int squadSize = 0;
-
-	int totalX = 0;
-	int totalY = 0;
-
-	for (const UnitBase* pCurrentUnit : getUnitList()) {
-		if (pCurrentUnit->getOwner()->getHouseID() == houseID
-			&& pCurrentUnit->getItemID() != Unit_Carryall
-			&& pCurrentUnit->getItemID() != Unit_Harvester
-			&& pCurrentUnit->getItemID() != Unit_Frigate
-			&& pCurrentUnit->getItemID() != Unit_MCV
-
-			// Stop freeman making tanks roll forward
-			&& !(currentGame->techLevel > 6 && pCurrentUnit->getItemID() == Unit_Trooper)
-			&& pCurrentUnit->getItemID() != Unit_Saboteur
-			&& pCurrentUnit->getItemID() != Unit_Sandworm
-
-			// Don't let troops moving to rally point contribute
-			/*
-			&& pCurrentUnit->getAttackMode() != RETREAT
-			&& pCurrentUnit->getDestination().x != squadRallyLocation.x
-			&& pCurrentUnit->getDestination().y != squadRallyLocation.y*/) {
-
-			// Lets find the center of mass of our squad
-			squadSize++;
-			totalX += pCurrentUnit->getX();
-			totalY += pCurrentUnit->getY();
-		}
-
-	}
-
-	Coord squadCenterLocation = Coord::Invalid();
-
-	if (squadSize > 0) {
-		squadCenterLocation.x = totalX / squadSize;
-		squadCenterLocation.y = totalY / squadSize;
-	}
-
-	return squadCenterLocation;
+    int count=0, x=0, y=0, huntingCount=0, huntingX=0, huntingY=0;
+    for (const auto* unit : getUnitList()) {
+        if (!unit || !unit->getOwner() || unit->getOwner()->getHouseID()!=houseID
+            || !unit->isActive() || !unit->isRespondable() || !unit->isAGroundUnit()
+            || !unit->canAttack() || unit->getItemID()==Unit_Saboteur || unit->getItemID()==Unit_Sandworm
+            || unit->getAttackMode()==RETREAT || reserveDamagedUnitForRepair(unit)) continue;
+        ++count; x+=unit->getX(); y+=unit->getY();
+        if (unit->getAttackMode()==HUNT) {
+            ++huntingCount; huntingX+=unit->getX(); huntingY+=unit->getY();
+        }
+    }
+    // Reinforcements and home guards must not drag an attacking army backwards.
+    if (huntingCount) return Coord(huntingX/huntingCount,huntingY/huntingCount);
+    return count ? Coord(x/count,y/count) : Coord::Invalid();
 }
+
 
 /**
  * Kite away from a threat while moving towards squad center.
@@ -7350,8 +7335,8 @@ void QuantBot::kiteAwayFromThreat(const UnitBase* pUnit, const ObjectBase* pThre
 		return;
 	}
 
-	// Find squad center (prefer rally location as it's more stable)
-	Coord squadCenter = squadRallyLocation.isValid() ? squadRallyLocation : findSquadCenter(getHouse()->getHouseID());
+	// Short combat spacing follows the fighting army, never the home rally.
+	Coord squadCenter = findSquadCenter(getHouse()->getHouseID());
 
 	// If no squad center, just move directly away from threat
 	if (!squadCenter.isValid()) {
@@ -7395,7 +7380,7 @@ void QuantBot::kiteAwayFromThreat(const UnitBase* pUnit, const ObjectBase* pThre
 
 	// Calculate retreat distance proportional to threat proximity
 	// Closer threats = longer retreat to reach weapon range edge
-	FixPoint retreatDistance = desiredRange - distToThreat;
+	FixPoint retreatDistance = std::min(FixPoint(2), desiredRange - distToThreat);
 	if (retreatDistance < 1) {
 		retreatDistance = 1;  // Minimum 1-tile retreat
 	}
@@ -7411,7 +7396,11 @@ void QuantBot::kiteAwayFromThreat(const UnitBase* pUnit, const ObjectBase* pThre
 	targetY = std::max(1, std::min(mapHeight - 2, targetY));
 
 	// Issue move command (forced so unit actually retreats instead of immediately canceling to attack)
-	doMove2Pos(pUnit, targetX, targetY, true);
+    const auto attackMode = pUnit->getAttackMode();
+    doMove2Pos(pUnit, targetX, targetY, true);
+    // Moving a Hunt unit implicitly changes it to Guard. Restore the mission
+    // after the short dodge so it resumes attacking, not regrouping at home.
+    if (attackMode == HUNT) doSetAttackMode(pUnit, HUNT);
     // A unit can reissue this exact retreat each AI tick. One record per
     // unit/threat encounter is enough to explain the tactical decision.
     const uint64_t kiteSignature = (uint64_t(pThreat->getObjectID()) << 16)
@@ -7434,24 +7423,27 @@ void QuantBot::kiteAwayFromThreat(const UnitBase* pUnit, const ObjectBase* pThre
  */
 void QuantBot::moveToOptimalSquadPosition(const UnitBase* unit, FixPoint radius, int* orderBudget) {
     if (!unit || unit->getItemID()==Unit_Saboteur || !unit->isRespondable() || humanControls(unit) || unit->hasATarget()
-        || unit->wasForced() || unit->isMoving() || squadRallyLocation.isInvalid()) return;
-    const_cast<UnitBase*>(unit)->setGuardPoint(squadRallyLocation);
+        || unit->wasForced() || unit->isMoving() || unit->getAttackMode()==HUNT) return;
+    Coord regroup = unit->getAttackMode()==RETREAT ? squadRallyLocation : findSquadCenter(getHouse()->getHouseID());
+    if (regroup.isInvalid()) regroup=squadRallyLocation;
+    if (regroup.isInvalid()) return;
+    const_cast<UnitBase*>(unit)->setGuardPoint(regroup);
     if (unit->getAttackMode()!=RETREAT && unit->getAttackMode()!=AREAGUARD) doSetAttackMode(unit,AREAGUARD);
-    if (blockDistance(unit->getLocation(),squadRallyLocation)<=radius) return;
+    if (blockDistance(unit->getLocation(),regroup)<=radius) return;
     // A queued path can exist before isMoving becomes true. Leave its destination
     // alone as well, instead of submitting a different slot on the next AI tick.
     const Coord destination=unit->getDestination();
     if (destination.isValid() && destination!=unit->getLocation()
-        && blockDistance(destination,squadRallyLocation)<=radius*2) return;
+        && blockDistance(destination,regroup)<=radius*2) return;
     int reactiveBudget=1;
     if (!orderBudget) orderBudget=&reactiveBudget;
     if (*orderBudget<=0 || currentGame->getPathRequestQueueSize()>150) return;
     const auto offset=SimpleArmyPolicy::rallyOffset(unit->getObjectID(),radius.lround(),[&](int x,int y) {
-        const Coord p=squadRallyLocation+Coord(x,y);
+        const Coord p=regroup+Coord(x,y);
         return getMap().tileExists(p) && unit->canPass(p.x,p.y) && dangerAt(p)==0;
     });
     if (!offset) return;
-    const Coord p=squadRallyLocation+Coord(offset->first,offset->second);
+    const Coord p=regroup+Coord(offset->first,offset->second);
     doMove2Pos(unit,p.x,p.y,false);
     --*orderBudget;
 }
@@ -7575,10 +7567,9 @@ void QuantBot::retreatAllUnits() {
                 && (pUnit->getItemID() == Unit_Launcher || pUnit->getItemID() == Unit_Deviator)) {
                 const auto* target = pUnit->getTarget();
                 const int range = currentGame->objectData.data[pUnit->getItemID()][getHouse()->getHouseID()].weaponrange;
-                if (target && QuantBotBuildPolicy::needsKiting(
+                if (target && target->canAttack(pUnit) && QuantBotBuildPolicy::needsKiting(
                         blockDistance(pUnit->getLocation(), target->getLocation()).lround(), range,
                         difficulty == Difficulty::Easy, target->isAUnit() && !static_cast<const UnitBase*>(target)->isAFlyingUnit())) {
-                    doSetAttackMode(pUnit, AREAGUARD);
                     kiteAwayFromThreat(pUnit, target, range);
                     continue;
                 }
@@ -7776,22 +7767,6 @@ void QuantBot::retreatAllUnits() {
                             // Use small radius (2 tiles) to ensure deviated units actually move to squad
                             moveToOptimalSquadPosition(pUnit, 2,&rallyOrdersRemaining);
                         }
-                    }
-					else if ((pUnit->getItemID() == Unit_Launcher || pUnit->getItemID() == Unit_Deviator)
-                        && pUnit->hasATarget() && (difficulty != Difficulty::Easy)) {
-					// Special logic to keep launchers/deviators away from harm
-					const ObjectBase* pTarget = pUnit->getTarget();
-					if (pTarget != nullptr && pTarget->getItemID() != Unit_Ornithopter) {
-						FixPoint distToTarget = blockDistance(pUnit->getLocation(), pTarget->getLocation());
-						int weaponRange = currentGame->objectData.data[pUnit->getItemID()][getHouse()->getHouseID()].weaponrange;
-
-						// Only kite if target is dangerously close (within weaponRange - 2 tiles)
-						// Launcher (range 9): kite at ≤7, Deviator (range 7): kite at ≤5
-						if (distToTarget <= weaponRange - 2) {
-							doSetAttackMode(pUnit, AREAGUARD);
-							kiteAwayFromThreat(pUnit, pTarget, weaponRange);
-                        }
-                    }
                     }
                     else if (pUnit->getItemID() != Unit_Ornithopter && pUnit->getItemID() != Unit_Saboteur && pUnit->getAttackMode() != HUNT && !pUnit->hasATarget() && !pUnit->wasForced()) {
                         if (pUnit->getAttackMode() == AREAGUARD && squadCenterLocation.isValid() && (gameMode != GameMode::Campaign)) {

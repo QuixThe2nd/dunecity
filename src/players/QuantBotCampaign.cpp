@@ -3,6 +3,7 @@
 #include <House.h>
 #include <Game.h>
 #include <Map.h>
+#include <misc/CampaignControls.h>
 #include <sand.h>
 #include <structures/StructureBase.h>
 #include <units/UnitBase.h>
@@ -20,7 +21,15 @@ bool QuantBot::isAlliedWithHuman() const {
 }
 
 int QuantBot::harvesterCountCeiling() const {
-    return difficulty == Difficulty::Brutal && !isAlliedWithHuman() ? 6 : 0;
+    return difficulty == Difficulty::Brutal && !isAlliedWithHuman() ? 7 : 0;
+}
+
+int QuantBot::campaignAllyHarvesterLimit() const {
+    return currentGame && isCampaignGameType(currentGame->gameType)
+        && difficulty == Difficulty::Brutal && isAlliedWithHuman()
+        && currentGame->getGameInitSettings().getMission() >= CampaignControls::firstMission(8)
+        && currentGame->getGameInitSettings().getGameOptions().maximumNumberOfHarvestersOverride < 0
+        ? 20 : 0;
 }
 
 bool QuantBot::isCampaignEnemy() const {

@@ -124,6 +124,7 @@ void runStarportEconomyProbe(Game& game) {
     // even if a legacy/remaining-spice planner target still says six.
     auto* workerPort = dynamic_cast<StarPort*>(place(Structure_StarPort));
     house->maxHarvesters = 15;
+    game.gameInitSettings.gameOptions.maximumNumberOfHarvestersOverride = 15;
     bot->difficulty = QuantBot::Difficulty::Brutal;
     while (house->getNumItems(Unit_Harvester) < 6) house->createUnit(Unit_Harvester,true);
     bot->harvesterLimit = 6; bot->lastCalculatedSpice = 20000;

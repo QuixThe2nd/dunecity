@@ -15,7 +15,7 @@ void runCampaignPacingProbe(Game& game) {
         bot->initialMilitaryValue=1000;bot->lastCalculatedSpice=200000;bot->harvesterLimit=100;
         game.gameInitSettings.gameOptions.maximumNumberOfHarvestersOverride=100;
         bot->update();
-        const int expected=tier==QuantBot::Difficulty::Brutal ? 6 : 2*getQuantBotConfig().getSettings(int(tier)).harvesterLimitPerRefineryMultiplier;
+        const int expected=tier==QuantBot::Difficulty::Brutal ? 7 : 2*getQuantBotConfig().getSettings(int(tier)).harvesterLimitPerRefineryMultiplier;
         require(bot->harvesterLimit==expected,"High game ceiling replaced campaign difficulty economy cap");
         bot->update();require(bot->harvesterLimit==expected,"Campaign worker cap drifted on next update");
         game.gameInitSettings.gameOptions.maximumNumberOfHarvestersOverride=1;
@@ -27,7 +27,32 @@ void runCampaignPacingProbe(Game& game) {
     require(partner->harvesterLimit>2,"Human partner incorrectly inherited small enemy worker cap");
     partner->difficulty=QuantBot::Difficulty::Brutal;
     game.gameInitSettings.gameOptions.maximumNumberOfHarvestersOverride=15;
-    partner->update();require(partner->harvesterLimit==15,"Brutal helper inherited the enemy six-worker cap");
+    partner->update();require(partner->harvesterLimit==15,"Brutal helper inherited the enemy seven-worker cap");
+    const auto savedMission=game.gameInitSettings.mission;
+    auto* partnerHouse=const_cast<House*>(partner->getHouse());
+    const int savedWorkerLimit=partnerHouse->maxHarvesters;
+    partnerHouse->maxHarvesters=15;
+    game.gameInitSettings.gameOptions.maximumNumberOfHarvestersOverride=-1;
+    for (int mission : {17,20,21,22}) {
+        game.gameInitSettings.mission=mission;
+        const int expected=mission>=20 ? 20 : 15;
+        partner->lastCalculatedSpice=200000;partner->update();
+        require(partner->harvesterLimit==expected && partnerHouse->getMaxHarvesters()==expected,
+            "Friendly Brutal default did not distinguish campaign levels seven and eight/nine");
+    }
+    partner->difficulty=QuantBot::Difficulty::Hard;partner->update();
+    require(partnerHouse->getMaxHarvesters()==15 && partner->harvesterLimit==15,"Hard inherited Brutal's larger fleet");
+    partner->difficulty=QuantBot::Difficulty::Brutal;
+    partner->lastCalculatedSpice=18000;partner->update();
+    require(partner->harvesterLimit==9 && partnerHouse->getMaxHarvesters()==20,"Maximum20 became a mandatory worker target");
+    game.gameInitSettings.gameOptions.maximumNumberOfHarvestersOverride=3;partner->update();
+    require(partner->harvesterLimit==3 && partner->campaignAllyHarvesterLimit()==0,"Explicit worker override ignored");
+    game.gameInitSettings.mission=savedMission;partnerHouse->maxHarvesters=savedWorkerLimit;
+    game.gameInitSettings.gameOptions.maximumNumberOfHarvestersOverride=15;
+    partner->lastCalculatedSpice=200000;partner->update();
+    partner->attack(100000);
+    require(partner->attackTimer==MILLI2CYCLES(60000),"Campaign ally attack interval is not60 seconds");
+    SDL_Log("ALLIED_CAMPAIGN_LIMITS_PASS: levels8/9 Brutal20, Hard15, smaller maps unchanged, override3, spice target9, attack interval60s");
     auto* allyHouse=const_cast<House*>(bot->getHouse());
     const int enemyTeam=allyHouse->teamID;
     allyHouse->teamID=partner->getHouse()->getTeamID();
@@ -37,7 +62,7 @@ void runCampaignPacingProbe(Game& game) {
     require(bot->harvesterCountCeiling()==0 && bot->harvesterLimit==15,"Separate ally retained enemy worker cap");
     require(bot->gameMode==QuantBot::GameMode::Custom,"Separate ally retained campaign rebuild logic");
     allyHouse->teamID=enemyTeam;bot->gameMode=QuantBot::GameMode::Campaign;
-    bot->update();require(bot->harvesterCountCeiling()==6 && bot->harvesterLimit==6,"Opponent lost six-worker cap");
+    bot->update();require(bot->harvesterCountCeiling()==7 && bot->harvesterLimit==7,"Opponent lost seven-worker cap");
     for(auto* enemy:enemies) {
         enemy->difficulty=QuantBot::Difficulty::Easy;enemy->campaignWave={};
         enemy->campaignWave.initialized=true;enemy->attackTimer=INT32_MAX;

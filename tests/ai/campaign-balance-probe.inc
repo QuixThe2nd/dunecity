@@ -9,6 +9,7 @@
 #include <cstdlib>
 
 #include "starport-economy-probe.inc"
+#include "army-movement-probe.inc"
 #include "radar-power-probe.inc"
 #include "campaign-stats-probe.inc"
 #include "campaign-pressure-probe.inc"
@@ -57,6 +58,10 @@ int runCampaignBalanceProbe() {
     game->initGame(init);
     game->bReplay = false;
     game->initializeGameLoop();
+    if (std::getenv("BALANCE_ARMY_PROBE")) {
+        runArmyMovementProbe(*game);game.reset();currentGame=nullptr;pLocalPlayer=nullptr;
+        return MENU_QUIT_DEFAULT;
+    }
     if (std::getenv("BALANCE_RADAR_PROBE")) {
         runRadarPowerProbe(*game);game.reset();currentGame=nullptr;pLocalPlayer=nullptr;
         return MENU_QUIT_DEFAULT;

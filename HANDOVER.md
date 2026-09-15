@@ -1,3 +1,46 @@
+## 2026-09-15 — Keep artillery assaults engaged; campaign limits, 1.0.697
+
+Stefan reported Atreides launchers returning home after Hunt in vanilla campaign
+SCENA022, live696 session1789475830006137-0, seed249628688. Telemetry showed
+repeated combat_kite events. Source confirmed two mode-reset causes: artillery
+kiting explicitly set Area Guard, and UnitBase::doMove2Pos implicitly sets Hunt
+to Guard. Losing the target then invoked base-only regrouping. A duplicate
+artillery branch also kited away from buildings. This was not an attack budget
+or harvester-cap issue.
+
+Compared moveToOptimalSquadPosition with pre-4dfd9fa code (old army-centre/base
+nearest choice). Restored army-centre regrouping while improving its inputs:
+active, responsive ground fighters only; prefer Hunt members when an assault
+exists, exclude retreating/badly damaged/noncombat units and saboteurs. Home
+guards and workers no longer drag the assault centre backwards. Regroup uses
+safe passable spread slots and retains path/command budgets; explicit Retreat
+uses home. Regroup never overrides Hunt or human orders.
+
+Short kiting is capped at two tiles before coordinate rounding, biased toward
+the fighting army rather than base; restores Hunt after the forced move command.
+Only approaching armed ground units trigger artillery kiting; removed duplicate
+building-kiting path. Existing repair and base/harvester defence remain.
+
+Friendly campaign QuantBots now schedule attacks every60s when ready (existing
+readiness checks retained; retry15s when understrength). Conversion and loaded
+helper countdowns are capped at60s. Enemy opening/wave timing is unchanged.
+Brutal human-allied campaign houses get a default maximum20 harvesters on levels
+8/9 (scenario20 onward), in both planning and engine checks, derived at runtime
+so older saves apply it too. Explicit overrides win and spice still tapers the
+normal target. Opposing Brutal maximum increased6 to7. Other tiers/earlier maps
+unchanged. No save-format change.
+
+Validation: 7/7 CTests (/tmp/ctest-697-final.log) and dependency checks. Native
+army fixture proves Hunt survives dodge/arrival, ~2-tile movement, continued
+building siege, assault-centre filtering, human-order protection; passed vanilla
+and city. Pacing fixture verifies levels7/8/9, Hard vs Brutal, maximum20 vs spice
+target9, override3, enemy7 and allied60s. Native pressure and defence fixtures
+passed. Artifacts /tmp/dunecity-697-{army-final,army-city,pacing-final,pressure,defence}.
+New regression available through run-campaign-balance.py --army-probe.
+
+Built in build-692; local installation /Applications/dunecity.app, previous
+version saved at /tmp/dunecity-before-697.app. No public push or web/download release.
+
 ## 2026-09-15 — Reserve opening cash for harvesters, 1.0.696
 
 Stefan asked to prioritise early worker growth over military purchases after

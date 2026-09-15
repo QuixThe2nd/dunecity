@@ -513,6 +513,7 @@ int House::getMaxHarvesters() const {
     int limit = maxHarvesters;
     for (const auto& player : getPlayerList())
         if (const auto* bot = dynamic_cast<const QuantBot*>(player.get())) {
+            if (const int alliedLimit = bot->campaignAllyHarvesterLimit(); alliedLimit > 0) limit = alliedLimit;
             const int ceiling = bot->harvesterCountCeiling();
             if (ceiling > 0) limit = limit > 0 ? std::min(limit, ceiling) : ceiling;
         }
