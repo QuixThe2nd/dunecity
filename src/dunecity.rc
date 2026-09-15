@@ -1,0 +1,5 @@
+/* Dune City application icon */
+#include <windows.h>
+
+/* Icon */
+MAINICON ICON "../dunecity.ico" 

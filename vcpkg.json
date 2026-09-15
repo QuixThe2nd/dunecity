@@ -1,0 +1,50 @@
+{
+  "$schema": "https://raw.githubusercontent.com/microsoft/vcpkg-tool/main/docs/vcpkg.schema.json",
+  "name": "dunecity",
+  "version": "1.0.682",
+  "description": "Dune City - A modern OpenSource Dune 2 engine with city simulation",
+  "homepage": "https://dunelegacy.sourceforge.net",
+  "dependencies": [
+    "catch2",
+    {
+      "name": "sdl2",
+      "default-features": false,
+      "features": [
+        "x11",
+        "wayland",
+        "ibus"
+      ],
+      "platform": "linux"
+    },
+    {
+      "name": "sdl2",
+      "platform": "!linux"
+    },
+    "sdl2-mixer",
+    "sdl2-ttf",
+    {
+      "name": "curl",
+      "features": [
+        "websockets"
+      ]
+    },
+    "openssl",
+    "miniupnpc",
+    "discord-rpc"
+  ],
+  "builtin-baseline": "0804e3b55b7e435c593707071052363fa876f170",
+  "overrides": [
+    {
+      "name": "sdl2",
+      "version": "2.32.10"
+    },
+    {
+      "name": "sdl2-mixer",
+      "version": "2.8.1"
+    },
+    {
+      "name": "sdl2-ttf",
+      "version": "2.24.0"
+    }
+  ]
+}
