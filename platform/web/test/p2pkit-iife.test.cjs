@@ -20,6 +20,7 @@ const EXPECTED_KEYS = [
   'DEFAULT_ICE_SERVERS',
   'DEFAULT_TRANSPORT_ORDER',
   'Emitter',
+  'RTCDataChannelSendQueue',
   'RTCTransport',
   'capsFor',
   'chooseTransport',
@@ -52,6 +53,7 @@ test('p2pkit IIFE loads in a bare vm context and exposes exactly the glue surfac
   assert.ok(kit, 'bundle must expose globalThis.P2PKIT_IIFE');
   assert.deepEqual(Object.keys(kit).sort(), [...EXPECTED_KEYS].sort());
   assert.equal(typeof kit.RTCTransport, 'function');
+  assert.equal(typeof kit.RTCDataChannelSendQueue, 'function');
   assert.equal(typeof kit.Emitter, 'function');
   assert.equal(typeof kit.randomId, 'function');
 });

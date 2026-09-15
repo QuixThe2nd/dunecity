@@ -142,13 +142,10 @@ const PAGE_GLOBAL = 'DUNECITY_WEBRTC_CONFIG';
 
 // Wire contract shared by the Node consts and the emitted library constants.
 const EXPECTED_WEBRTC_CONSTANTS = {
-  DUNECITY_WEBRTC_CONTROL_LABEL: 'control',
-  DUNECITY_WEBRTC_COMMANDS_LABEL: 'commands',
-  DUNECITY_WEBRTC_CONTROL_OPTIONS: { ordered: true },
-  DUNECITY_WEBRTC_COMMANDS_OPTIONS: { ordered: false, maxRetransmits: 0 },
-  DUNECITY_WEBRTC_CONTROL_HIGH_WATER: 512 * 1024,
-  DUNECITY_WEBRTC_CONTROL_LOW_WATER: 128 * 1024,
-  DUNECITY_WEBRTC_COMMANDS_HIGH_WATER: 512 * 1024,
+  DUNECITY_WEBRTC_CHANNELS: [
+    { label: 'control', ordered: true, highWaterBytes: 512 * 1024, lowWaterBytes: 128 * 1024 },
+    { label: 'commands', ordered: false, maxRetransmits: 0, dropHighWaterBytes: 512 * 1024 },
+  ],
   DUNECITY_WEBRTC_MAX_SIGNAL_BYTES: 256 * 1024,
   DUNECITY_WEBRTC_EVENT_CONNECT: 0,
   DUNECITY_WEBRTC_EVENT_DISCONNECT: 1,
@@ -294,13 +291,13 @@ test('emitted library code runs in a bare vm context and throws ReferenceError w
   assert.ok(sandbox.Module.__dunecityWebrtc, 'webrtcInit must instantiate the factory');
   assert.equal(sandbox.webrtcGetState(), 0, 'state is idle before hosting/joining');
 
-  const dropped = emitRetainedLibrary(lib, retained, { drop: 'DUNECITY_WEBRTC_CONTROL_LABEL' });
+  const dropped = emitRetainedLibrary(lib, retained, { drop: 'DUNECITY_WEBRTC_CHANNELS' });
   const bare = makeRuntimeSandbox();
   vm.runInNewContext(`${dropped.declarationCode}\n${dropped.functionCode}`, bare);
   // Errors thrown inside a vm context are not host-realm instances; match by name.
   assert.throws(
     () => bare.webrtcInit(),
-    (err) => err.name === 'ReferenceError' && err.message.includes('DUNECITY_WEBRTC_CONTROL_LABEL'),
+    (err) => err.name === 'ReferenceError' && err.message.includes('DUNECITY_WEBRTC_CHANNELS'),
     'missing constant must fail at runtime',
   );
 });

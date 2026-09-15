@@ -33,11 +33,14 @@
  *   - one application packet per DataChannel message; payload untouched.
  *
  * Backpressure:
- *   - control  : if bufferedAmount >= high water mark, outgoing messages are
- *                queued in JS and flushed on `bufferedamountlow`.
- *   - commands : if bufferedAmount >= high water mark, the send is DROPPED and
- *                reported as a failure; the game's CommandManager resends the
- *                recent command cycles, matching ENet's lossy unsequenced channel.
+ *   - control  : p2pkit {@link RTCDataChannelSendQueue} on the raw channel
+ *                ({ highWaterBytes: 512 KiB, lowWaterBytes: 128 KiB }) queues
+ *                outgoing messages (never dropped) and flushes on
+ *                `bufferedamountlow`.
+ *   - commands : if bufferedAmount >= dropHighWaterBytes (512 KiB), the send is
+ *                DROPPED and reported as a failure; the game's CommandManager
+ *                resends the recent command cycles, matching ENet's lossy
+ *                unsequenced channel.
  */
 
 'use strict';
@@ -52,13 +55,11 @@
 // platform/web/test/emscripten-webrtc-library.test.cjs fails if the two halves
 // drift apart or if a constant used by retained runtime code is missing.
 
-const DUNECITY_WEBRTC_CONTROL_LABEL = 'control';
-const DUNECITY_WEBRTC_COMMANDS_LABEL = 'commands';
-const DUNECITY_WEBRTC_CONTROL_OPTIONS = { ordered: true };
-const DUNECITY_WEBRTC_COMMANDS_OPTIONS = { ordered: false, maxRetransmits: 0 };
-const DUNECITY_WEBRTC_CONTROL_HIGH_WATER = 512 * 1024;
-const DUNECITY_WEBRTC_CONTROL_LOW_WATER = 128 * 1024;
-const DUNECITY_WEBRTC_COMMANDS_HIGH_WATER = 512 * 1024;
+// Game data channels: RTCChannelSpec fields plus dunecity-local backpressure knobs.
+const DUNECITY_WEBRTC_CHANNELS = [
+    { label: 'control', ordered: true, highWaterBytes: 512 * 1024, lowWaterBytes: 128 * 1024 },
+    { label: 'commands', ordered: false, maxRetransmits: 0, dropHighWaterBytes: 512 * 1024 },
+];
 const DUNECITY_WEBRTC_MAX_SIGNAL_BYTES = 256 * 1024;
 
 // Event codes passed to the C++ side (must match WebRtcTransport.h)
@@ -178,9 +179,9 @@ function createDuneCityWebRtc(deps) {
         signalingState: 'idle',   // idle|connecting|open|closed|error
         peerConnectionState: 'new',
         channels: {
-            0: { label: DUNECITY_WEBRTC_CONTROL_LABEL, state: 'new', sent: 0, received: 0, dropped: 0, queued: 0,
+            0: { label: DUNECITY_WEBRTC_CHANNELS[0].label, state: 'new', sent: 0, received: 0, dropped: 0, queued: 0,
                  lastPacketId: -1, lastPacketLen: 0 },
-            1: { label: DUNECITY_WEBRTC_COMMANDS_LABEL, state: 'new', sent: 0, received: 0, dropped: 0, queued: 0,
+            1: { label: DUNECITY_WEBRTC_CHANNELS[1].label, state: 'new', sent: 0, received: 0, dropped: 0, queued: 0,
                  lastPacketId: -1, lastPacketLen: 0 },
         },
         messages: [],             // capped ring of {dir, channel, packetId, len, t}
@@ -259,8 +260,7 @@ function createDuneCityWebRtc(deps) {
     // ---- peer connection ----
     let pc = null;
     let channels = { 0: null, 1: null };       // RTCDataChannel per game channel
-    let controlOutbox = [];                     // queued control messages (backpressure)
-    let controlPaused = false;
+    let controlSendQueue = null;                // p2pkit RTCDataChannelSendQueue on channel 0
     let bothChannelsOpen = false;
 
     function setState(next) {
@@ -297,10 +297,33 @@ function createDuneCityWebRtc(deps) {
         return p;
     }
 
+    function dataChannelOptions(spec) {
+        const opts = { ordered: spec.ordered };
+        if (spec.maxRetransmits !== undefined) opts.maxRetransmits = spec.maxRetransmits;
+        return opts;
+    }
+
     function attachChannel(channel, gameChannel) {
         channels[gameChannel] = channel;
         channel.binaryType = 'arraybuffer';
         stats.channels[gameChannel].state = channel.readyState;
+
+        if (gameChannel === 0) {
+            const kit = getP2pkit();
+            const spec = DUNECITY_WEBRTC_CHANNELS[0];
+            const origSend = channel.send.bind(channel);
+            channel.send = function (data) {
+                origSend(data);
+                const bytes = data instanceof Uint8Array ? data : new Uint8Array(data);
+                stats.channels[0].sent += 1;
+                recordMessage('send', 0, bytes);
+            };
+            controlSendQueue = new kit.RTCDataChannelSendQueue({
+                highWaterBytes: spec.highWaterBytes,
+                lowWaterBytes: spec.lowWaterBytes,
+            });
+            controlSendQueue.attach(channel);
+        }
 
         channel.onopen = function () {
             stats.channels[gameChannel].state = 'open';
@@ -335,16 +358,6 @@ function createDuneCityWebRtc(deps) {
             recordMessage('recv', gameChannel, bytes);
             deps.onEvent(DUNECITY_WEBRTC_EVENT_MESSAGE, peerHandle, gameChannel, 0, bytes);
         };
-
-        if (gameChannel === 0) {
-            channel.bufferedAmountLowThreshold = DUNECITY_WEBRTC_CONTROL_LOW_WATER;
-            channel.onbufferedamountlow = function () {
-                if (controlPaused) {
-                    controlPaused = false;
-                    flushControlOutbox();
-                }
-            };
-        }
     }
 
     function notifyPeerLeft() {
@@ -386,8 +399,10 @@ function createDuneCityWebRtc(deps) {
     // ---- offer/answer via p2pkit dialect ------------------------------------
     async function createOfferAndSend() {
         if (!pc) pc = makePeerConnection();
-        attachChannel(pc.createDataChannel(DUNECITY_WEBRTC_CONTROL_LABEL, DUNECITY_WEBRTC_CONTROL_OPTIONS), 0);
-        attachChannel(pc.createDataChannel(DUNECITY_WEBRTC_COMMANDS_LABEL, DUNECITY_WEBRTC_COMMANDS_OPTIONS), 1);
+        for (let i = 0; i < DUNECITY_WEBRTC_CHANNELS.length; i++) {
+            const spec = DUNECITY_WEBRTC_CHANNELS[i];
+            attachChannel(pc.createDataChannel(spec.label, dataChannelOptions(spec)), i);
+        }
         const offer = await pc.createOffer();
         await pc.setLocalDescription(offer);
         if (!signallingChannel || !signallingChannel.send({
@@ -406,9 +421,12 @@ function createDuneCityWebRtc(deps) {
             if (!channels[0]) {
                 pc.ondatachannel = function (evt) {
                     const label = evt.channel.label;
-                    if (label === DUNECITY_WEBRTC_CONTROL_LABEL) attachChannel(evt.channel, 0);
-                    else if (label === DUNECITY_WEBRTC_COMMANDS_LABEL) attachChannel(evt.channel, 1);
-                    else log('webrtc: ignoring unknown data channel ' + label);
+                    const index = DUNECITY_WEBRTC_CHANNELS.findIndex(function (spec) { return spec.label === label; });
+                    if (index === -1) {
+                        log('webrtc: ignoring unknown data channel ' + label);
+                        return;
+                    }
+                    attachChannel(evt.channel, index);
                 };
             }
             const answer = await pc.createAnswer();
@@ -543,8 +561,10 @@ function createDuneCityWebRtc(deps) {
     }
 
     function closeEverything() {
-        controlOutbox = [];
-        controlPaused = false;
+        if (controlSendQueue) {
+            controlSendQueue.detach();
+            controlSendQueue = null;
+        }
         for (const k of [0, 1]) {
             if (channels[k]) {
                 try { channels[k].close(); } catch (e) {}
@@ -571,44 +591,30 @@ function createDuneCityWebRtc(deps) {
     }
 
     // ---- outgoing game traffic ----
-    function flushControlOutbox() {
-        if (!channels[0] || channels[0].readyState !== 'open') return;
-        while (controlOutbox.length > 0) {
-            const bytes = controlOutbox[0];
-            if (channels[0].bufferedAmount >= DUNECITY_WEBRTC_CONTROL_HIGH_WATER) {
-                controlPaused = true;
-                return;
-            }
-            controlOutbox.shift();
-            channels[0].send(bytes);
-            stats.channels[0].sent += 1;
-            recordMessage('send', 0, bytes);
-        }
-    }
-
     function send(gameChannel, bytes) {
         const channel = channels[gameChannel];
         if (!channel || channel.readyState !== 'open') return false;
+        const arr = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
         if (gameChannel === 0) {
-            if (controlPaused || channel.bufferedAmount >= DUNECITY_WEBRTC_CONTROL_HIGH_WATER) {
-                controlPaused = true;
-                controlOutbox.push(bytes);
+            const spec = DUNECITY_WEBRTC_CHANNELS[0];
+            const pendingInQueue = controlSendQueue
+                ? controlSendQueue.bufferedAmount - channel.bufferedAmount
+                : 0;
+            if (channel.bufferedAmount >= spec.highWaterBytes || pendingInQueue > 0) {
                 stats.channels[0].queued += 1;
-                return true;   // queued, will be delivered in order
             }
-            channel.send(bytes);
-            stats.channels[0].sent += 1;
-            recordMessage('send', 0, bytes);
+            void controlSendQueue.send(arr);
             return true;
         }
         // commands channel: unreliable by contract — drop under congestion
-        if (channel.bufferedAmount >= DUNECITY_WEBRTC_COMMANDS_HIGH_WATER) {
+        const cmdSpec = DUNECITY_WEBRTC_CHANNELS[1];
+        if (channel.bufferedAmount >= cmdSpec.dropHighWaterBytes) {
             stats.channels[1].dropped += 1;
             return false;
         }
-        channel.send(bytes);
+        channel.send(arr);
         stats.channels[1].sent += 1;
-        recordMessage('send', 1, bytes);
+        recordMessage('send', 1, arr);
         return true;
     }
 
@@ -645,7 +651,6 @@ function createDuneCityWebRtc(deps) {
             closeEverything();
             stats.role = null;
         },
-        _flushControlOutboxForTest: flushControlOutbox,
     };
 
     return api;
@@ -657,10 +662,7 @@ if (typeof module !== 'undefined' && module.exports) {
         createDuneCityWebRtc,
         createDuneCitySignallingChannel,
         resolveP2pkit,
-        DUNECITY_WEBRTC_CONTROL_OPTIONS,
-        DUNECITY_WEBRTC_COMMANDS_OPTIONS,
-        DUNECITY_WEBRTC_CONTROL_HIGH_WATER,
-        DUNECITY_WEBRTC_COMMANDS_HIGH_WATER,
+        DUNECITY_WEBRTC_CHANNELS,
         DUNECITY_WEBRTC_MAX_SIGNAL_BYTES,
         DUNECITY_WEBRTC_EVENT_CONNECT,
         DUNECITY_WEBRTC_EVENT_DISCONNECT,
@@ -686,13 +688,7 @@ if (typeof mergeInto === 'function' && typeof LibraryManager !== 'undefined') {
         // with '=' as `var NAME = <verbatim>;` in dunecity.js. The values below
         // must match the top-level const declarations above exactly;
         // emscripten-webrtc-library.test.cjs enforces that.
-        $DUNECITY_WEBRTC_CONTROL_LABEL: "='control'",
-        $DUNECITY_WEBRTC_COMMANDS_LABEL: "='commands'",
-        $DUNECITY_WEBRTC_CONTROL_OPTIONS: '={ ordered: true }',
-        $DUNECITY_WEBRTC_COMMANDS_OPTIONS: '={ ordered: false, maxRetransmits: 0 }',
-        $DUNECITY_WEBRTC_CONTROL_HIGH_WATER: '=(512 * 1024)',
-        $DUNECITY_WEBRTC_CONTROL_LOW_WATER: '=(128 * 1024)',
-        $DUNECITY_WEBRTC_COMMANDS_HIGH_WATER: '=(512 * 1024)',
+        $DUNECITY_WEBRTC_CHANNELS: '=[{ label: "control", ordered: true, highWaterBytes: 512 * 1024, lowWaterBytes: 128 * 1024 }, { label: "commands", ordered: false, maxRetransmits: 0, dropHighWaterBytes: 512 * 1024 }]',
         $DUNECITY_WEBRTC_MAX_SIGNAL_BYTES: '=(256 * 1024)',
         $DUNECITY_WEBRTC_EVENT_CONNECT: '=0',
         $DUNECITY_WEBRTC_EVENT_DISCONNECT: '=1',
@@ -717,10 +713,7 @@ if (typeof mergeInto === 'function' && typeof LibraryManager !== 'undefined') {
         // symbols. __deps recursively retains every $DUNECITY_WEBRTC_* constant above,
         // so the emitted factory has no free missing identifiers.
         $createDuneCityWebRtc__deps: [
-            '$DUNECITY_WEBRTC_CONTROL_LABEL', '$DUNECITY_WEBRTC_COMMANDS_LABEL',
-            '$DUNECITY_WEBRTC_CONTROL_OPTIONS', '$DUNECITY_WEBRTC_COMMANDS_OPTIONS',
-            '$DUNECITY_WEBRTC_CONTROL_HIGH_WATER', '$DUNECITY_WEBRTC_CONTROL_LOW_WATER',
-            '$DUNECITY_WEBRTC_COMMANDS_HIGH_WATER', '$DUNECITY_WEBRTC_MAX_SIGNAL_BYTES',
+            '$DUNECITY_WEBRTC_CHANNELS', '$DUNECITY_WEBRTC_MAX_SIGNAL_BYTES',
             '$DUNECITY_WEBRTC_EVENT_CONNECT', '$DUNECITY_WEBRTC_EVENT_DISCONNECT',
             '$DUNECITY_WEBRTC_EVENT_MESSAGE', '$DUNECITY_WEBRTC_EVENT_STATE',
             '$DUNECITY_WEBRTC_EVENT_MATCHED',

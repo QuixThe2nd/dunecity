@@ -12,10 +12,7 @@ const {
   createDuneCityWebRtc,
   resolveP2pkit,
   _createSignallingChannelForTest,
-  DUNECITY_WEBRTC_CONTROL_OPTIONS,
-  DUNECITY_WEBRTC_COMMANDS_OPTIONS,
-  DUNECITY_WEBRTC_CONTROL_HIGH_WATER,
-  DUNECITY_WEBRTC_COMMANDS_HIGH_WATER,
+  DUNECITY_WEBRTC_CHANNELS,
   DUNECITY_WEBRTC_EVENT_CONNECT,
   DUNECITY_WEBRTC_EVENT_DISCONNECT,
   DUNECITY_WEBRTC_EVENT_MESSAGE,
@@ -27,8 +24,7 @@ const {
 } = require('../webrtc_glue.js');
 
 const p2pkit = resolveP2pkit({});
-
-const DUNECITY_WEBRTC_CONTROL_LOW_WATER = 128 * 1024;
+assert.ok(p2pkit && p2pkit.RTCDataChannelSendQueue, 'p2pkit must export RTCDataChannelSendQueue');
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -500,8 +496,8 @@ test('matched host creates the offer and both data channels with expected option
   await waitFor(() => pcs.length === 1 && ws.sent.some((m) => isSigEnvelope(m, isDescriptionOffer)));
   const pc = pcs[0];
   assert.equal(pc._channels.length, 2);
-  assert.deepEqual(pc._channels[0].options, DUNECITY_WEBRTC_CONTROL_OPTIONS);
-  assert.deepEqual(pc._channels[1].options, DUNECITY_WEBRTC_COMMANDS_OPTIONS);
+  assert.deepEqual(pc._channels[0].options, { ordered: true });
+  assert.deepEqual(pc._channels[1].options, { ordered: false, maxRetransmits: 0 });
   const offer = ws.sent.find((m) => isSigEnvelope(m, isDescriptionOffer));
   assert.equal(offer.data.from, 'host');
   assert.equal(offer.data.to, 'joiner');
@@ -529,21 +525,21 @@ test('send delivers binary payloads on the control channel', async () => {
 test('control channel backpressure queues and flushes on bufferedamountlow', async () => {
   const { host, hostPc } = await connectMockPair();
   const control = hostPc._channels[0];
-  control.setBufferedAmount(DUNECITY_WEBRTC_CONTROL_HIGH_WATER);
+  control.setBufferedAmount(DUNECITY_WEBRTC_CHANNELS[0].highWaterBytes);
 
   const bytes = new Uint8Array([9, 9, 9, 9]);
   assert.equal(host.send(0, bytes), true);
   assert.equal(host.getStats().channels[0].queued, 1);
   assert.equal(control.sent.length, 0);
 
-  control.setBufferedAmount(DUNECITY_WEBRTC_CONTROL_LOW_WATER);
+  control.setBufferedAmount(DUNECITY_WEBRTC_CHANNELS[0].lowWaterBytes);
   await waitFor(() => control.sent.length === 1, 3000, 'queued control flush');
   assert.deepEqual(Array.from(control.sent[0]), Array.from(bytes));
 });
 
 test('commands channel drops when bufferedAmount is at high water', async () => {
   const { host, hostPc } = await connectMockPair();
-  hostPc._channels[1].bufferedAmount = DUNECITY_WEBRTC_COMMANDS_HIGH_WATER;
+  hostPc._channels[1].bufferedAmount = DUNECITY_WEBRTC_CHANNELS[1].dropHighWaterBytes;
 
   const payload = new Uint8Array([1, 2, 3, 4]);
   assert.equal(host.send(1, payload), false);
@@ -627,12 +623,16 @@ test('integration: two finders pair through the real matchmaking lobby', async (
   }
 });
 
-test('module exports include channel option constants', () => {
-  assert.equal(DUNECITY_WEBRTC_CONTROL_OPTIONS.ordered, true);
-  assert.equal(DUNECITY_WEBRTC_COMMANDS_OPTIONS.ordered, false);
-  assert.equal(DUNECITY_WEBRTC_COMMANDS_OPTIONS.maxRetransmits, 0);
-  assert.equal(DUNECITY_WEBRTC_CONTROL_HIGH_WATER, 512 * 1024);
-  assert.equal(DUNECITY_WEBRTC_COMMANDS_HIGH_WATER, 512 * 1024);
+test('module exports include channel spec table', () => {
+  assert.equal(DUNECITY_WEBRTC_CHANNELS.length, 2);
+  assert.equal(DUNECITY_WEBRTC_CHANNELS[0].label, 'control');
+  assert.equal(DUNECITY_WEBRTC_CHANNELS[0].ordered, true);
+  assert.equal(DUNECITY_WEBRTC_CHANNELS[0].highWaterBytes, 512 * 1024);
+  assert.equal(DUNECITY_WEBRTC_CHANNELS[0].lowWaterBytes, 128 * 1024);
+  assert.equal(DUNECITY_WEBRTC_CHANNELS[1].label, 'commands');
+  assert.equal(DUNECITY_WEBRTC_CHANNELS[1].ordered, false);
+  assert.equal(DUNECITY_WEBRTC_CHANNELS[1].maxRetransmits, 0);
+  assert.equal(DUNECITY_WEBRTC_CHANNELS[1].dropHighWaterBytes, 512 * 1024);
 });
 
 test('signalling adapter send() emits p2pkit dialect with from/to and rejects malformed messages', () => {

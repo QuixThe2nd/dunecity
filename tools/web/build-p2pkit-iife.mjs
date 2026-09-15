@@ -39,6 +39,7 @@ const EXPECTED_KEYS = [
   'DEFAULT_ICE_SERVERS',
   'DEFAULT_TRANSPORT_ORDER',
   'Emitter',
+  'RTCDataChannelSendQueue',
   'RTCTransport',
   'capsFor',
   'chooseTransport',

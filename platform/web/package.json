@@ -13,7 +13,7 @@
   },
   "dependencies": {
     "dunecity-webrtc-signaling": "file:../../tools/webrtc-signaling",
-    "p2pkit": "github:QuixThe2nd/p2pkit#bcd00aa6e66f94d9caecc43294c2c6452d569a4a"
+    "p2pkit": "github:QuixThe2nd/p2pkit#1ee02b3c6590d8e96249eddf2090817b431c5864"
   },
   "devDependencies": {
     "esbuild": "^0.25.0",
