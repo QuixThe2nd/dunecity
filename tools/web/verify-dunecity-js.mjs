@@ -1,11 +1,16 @@
 #!/usr/bin/env node
 /**
  * Post-build verification for dunecity.js WebRTC glue wiring.
- * Fails on DCE of createDuneCityWebRtc or literal $-prefixed helper calls at runtime.
+ * Fails on DCE of createP2pkitWasmGlue or literal $-prefixed helper calls at runtime.
+ *
+ * The wiring now spans two --js-library files: the vendored p2pkit-wasm SDK
+ * (platform/web/p2pkit-wasm-glue.js, $createP2pkitWasmGlue + $P2PKIT_WASM_*
+ * constants) and the DuneCity adapter (platform/web/dunecity_webrtc_config.js,
+ * $webrtcInit + the webrtc* C shims). Both are checked.
  *
  * Usage:
  *   node tools/web/verify-dunecity-js.mjs path/to/dunecity.js
- *   node tools/web/verify-dunecity-js.mjs --source platform/web/webrtc_glue.js
+ *   node tools/web/verify-dunecity-js.mjs --source platform/web/dunecity_webrtc_config.js
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -20,6 +25,7 @@ if (args.length !== 2 || !['--built', '--source'].includes(args[0])) {
 const mode = args[0];
 const filePath = path.resolve(args[1]);
 const text = fs.readFileSync(filePath, 'utf8');
+const sdkGluePath = path.join(path.dirname(filePath), 'p2pkit-wasm-glue.js');
 
 function fail(msg) {
   console.error(`ERROR: ${msg}`);
@@ -35,44 +41,61 @@ function hoistEmscriptenLibraryHelpers(lib, target) {
 }
 
 if (mode === '--source') {
-  if (!text.includes('$createDuneCityWebRtc: createDuneCityWebRtc')) {
-    fail('webrtc_glue.js must export $createDuneCityWebRtc to survive Emscripten DCE');
+  if (path.basename(filePath) !== 'dunecity_webrtc_config.js') {
+    fail('--source expects platform/web/dunecity_webrtc_config.js (the adapter that owns the C shims)');
   }
+  if (!fs.existsSync(sdkGluePath)) {
+    fail('platform/web/p2pkit-wasm-glue.js (vendored SDK glue) not found next to the adapter; run tools/web/fetch-p2pkit-wasm.mjs');
+  }
+  const sdkText = fs.readFileSync(sdkGluePath, 'utf8');
+
+  // SDK glue: the factory must be a retained library symbol so it survives DCE.
+  if (!sdkText.includes('$createP2pkitWasmGlue: createP2pkitWasmGlue')) {
+    fail('p2pkit-wasm-glue.js must export $createP2pkitWasmGlue to survive Emscripten DCE');
+  }
+  if (!sdkText.includes('$createP2pkitWasmGlue__deps')) {
+    fail('p2pkit-wasm-glue.js must declare $createP2pkitWasmGlue__deps (retains the $P2PKIT_WASM_* constants)');
+  }
+
+  // Adapter: retain the SDK factory through __deps and emit unprefixed calls only.
   if (!text.includes('$webrtcInit__deps')) {
-    fail('webrtc_glue.js must declare $webrtcInit__deps');
+    fail('dunecity_webrtc_config.js must declare $webrtcInit__deps');
+  }
+  if (!text.includes("'$createP2pkitWasmGlue'")) {
+    fail("dunecity_webrtc_config.js $webrtcInit__deps must retain $createP2pkitWasmGlue (cross-library dep)");
   }
   if (!text.includes('webrtcFindMatch__deps')) {
-    fail('webrtc_glue.js must declare webrtcFindMatch__deps');
+    fail('dunecity_webrtc_config.js must declare webrtcFindMatch__deps');
   }
   if (!text.includes('webrtcCancelMatch__deps')) {
-    fail('webrtc_glue.js must declare webrtcCancelMatch__deps');
+    fail('dunecity_webrtc_config.js must declare webrtcCancelMatch__deps');
   }
-  if (text.includes('$createDuneCityWebRtc__postset')) {
-    fail('webrtc_glue.js must not use $createDuneCityWebRtc__postset; $ keys emit unprefixed runtime ids');
-  }
-  if (/\$createDuneCityWebRtc\s*\(/.test(text)) {
-    fail('webrtc_glue.js must call createDuneCityWebRtc(...), not literal $createDuneCityWebRtc(...) at runtime');
+  if (text.includes('$webrtcInit__postset')) {
+    fail('dunecity_webrtc_config.js must not use $webrtcInit__postset; $ keys emit unprefixed runtime ids');
   }
   if (/\$webrtcInit\s*\(/.test(text)) {
-    fail('webrtc_glue.js must call webrtcInit(), not literal $webrtcInit() at runtime');
+    fail('dunecity_webrtc_config.js must call webrtcInit(), not literal $webrtcInit() at runtime');
   }
-  if (!/\bcreateDuneCityWebRtc\s*\(/.test(text)) {
-    fail('webrtc_glue.js must call createDuneCityWebRtc(...) inside $webrtcInit');
+  if (/\$createP2pkitWasmGlue\s*\(/.test(text)) {
+    fail('dunecity_webrtc_config.js must call createP2pkitWasmGlue(...), not literal $createP2pkitWasmGlue(...) at runtime');
+  }
+  if (!/\bcreateP2pkitWasmGlue\s*\(/.test(text)) {
+    fail('dunecity_webrtc_config.js must call createP2pkitWasmGlue(...) inside $webrtcInit');
   }
   if (!/\bwebrtcInit\s*\(/.test(text)) {
-    fail('webrtc_glue.js must call webrtcInit() from exported wrappers');
+    fail('dunecity_webrtc_config.js must call webrtcInit() from exported wrappers');
   }
-  console.log(`OK: source WebRTC library wiring in ${filePath}`);
+  console.log(`OK: source WebRTC library wiring in ${filePath} (+ ${path.basename(sdkGluePath)})`);
   process.exit(0);
 }
 
 // --built: validate emitted dunecity.js
 if (
-  !/function\s+createDuneCityWebRtc\s*\(/.test(text) &&
-  !/var\s+createDuneCityWebRtc\s*=/.test(text) &&
-  !/createDuneCityWebRtc\s*=\s*function/.test(text)
+  !/function\s+createP2pkitWasmGlue\s*\(/.test(text) &&
+  !/var\s+createP2pkitWasmGlue\s*=/.test(text) &&
+  !/createP2pkitWasmGlue\s*=\s*function/.test(text)
 ) {
-  fail('dunecity.js missing createDuneCityWebRtc factory (DCE or glue not linked)');
+  fail('dunecity.js missing createP2pkitWasmGlue factory (DCE or SDK glue not linked)');
 }
 
 if (!/function _webrtcFindMatch\(\)\{webrtcInit\(\)/.test(text)) {
@@ -81,8 +104,8 @@ if (!/function _webrtcFindMatch\(\)\{webrtcInit\(\)/.test(text)) {
 if (/function _webrtcFindMatch\(\)\{\$webrtcInit\(\)/.test(text)) {
   fail('dunecity.js _webrtcFindMatch calls literal $webrtcInit() (ReferenceError in browser)');
 }
-if (/\$createDuneCityWebRtc\s*\(/.test(text)) {
-  fail('dunecity.js must not reference literal $createDuneCityWebRtc(...) at runtime');
+if (/\$createP2pkitWasmGlue\s*\(/.test(text)) {
+  fail('dunecity.js must not reference literal $createP2pkitWasmGlue(...) at runtime');
 }
 if (/\$webrtcInit\s*\(/.test(text)) {
   fail('dunecity.js must not reference literal $webrtcInit() at runtime');
@@ -107,7 +130,9 @@ if (/dunecity\.worker\.js|ENVIRONMENT_IS_PTHREAD=true|USE_PTHREADS/.test(text)) 
   fail('dunecity.js appears to require pthread worker (expected single-threaded build)');
 }
 
-// Runtime smoke: re-load glue with mocked Emscripten runtime (validates source wiring).
+// Runtime smoke: re-load BOTH library files with mocked Emscripten runtime,
+// merged into one LibraryManager exactly like the real link (validates the
+// cross-file $createP2pkitWasmGlue dep).
 globalThis.mergeInto = (target, lib) => Object.assign(target, lib);
 globalThis.LibraryManager = { library: {} };
 globalThis.Module = { print: () => {} };
@@ -120,15 +145,24 @@ globalThis.stringToUTF8 = () => {};
 globalThis.RTCPeerConnection = class {};
 globalThis.WebSocket = class { static OPEN = 1; };
 
-const repoGlue = path.resolve(process.cwd(), 'platform/web/webrtc_glue.js');
-if (!fs.existsSync(repoGlue)) {
-  fail('cannot locate platform/web/webrtc_glue.js for runtime wrapper smoke test');
+const repoRoot = path.resolve(process.cwd());
+const libFiles = [
+  path.join(repoRoot, 'platform/web/p2pkit-wasm-glue.js'),
+  path.join(repoRoot, 'platform/web/dunecity_webrtc_config.js'),
+];
+for (const libFile of libFiles) {
+  if (!fs.existsSync(libFile)) {
+    fail(`cannot locate ${libFile} for runtime wrapper smoke test`);
+  }
+  await import(pathToFileURL(libFile).href);
 }
-await import(pathToFileURL(repoGlue).href);
 
 const lib = globalThis.LibraryManager.library;
-if (typeof lib.$createDuneCityWebRtc !== 'function') {
-  fail('LibraryManager.library missing $createDuneCityWebRtc after loading glue');
+if (typeof lib.$createP2pkitWasmGlue !== 'function') {
+  fail('LibraryManager.library missing $createP2pkitWasmGlue after loading SDK glue');
+}
+if (typeof lib.$webrtcInit !== 'function') {
+  fail('LibraryManager.library missing $webrtcInit after loading adapter');
 }
 if (typeof lib.webrtcFindMatch !== 'function') {
   fail('LibraryManager.library missing webrtcFindMatch wrapper');

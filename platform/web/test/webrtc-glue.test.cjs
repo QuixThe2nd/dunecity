@@ -279,7 +279,7 @@ function collectEvents(onEvent) {
 }
 
 async function startSignalingServer() {
-  const { createSignalingServer } = await import('../../../tools/webrtc-signaling/server.js');
+  const { createSignalingServer } = await import('./fixtures/bootstrapping-server.js');
   const ctx = createSignalingServer();
   await new Promise((resolve, reject) => {
     ctx.httpServer.once('error', reject);

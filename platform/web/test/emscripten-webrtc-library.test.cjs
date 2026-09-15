@@ -8,7 +8,8 @@ const vm = require('node:vm');
 const { spawnSync } = require('node:child_process');
 
 const ROOT = path.resolve(__dirname, '../../..');
-const GLUE = path.join(ROOT, 'platform/web/webrtc_glue.js');
+const GLUE = path.join(ROOT, 'platform/web/p2pkit-wasm-glue.js');
+const ADAPTER = path.join(ROOT, 'platform/web/dunecity_webrtc_config.js');
 const VERIFY = path.join(ROOT, 'tools/web/verify-dunecity-js.mjs');
 
 function hoistEmscriptenLibraryHelpers(lib, target) {
@@ -19,21 +20,24 @@ function hoistEmscriptenLibraryHelpers(lib, target) {
   }
 }
 
-test('webrtc_glue.js uses Emscripten $ deps and retains createDuneCityWebRtc', () => {
+test('SDK glue retains createP2pkitWasmGlue', () => {
   const text = fs.readFileSync(GLUE, 'utf8');
-  assert.match(text, /\$createDuneCityWebRtc:\s*createDuneCityWebRtc/);
+  assert.match(text, /\$createP2pkitWasmGlue:\s*createP2pkitWasmGlue/);
+  assert.match(text, /createP2pkitWasmGlue\s*\(/);
+  assert.doesNotMatch(text, /\$createP2pkitWasmGlue\s*\(/);
+});
+
+test('adapter wires $webrtcInit deps over the SDK glue', () => {
+  const text = fs.readFileSync(ADAPTER, 'utf8');
   assert.match(text, /\$webrtcInit__deps:/);
   assert.match(text, /webrtcFindMatch__deps:\s*\[\s*'\$webrtcInit'\s*\]/);
   assert.match(text, /webrtcCancelMatch__deps:\s*\[\s*'\$webrtcInit'/);
-  assert.doesNotMatch(text, /\$createDuneCityWebRtc__postset/);
-  assert.match(text, /createDuneCityWebRtc\s*\(/);
   assert.match(text, /\bwebrtcInit\s*\(/);
-  assert.doesNotMatch(text, /\$createDuneCityWebRtc\s*\(/);
   assert.doesNotMatch(text, /\$webrtcInit\s*\(/);
 });
 
-test('verify-dunecity-js.mjs accepts current webrtc_glue.js source', () => {
-  const result = spawnSync(process.execPath, [VERIFY, '--source', GLUE], {
+test('verify-dunecity-js.mjs accepts current adapter + SDK glue sources', () => {
+  const result = spawnSync(process.execPath, [VERIFY, '--source', ADAPTER], {
     cwd: ROOT,
     encoding: 'utf8',
   });

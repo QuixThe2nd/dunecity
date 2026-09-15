@@ -4,7 +4,6 @@
   "private": true,
   "description": "Unit tests for the DuneCity browser WebRTC bridge (platform/web/webrtc_glue.js).",
   "scripts": {
-    "postinstall": "npm ci --prefix ../../tools/webrtc-signaling --omit=dev",
     "build:iife": "node ../../tools/web/build-p2pkit-iife.mjs",
     "test": "node --test test/*.test.cjs"
   },
@@ -12,7 +11,6 @@
     "node": ">=20"
   },
   "dependencies": {
-    "dunecity-webrtc-signaling": "file:../../tools/webrtc-signaling",
     "p2pkit": "github:QuixThe2nd/p2pkit#bcd00aa6e66f94d9caecc43294c2c6452d569a4a"
   },
   "devDependencies": {
