@@ -70,6 +70,11 @@ public:
     const std::array<int, 8>& getLastUnitMixBps() const { return lastUnitMixBps; }
     std::string getDifficultyName() const;
     bool permitsPoliceReinforcement(int unitValue) const;
+    bool ignoresUnitCountLimit() const { return difficulty==Difficulty::Hard || difficulty==Difficulty::Brutal; }
+    bool isAlliedWithHuman() const;
+    int harvesterCountCeiling() const;
+    int campaignAllyHarvesterLimit() const;
+    bool canAddRepairYard(int includingQueued) const;
 
     void onObjectWasBuilt(const ObjectBase* pObject) override;
     void onDecrementStructures(int itemID, const Coord& location) override;

@@ -16,6 +16,32 @@ void runCampaignPressureProbe(Game& game) {
         }
     require(enemies.size()>=2,"Pressure probe needs two campaign enemy houses");
     require(partner && !partner->isCampaignEnemy(),"Human partner inherited enemy restrictions");
+    // The engine ceiling follows controller difficulty, including a human's
+    // shared house. Switching back restores the authored limit; workers stay capped.
+    for (auto* bot : {partner,enemies[0]}) {
+        auto* house=const_cast<House*>(bot->getHouse());
+        const auto savedDifficulty=bot->difficulty;
+        const int savedLimit=house->maxUnits;
+        const int savedWorkers=house->numItem[Unit_Harvester];
+        house->maxUnits=1;
+        house->numItem[Unit_Harvester]=house->getMaxHarvesters();
+        for(auto tier:{QuantBot::Difficulty::Easy,QuantBot::Difficulty::Medium,
+                       QuantBot::Difficulty::Hard,QuantBot::Difficulty::Brutal,QuantBot::Difficulty::Defend}) {
+            bot->difficulty=tier;
+            const bool unlimited=tier==QuantBot::Difficulty::Hard || tier==QuantBot::Difficulty::Brutal;
+            require(house->getMaxUnits()==(unlimited ? 0 : 1),"Wrong effective engine unit ceiling");
+            require(house->isGroundUnitLimitReached()!=unlimited,"Ground limit did not follow controller");
+            if(unlimited) require(!house->isInfantryUnitLimitReached() && !house->isAirUnitLimitReached(),
+                "Infantry/air retained a count limit");
+            house->numItem[Unit_Harvester]=house->getMaxHarvesters();
+            require(house->isHarvesterLimitReached(),"Removing unit ceiling removed the worker ceiling");
+            if(tier==QuantBot::Difficulty::Brutal) {
+                if(bot==partner) require(bot->harvesterCountCeiling()==0,"Shared helper inherited enemy worker cap");
+                else require(house->getMaxHarvesters()<=7,"Brutal enemy engine worker cap exceeds seven");
+            }
+        }
+        house->maxUnits=savedLimit;house->numItem[Unit_Harvester]=savedWorkers;bot->difficulty=savedDifficulty;
+    }
     // Earliest offensive trigger, excluding earlier home and worker deliveries.
     auto savedTriggers=std::move(game.getTriggerManager().triggers);
     game.getTriggerManager().addTrigger(std::make_unique<ReinforcementTrigger>(enemies[0]->getHouse()->getHouseID(),Unit_Tank,Drop_Homebase,false,100));
@@ -26,7 +52,7 @@ void runCampaignPressureProbe(Game& game) {
         bot->updateCampaignWave();
         require(bot->campaignWave.opening>=30000,"AI opened before map attack trigger");
         require(bot->campaignWave.opening<=30000+MILLI2CYCLES(120000),"Opening delay exceeds two minutes");
-        if(tier>=QuantBot::Difficulty::Hard) require(bot->campaignWave.opening==30000,"Hard/Brutal delayed opening");
+        if(tier==QuantBot::Difficulty::Brutal) require(bot->campaignWave.opening==30000,"Brutal delayed opening");
     }
     game.getTriggerManager().triggers.clear();
     enemies[0]->difficulty=QuantBot::Difficulty::Brutal;enemies[0]->campaignWave={};
@@ -41,8 +67,8 @@ void runCampaignPressureProbe(Game& game) {
             auto* bot=enemies[0];bot->difficulty=tier;bot->campaignWave={};bot->updateCampaignWave();
             require(bot->campaignWave.opening>=MILLI2CYCLES(4*60000)
                 && bot->campaignWave.opening<=MILLI2CYCLES(6*60000),"Early map opening outside minutes 4–6");
-            if(tier>=QuantBot::Difficulty::Hard)
-                require(bot->campaignWave.opening==MILLI2CYCLES(4*60000),"Early Hard/Brutal missed start signal");
+            if(tier==QuantBot::Difficulty::Brutal)
+                require(bot->campaignWave.opening==MILLI2CYCLES(4*60000),"Early Brutal missed start signal");
         }
     game.gameInitSettings.mission=savedMission;game.gameInitSettings.modName=savedMod;game.gameInitSettings.houseID=savedHouse;
     game.getTriggerManager().triggers=std::move(savedTriggers);
@@ -74,7 +100,7 @@ void runCampaignPressureProbe(Game& game) {
         SDL_Log("PRESSURE_TIER_PASS: tier=%d houses=%d units=%d value=%d",int(tier),used.houses,used.units,used.value);
     }
     // Large real armies must not be cut back to the former alliance caps.
-    // Each house gets 40 tanks: Hard sends 32, Brutal sends all 40.
+    // Each house gets 40 tanks: Hard observes its credit cap, Brutal sends all 40.
     std::vector<UnitBase*> assaultArmy;
     for (auto* bot:enemies) {
         int spawned=0;
@@ -91,12 +117,12 @@ void runCampaignPressureProbe(Game& game) {
     unitList.clear();for(auto* unit:assaultArmy)unitList.push_back(unit);
     try {
         game.techLevel=9;
-        for(auto tier:{QuantBot::Difficulty::Easy,QuantBot::Difficulty::Medium}) {
+        for(auto tier:{QuantBot::Difficulty::Easy,QuantBot::Difficulty::Medium,QuantBot::Difficulty::Hard}) {
             reset(tier);
             auto* bot=enemies[0];
             const int pct=int(getQuantBotConfig().getSettings(int(tier)).attackThresholdPercent*100);
             const int price=game.objectData.data[Unit_Tank][bot->getHouse()->getHouseID()].price;
-            bot->militaryValueLimit=31*price*100/pct;
+            bot->militaryValueLimit=20*price*100/pct;
             std::vector<UnitBase*> recovering;
             for(auto* unit:assaultArmy) if(unit->getOwner()==bot->getHouse() && recovering.size()<5) {
                 unit->doSetAttackMode(RETREAT);recovering.push_back(unit);
@@ -105,16 +131,16 @@ void runCampaignPressureProbe(Game& game) {
             require(bot->campaignWave.members.empty(),"Aggregate readiness was bypassed");
             bot->attack(40*price);
             const auto initial=bot->campaignWave.members;
-            const size_t expected=tier==QuantBot::Difficulty::Easy ? 5 : 8;
+            const size_t expected=tier==QuantBot::Difficulty::Easy ? 5 : bot->campaignProfile().value/price;
             require(initial.size()==expected,"First wave missed its configured size");
             for(int attempt=0;attempt<10;++attempt)bot->attack(40*price);
             require(bot->campaignWave.members==initial,"Away or injured troops satisfied fresh-wave readiness");
             // Ready replacements wait for the dispatch countdown, not for
             // the current attackers to die or return.
             const auto cycle=game.getGameCycleCount();
-            for(size_t i=0;i<expected-4;++i) recovering[i]->doSetAttackMode(GUARD);
+            for(auto* unit:recovering) unit->doSetAttackMode(GUARD);
             const int pause=bot->attackTimer;
-            const int minimum=tier==QuantBot::Difficulty::Easy ? 60000 : 120000;
+            const int minimum=60000;
             require(pause>=MILLI2CYCLES(minimum) && pause<=MILLI2CYCLES(minimum+120000),
                 "Dispatch countdown is outside its difficulty range");
             for(int attempt=0;attempt<10;++attempt)bot->attack(40*price);
@@ -144,14 +170,14 @@ void runCampaignPressureProbe(Game& game) {
             reset(tier);
             for(size_t i=0;i<enemies.size();++i) {
                 auto* bot=enemies[i];bot->militaryValueLimit=12000;bot->launchGroundHunt();
-                const size_t expected=tier==QuantBot::Difficulty::Hard ? 32 : 40;
+                const size_t expected=tier==QuantBot::Difficulty::Hard ? 3500/game.objectData.data[Unit_Tank][bot->getHouse()->getHouseID()].price : 40;
                 require(bot->campaignWave.members.size()==expected,"Hard/Brutal failed army commitment or house concurrency");
                 const auto members=bot->campaignWave.members;
                 bot->launchGroundHunt();
                 require(bot->campaignWave.members==members,"Large assault topped up on repeat dispatch");
             }
             SDL_Log("CAMPAIGN_COMMITMENT_PASS: tier=%d tanks_per_house=40 sent_per_house=%d houses=%d",
-                int(tier),tier==QuantBot::Difficulty::Hard ? 32 : 40,enemies[0]->campaignPressure().houses);
+                int(tier),int(enemies[0]->campaignWave.members.size()),enemies[0]->campaignPressure().houses);
         }
         reset(QuantBot::Difficulty::Brutal);
         auto* bot=enemies[0];

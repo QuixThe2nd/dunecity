@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <set>
+#include <limits>
 
 namespace CampaignDifficultyPolicy {
 struct Profile {
@@ -18,8 +19,8 @@ inline Profile profile(int difficulty, int tech) {
         // Late Easy waves have a 1,700-credit ceiling; the separate
         // half-ready-army budget still retains defenders.
         case 0: return {1, 3+stage, stage==2 ? 1700 : (3+stage)*300, 180000-stage*30000, 120000, 150000, 25, 50, true};
-        case 1: return {1, 6+stage, (6+stage)*425, 120000-stage*15000, 60000, 180000, 15, 50, true};
-        case 2: return {2, 10+stage*2, (10+stage*2)*550, 75000-stage*15000, 0, 240000, 10, 80, false};
+        case 1: return {1, std::numeric_limits<int>::max(), 2500, 120000-stage*15000, 120000, 180000, 15, 100, true};
+        case 2: return {2, std::numeric_limits<int>::max(), 3500, 75000-stage*15000, 120000, 240000, 10, 100, true};
         default:return {8, 16+stage*4, (16+stage*4)*700, 40000-stage*10000, 0, 300000, 5, 100, false};
     }
 }
@@ -31,12 +32,11 @@ inline uint32_t staggerMs(uint32_t seed, uint32_t cycle, uint32_t house, uint32_
     return value % (spanMs+1);
 }
 inline uint32_t openingDelayMs(int difficulty, uint32_t seed, uint32_t triggerCycle, uint32_t house) {
-    return difficulty >= 2 ? 0 : staggerMs(seed,triggerCycle,house,120000);
+    return difficulty == 3 ? 0 : staggerMs(seed,triggerCycle,house,120000);
 }
 inline uint32_t repeatDelayMs(int difficulty, uint32_t seed, uint32_t cycle, uint32_t house) {
-    // Easy sends a fresh wave every 1–3 game minutes when ready. Medium
-    // retains its existing 2–4-minute interval and larger wave allowance.
-    return (difficulty==0 ? 60000u : 120000u) + staggerMs(seed,cycle,house,120000);
+    // Easy, Medium and Hard each start an independent 1–3-minute countdown.
+    return 60000u + staggerMs(seed,cycle,house,120000);
 }
 struct Wave {
     bool initialized = false;

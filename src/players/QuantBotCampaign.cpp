@@ -3,24 +3,38 @@
 #include <House.h>
 #include <Game.h>
 #include <Map.h>
+#include <misc/CampaignControls.h>
 #include <sand.h>
 #include <structures/StructureBase.h>
 #include <units/UnitBase.h>
 #include <Trigger/ReinforcementTrigger.h>
 #include <Trigger/TriggerManager.h>
 
-bool QuantBot::isCampaignEnemy() const {
-    if (!currentGame || !isCampaignGameType(currentGame->gameType) || supportMode
-        || difficulty == Difficulty::Defend) return false;
-    for (const auto& player : getHouse()->getPlayerList())
-        if (dynamic_cast<const HumanPlayer*>(player.get())) return false;
-    // AI-only allies of a human must not inherit beginner-facing enemy caps.
-    for (int h=0;h<NUM_HOUSES;++h) if (const auto* house=getHouse(h)) {
+bool QuantBot::isAlliedWithHuman() const {
+    if (!getHouse()) return false;
+    for (int h=0; h<NUM_HOUSES; ++h) if (const auto* house=getHouse(h)) {
         if (house->getTeamID()!=getHouse()->getTeamID()) continue;
         for (const auto& player : house->getPlayerList())
-            if (dynamic_cast<const HumanPlayer*>(player.get())) return false;
+            if (dynamic_cast<const HumanPlayer*>(player.get())) return true;
     }
-    return true;
+    return false;
+}
+
+int QuantBot::harvesterCountCeiling() const {
+    return difficulty == Difficulty::Brutal && isCampaignEnemy() ? 7 : 0;
+}
+
+int QuantBot::campaignAllyHarvesterLimit() const {
+    return currentGame && isCampaignGameType(currentGame->gameType)
+        && difficulty == Difficulty::Brutal && isAlliedWithHuman()
+        && currentGame->getGameInitSettings().getMission() >= CampaignControls::firstMission(8)
+        && currentGame->getGameInitSettings().getGameOptions().maximumNumberOfHarvestersOverride < 0
+        ? 20 : 0;
+}
+
+bool QuantBot::isCampaignEnemy() const {
+    return currentGame && isCampaignGameType(currentGame->gameType)
+        && !supportMode && difficulty != Difficulty::Defend && !isAlliedWithHuman();
 }
 
 CampaignDifficultyPolicy::Profile QuantBot::campaignProfile() const {
@@ -35,12 +49,12 @@ bool QuantBot::campaignCombatUnit(const UnitBase* unit) const {
 }
 
 bool QuantBot::reserveDamagedUnitForRepair(const UnitBase* unit) const {
-    // Easy campaign troops cannot recover at home without a repair yard.
+    // Easy/Medium campaign troops cannot recover at home without a repair yard.
     // Keep them available for combat instead of withdrawing and excluding them
     // from every later wave. Explicit retreat/manual orders remain protected.
     return unit->isBadlyDamaged()
         && !(currentGame && isCampaignGameType(currentGame->gameType)
-            && difficulty==Difficulty::Easy && !getHouse()->hasRepairYard());
+            && (difficulty==Difficulty::Easy || difficulty==Difficulty::Medium) && !getHouse()->hasRepairYard());
 }
 
 CampaignDifficultyPolicy::Pressure QuantBot::campaignPressure() const {
@@ -70,7 +84,7 @@ int QuantBot::campaignRequiredArmy(int configuredThreshold) const {
 
 bool QuantBot::campaignCanLaunch() const {
     if (!isCampaignEnemy()) return true;
-    // Each successful Easy/Medium dispatch starts its next-wave countdown.
+    // Each successful Easy/Medium/Hard dispatch starts its next-wave countdown.
     // Surviving attackers keep fighting but never block a later ready wave.
     return campaignWave.initialized && getGameCycleCount() >= campaignWave.opening
         && (!campaignProfile().limitedWave || attackTimer <= 0);

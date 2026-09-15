@@ -1,3 +1,284 @@
+## 2026-09-15 — Custom economy parity and local base defence, 1.0.699
+
+Stefan clarified custom-game allies/opponents should share normal economy rules,
+with military built alongside workers; aggressive full-fleet saving belongs to
+campaign helpers. Seven-worker Brutal ceiling now applies only to campaign
+enemies. Custom bots retain authored map/override/spice ceilings regardless of
+human alliance. Full-fleet worker cash reserve and bargain bypass of spice
+planning are campaign-helper-only. Custom Starport orders allocate at most half
+available cash to economy while army value is below target, except emergency
+first two workers; remaining money buys cheap troops. Existing factory capital
+balance again applies without the campaign reserve overriding it.
+
+Base defenders were released from defenceAssignments upon entering guard range,
+allowing regroup to steal them after target loss; proportional response could
+also leave nearby troops idle despite the base being attacked. Rescan visible
+units actively firing at owned structures before regroup, using actual weapon
+range (isInAttackRange instead reflects guard orders and always passes Hunt).
+Scramble all eligible responders within12 tiles for such a base attack; preserve
+assignments through arrival until target death/departure, reacquire targets, and
+exclude assigned defenders from regroup/new offensive dispatch. Human orders,
+saboteurs, explicit retreats and damaged units reserved for repair remain exempt.
+
+Remote 698 PR build caught Tornie QuantBot Config checksum stale after693 tuning.
+Updated only its hash in the existing manifest; integrity checks remain enabled.
+No698 public release occurred. Release notes now cover693–699 together.
+
+Validation: 7/7 CTests; pre/post dependency checks; native vanilla and city
+Starport probes preserve campaign purchases and custom1800 buys5 workers plus9
+tanks; native army probe verifies nearby regroup travel interrupted for base
+attack, assignment retained/reacquired and Hunt/kiting unchanged. Native defence
+and pacing probes pass. /tmp/dunecity-699-{imports,city-imports,army-final,defence,pacing};
+/tmp/ctest-699-final.log. Local699 installed with698 backup at
+/tmp/dunecity-before-699.app. Public release pending PR47 and stable tag builds.
+
+## 2026-09-15 — SimCity starting defences and allied opening, 1.0.698
+
+Added ten Rocket-Turrets per player to the bundled single-player
+`2P - 192x192 - SimCity.ini`. Every construction yard, refinery, repair yard,
+factory, House IX, outpost and nuclear plant now has at least two rocket turrets
+within five tiles of its centre. Additions occupy unused rock, preserve roads,
+existing buildings and units, and reinforce both starting cities equally.
+The historical user-map packing script was not rerun; this is an additive edit
+to the shipped scenario.
+
+Human-allied campaign QuantBots enter normal development with attackTimer=0,
+so their existing army threshold can authorize the first attack immediately.
+Loaded legacy countdowns greater than60s are discarded instead of shortened to60s.
+Normal60s repeat breaks remain. Enemy campaign trigger/opening logic, support
+and Defend exclusions are unchanged. No save-format change.
+
+Validation: 7/7 CTests, pre/post dependency checks, native pacing probe verifies
+new and loaded allied opening removal plus retained60s repeat break; native
+pressure probe verifies enemy reinforcement/opening gates remain enforced.
+Artifacts /tmp/dunecity-698-{pacing,pressure}, /tmp/ctest-698.log. Map verification
+checks20 additions only, unique IDs, unused rock and exact built-bundle copy.
+Built in build-692 and installed /Applications/dunecity.app as1.0.698; previous
+app backed up at /tmp/dunecity-before-698.app. No public push or deployment.
+
+## 2026-09-15 — Keep artillery assaults engaged; campaign limits, 1.0.697
+
+Stefan reported Atreides launchers returning home after Hunt in vanilla campaign
+SCENA022, live696 session1789475830006137-0, seed249628688. Telemetry showed
+repeated combat_kite events. Source confirmed two mode-reset causes: artillery
+kiting explicitly set Area Guard, and UnitBase::doMove2Pos implicitly sets Hunt
+to Guard. Losing the target then invoked base-only regrouping. A duplicate
+artillery branch also kited away from buildings. This was not an attack budget
+or harvester-cap issue.
+
+Compared moveToOptimalSquadPosition with pre-4dfd9fa code (old army-centre/base
+nearest choice). Restored army-centre regrouping while improving its inputs:
+active, responsive ground fighters only; prefer Hunt members when an assault
+exists, exclude retreating/badly damaged/noncombat units and saboteurs. Home
+guards and workers no longer drag the assault centre backwards. Regroup uses
+safe passable spread slots and retains path/command budgets; explicit Retreat
+uses home. Regroup never overrides Hunt or human orders.
+
+Short kiting is capped at two tiles before coordinate rounding, biased toward
+the fighting army rather than base; restores Hunt after the forced move command.
+Only approaching armed ground units trigger artillery kiting; removed duplicate
+building-kiting path. Existing repair and base/harvester defence remain.
+
+Friendly campaign QuantBots now schedule attacks every60s when ready (existing
+readiness checks retained; retry15s when understrength). Conversion and loaded
+helper countdowns are capped at60s. Enemy opening/wave timing is unchanged.
+Brutal human-allied campaign houses get a default maximum20 harvesters on levels
+8/9 (scenario20 onward), in both planning and engine checks, derived at runtime
+so older saves apply it too. Explicit overrides win and spice still tapers the
+normal target. Opposing Brutal maximum increased6 to7. Other tiers/earlier maps
+unchanged. No save-format change.
+
+Validation: 7/7 CTests (/tmp/ctest-697-final.log) and dependency checks. Native
+army fixture proves Hunt survives dodge/arrival, ~2-tile movement, continued
+building siege, assault-centre filtering, human-order protection; passed vanilla
+and city. Pacing fixture verifies levels7/8/9, Hard vs Brutal, maximum20 vs spice
+target9, override3, enemy7 and allied60s. Native pressure and defence fixtures
+passed. Artifacts /tmp/dunecity-697-{army-final,army-city,pacing-final,pressure,defence}.
+New regression available through run-campaign-balance.py --army-probe.
+
+Built in build-692; local installation /Applications/dunecity.app, previous
+version saved at /tmp/dunecity-before-697.app. No public push or web/download release.
+
+## 2026-09-15 — Reserve opening cash for harvesters, 1.0.696
+
+Stefan asked to prioritise early worker growth over military purchases after
+695 Atreides reached 15 existing/queued workers only at 11.15 game minutes.
+Session1789473383768916-0 (vanilla SCENA022, seed830102282) held a target15
+until about19.5min; the spice taper was not the opening bottleneck. Starport
+orders spent leftovers on cheap combat units while worker stock was exhausted,
+and bought additional carryalls before the worker target was covered.
+
+- Normal-development QuantBots now protect normal-price cash for the missing
+  sustainable worker fleet, including the existing human-ally bargain exception.
+  Pending workers count, so cash releases when orders cover the target.
+- Military factories respect that reserve; harvester factories can spend it and
+  prioritise workers while it is needed. Starport combat bargains use only cash
+  above the worker reserve, including while workers are sold out or in transit.
+- Additional Starport carryalls wait for the worker target; the first transport
+  remains eligible. Existing construction/power/expansion rules are preserved.
+- The reserve requires spice, a refinery and a worker producer, respects ground
+  caps/explicit limits, and excludes campaign-scripted/support-only controllers.
+  No timer or save-format change. Telemetry adds harvester_investment_reserve.
+
+Validation: 7/7 CTests; pre/post dependency checks; native vanilla and city
+Starport fixtures save800 during worker stockout, buy two workers at300 on
+restock and keep200, then release cash for eight military bargains once the
+fleet is covered. Existing nine-at180/fifteen-worker case still passes. A real
+heavy factory spends one worker's protected cash on a harvester rather than
+military/upgrades in both mods. Campaign helper fixture verifies paid cargo,
+pending refinery workers and no duplicate capacity funding. Artifacts:
+/tmp/dunecity-696-{imports-final,city-imports-final,helper}; /tmp/ctest-696.log.
+
+Built in build-692. Local install is /Applications/dunecity.app; verify the
+installed version before continuing. No public push or downloads/web release.
+
+## 2026-09-15 — Allied harvester caps and radar power, 1.0.695
+
+Stefan reported a shared Atreides Brutal helper ignoring 180-credit harvesters.
+Live 694 session `1789471829089566-0`, vanilla SCENA022.INI, seed703750746,
+62x62: telemetry confirmed `harvester_ai_limit=6`, `harvester_engine_limit=6`,
+`harvester_target=6` on human house1. The six-worker difficulty restriction from
+693 had been incorrectly applied to human helpers. Stefan clarified that this
+is an ENEMY cap and classification must use alliance with human players.
+Evidence excerpt: `../outputs/radar-allied-harvesters-695/evidence.json`.
+
+- Extracted the existing human-team scan into `isAlliedWithHuman()`, shared by
+  campaign enemy classification and harvester ceilings. Brutal's six-worker cap
+  now excludes both human co-controllers and separate human-allied houses. Their
+  configured/map/explicit ceiling applies (15 in the reported vanilla map).
+- Campaign human-allied houses use normal economy development, including separate
+  allied houses loaded with campaign mode. Classification uses actual controllers
+  and team IDs, never local-player identity or the unreliable mixed-house AI flag.
+- If harvesters are below normal price and spice remains, a human ally fills its
+  permitted fleet in one affordable order instead of the ordinary remaining-spice
+  target. Bargain workers precede the first carryall and military imports; cash,
+  market stock, explicit overrides, engine cap, and pending workers are respected.
+  Enemy targets remain difficulty-limited. Normal-price investment taper remains.
+- Radar now directly requires an outpost and producedPower >= powerRequirement,
+  independent of generic power exemptions and the rocket-turret power option.
+  Previously vanilla hasPower() returned true despite the observed100/405 power
+  deficit. The general power rules/turret option are unchanged. Radar transitions
+  can reverse immediately if power is lost/restored mid-animation.
+
+Validation: 7/7 CTests and dependency checks passed. Native Starport fixture bought
+nine harvesters at180 for1620 with six already present, despite a stale target6,
+filling a human-allied fleet of15 even with a carryall available. Pacing fixture
+verified shared helper15, separate ally15/normal development, opposing Brutal6,
+and lower explicit limits. Pressure/wave fixture passed. Native radar tests in
+vanilla and Dune City cover deficit, exact equality, surplus, missing outpost,
+shutdown, and interruption/reversal of activation. The initial test incorrectly
+required an animation when an immediate completed-on state was also valid; fixed
+that assertion and both mod tests passed. No save-format change.
+
+Built in `build-692`; installed `/Applications/dunecity.app` 1.0.695 after verifying
+the game was closed. Previous app at `/tmp/dunecity-before-695.app`. Signature and
+version checked. No public push or downloads/web release in this change.
+
+## 2026-09-15 — Starport-led QuantBot opening, 1.0.694
+
+Stefan corrected the intended economy strategy: build four–five refineries,
+then starport prerequisites/starport, repair support, and only then heavy/high-tech
+production. Normal QuantBot construction now targets four refineries before its
+first port, bounded by sustainable map workers. It walks the active mod's actual
+prerequisites, counts pending buildings, saves for the next feasible step, and
+uses the existing placement/foundation handling. Power recovery remains prior.
+Missions below starport technology retain their early-tech progression; vanilla
+Easy/Medium/Hard campaign enemies retain their authored rebuild lists.
+
+Starports now purchase every available cheap combat type (including trikes/quads),
+independent of factory mix targets, best relative market price first. Removed the
+hardcoded four-type shortlist and the 2,000 spare-credit requirement. Needed
+harvesters/carryalls and bargains can use generic reserved cash after already
+committed construction costs; imports remain paid once, stock checked, queue
+acceptance checked, and military-value bounded. Harvester imports are batched to
+the useful worker target and engine ceiling, including existing/pending workers.
+Brutal's six-worker ceiling is unchanged: four refinery workers leave two import
+slots, five leave one. Market `Choam::isCheap` classification remains unchanged.
+
+Dune City-specific requests:
+- Removed the starport population gate; normal tech/prerequisites still apply.
+- Every QuantBot difficulty may add a missing repair yard. Vanilla Medium remains
+  replacement-only. Added repair-capacity fixture coverage for city Medium.
+- After the first windtrap, a power order chooses an affordable, placeable nuclear
+  plant rather than comparing spare windtrap sites/cost-per-current-power demand.
+  Unavailable, unplaceable, or unaffordable nuclear falls back to wind power; the
+  existing longer-term reactor saving policy still operates.
+
+Validation: all seven CTest suites and dependency checks passed. Native fixtures
+passed for vanilla/city Starport imports (eight discounted units across four types
+for 800 credits), above-normal-price essential imports, five-worker bulk orders
+with pending-worker accounting, vanilla repair replacement rules, city repair
+addition, and nuclear ordering/temporary congestion/lost-site refunds/small-site
+wind fallback. Nuclear fixture now starts with only a one-power deficit.
+
+Isolated observer games (no human orders, seed486409243, Harkonnen campaign9):
+vanilla Brutal helper ordered four refineries, port5.01min, repair7.65, heavy8.13,
+high-tech9.92; first port order included two harvesters together. City Medium
+ordered fourth refinery4.32, port4.69, repair9.47, heavy10.61. These are sequence
+checks, not win-rate balance evidence. Campaign4 retained refinery/light/heavy
+progression with no inaccessible-starport reservation. Diagnostics live in
+`/tmp/dunecity-694-{imports,city-imports,workers,repair,city-repair2,nuclear,vanilla,city-medium,early}`.
+The first city repair fixture needed free rock added to isolate policy from its
+artificially crowded forced placements; the corrected fixture passed.
+
+Built in `build-692` (historical directory name), installed as
+`/Applications/dunecity.app` version1.0.694 after Stefan quit the game. No public
+push, downloads, or website deployment in this change.
+
+## 2026-09-15 — QuantBot difficulty balance, 1.0.693
+
+Stefan requested the following after the 691 Atreides/Brutal-helper loss to
+three Hard campaign enemies. Implemented:
+
+- Brutal campaign military multiplier 4.0, readiness 25%. Brutal custom/shared
+  helpers also use their difficulty threshold rather than the global 40%.
+  Custom map-size military ceilings are unchanged.
+- Medium automatic campaign waves use up to 2,500 credits; Hard uses up to
+  3,500. Both are credit-based, without the old count/percentage ceilings.
+  Each house waits independently 0–2 game minutes after the authored offensive
+  reinforcement trigger and 1–3 minutes after each dispatch. Existing survivors
+  do not reset/block the timer. Brutal still opens immediately at the trigger
+  and launches again on readiness. Scripted reinforcements remain separate.
+- Medium does not invent a repair-yard target when it starts without one.
+  Stefan clarified that authored starting yards must still be replaced normally.
+  The preserved initial count caps Medium additions, including queued yards;
+  it can use existing yards. A missing authored yard/prerequisites is restored
+  promptly. Damaged Medium troops without a yard remain eligible to fight.
+- Hard/Brutal QuantBot houses have unlimited ground/infantry/air count capacity,
+  including a human's shared house. House derives the effective limit from its
+  controllers without overwriting the authored/saved cap. Easy/Medium/Defend
+  and other-controller houses retain their caps. Monetary military limits remain.
+- Brutal has a six-harvester ceiling in both planning and engine production,
+  including shared houses. Lower scenario/lobby ceilings and spice reductions
+  still win. Existing excess units are not destroyed. No save layout changed.
+
+Built at build-692/bin/dunecity.app as 1.0.693 and installed to
+/Applications/dunecity.app, verified version/signature. Updated only the two
+Brutal numeric settings in existing local main/vanilla/dunecity/Tornie INIs;
+backups /tmp/dunecity-693-config-backup. Previous installed app retained at
+/tmp/dunecity-before-693.app. New campaigns initialize the new starting-value
+multiplier; saved military ceilings and already-calculated openings persist.
+No public push, release or website deployment in this task.
+
+Validation: all seven CTest groups passed; dependency and version checks passed.
+Real-engine pressure fixture covers independent openings, fixed wave budgets,
+repeat timers with survivors, manual orders, saved bot state, restored low-tier
+unit caps, high-tier infantry/air/ground exemptions and retained worker caps.
+Pacing fixture covers six workers for Brutal enemies/helpers and lower overrides.
+Repair fixture covers Medium zero-start refusal, authored replacement, queued
+count protection and Hard repair establishment for both enemy/helper roles.
+Evidence: /tmp/dunecity-693-final-{pressure,pacing}/,
+/tmp/dunecity-693-replacement-repair/, /tmp/dunecity-693-release-ctest.log.
+
+Natural native SCENA022, Atreides Brutal helper vs Hard, seed1599783965:
+Hard dispatched 3,500 at12.01/12.23/12.27min; Ordos next3,500 at13.57 and
+Harkonnen3,450 at14.21, within the independent1–3min gaps. All Hard/Brutal
+snapshots show max_units0; helper worker limit6 and readiness10,000. The helper
+still lost at14.82min, maximum sampled military4,040. These requested settings
+work, but do not establish balanced play or solve the helper's military buildup.
+This is an observer simulation with no human orders and concrete degradation on,
+not a replay of Stefan's game. Evidence: /tmp/dunecity-693-natural-hard/.
+
 ## 2026-09-15 — Easy campaign pressure adjustment, 1.0.692
 
 Stefan tested 691 and still found Harkonnen too passive with many launchers.

@@ -401,23 +401,6 @@ void BuilderBase::updateBuildList()
             continue;
         }
 
-        // City-sim gate: Starport is a shipyard scaled to a sizable city —
-        // require 10000 displayed population (= 500 internal) before it can
-        // be built. Outside city sim there's no population, so no gate.
-        if (itemID2Add == Structure_StarPort && currentGame->isCitySimEnabled()) {
-            constexpr int kStarPortMinDisplayPop = 10000;
-            constexpr int kStarPortMinInternalPop =
-                kStarPortMinDisplayPop / DuneCity::CitySimulation::kPopDisplayMultiplier;
-            auto* citySim = currentGame->getCitySimulation();
-            const int ownPop = (citySim != nullptr)
-                ? citySim->getHouseState(owner->getHouseID()).getTotalPop()
-                : 0;
-            if (ownPop < kStarPortMinInternalPop) {
-                removeItem(buildList, iter, itemID2Add);
-                continue;
-            }
-        }
-
         const bool tornieActive = ModManager::instance().isTornieContentActive();
         const bool specialChemicalCarryall = itemID2Add == Unit_ChemicalCarryall
             && itemID == Structure_HighTechFactory

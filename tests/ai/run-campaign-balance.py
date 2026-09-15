@@ -29,6 +29,8 @@ parser.add_argument('--starport-probe', action='store_true', help='Exercise rese
 parser.add_argument('--helper-economy-probe', action='store_true', help='Verify advanced campaign helper worker investment and paid imports')
 parser.add_argument('--stats-probe', action='store_true', help='Verify campaign results with a shared human/AI house')
 parser.add_argument('--nuclear-probe', action='store_true')
+parser.add_argument('--radar-probe', action='store_true')
+parser.add_argument('--army-probe', action='store_true')
 parser.add_argument('--pressure-probe', action='store_true', help='Verify campaign wave readiness, survivor independence and save state')
 parser.add_argument('--defence-probe', action='store_true', help='Verify retaliation and base/harvester reinforcements')
 parser.add_argument('--repair-probe', action='store_true', help='Verify experienced campaign bots replace missing repair yards')
@@ -81,6 +83,8 @@ env = dict(os.environ,DUNECITY_USERDIR=str(out/'profile'),SDL_VIDEODRIVER='dummy
            BALANCE_ATTACK_PERCENT=str(args.attack_percent),BALANCE_ENEMY=args.enemy_difficulty,
            BALANCE_HOUSE=str(('harkonnen','atreides','ordos').index(args.house)),BALANCE_HARVESTER_LIMIT=str(args.harvester_limit))
 if args.nuclear_probe: env['BALANCE_NUCLEAR_PROBE'] = '1'
+if args.radar_probe: env['BALANCE_RADAR_PROBE'] = '1'
+if args.army_probe: env['BALANCE_ARMY_PROBE'] = '1'
 if args.starport_probe: env['BALANCE_STARPORT_PROBE'] = '1'
 if args.helper_economy_probe: env['BALANCE_HELPER_ECONOMY_PROBE'] = '1'
 if args.stats_probe: env['BALANCE_STATS_PROBE'] = '1'
@@ -98,7 +102,7 @@ rows = [json.loads(line) for line in events.read_text().splitlines()]
 for row in rows:
     # The pressure fixture switches difficulty in-engine and checks each tier
     # itself; its Hard/Brutal waves must not inherit the CLI's default Easy cap.
-    if not args.pressure_probe and row['event']=='ground_hunt' and row['data'].get('campaign_limited') and args.enemy_difficulty in ('easy','medium'):
+    if not args.pressure_probe and row['event']=='ground_hunt' and row['data'].get('campaign_limited') and args.enemy_difficulty in ('easy','medium','hard'):
         d=row['data']
         # Caps apply to this dispatch. Surviving units from older waves are
         # deliberately allowed alongside it after the repeat timer expires.

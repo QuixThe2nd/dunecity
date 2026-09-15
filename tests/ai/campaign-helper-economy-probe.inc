@@ -50,6 +50,7 @@ void runCampaignHelperEconomyProbe(Game& game) {
     }
     port->updateBuildList();
     require(!market.isCheap(Unit_Harvester),"Fixture requires above-market harvesters");
+    game.gameInitSettings.gameOptions.maximumNumberOfHarvestersOverride=15;
     bot->gameMode=QuantBot::GameMode::Custom;bot->harvesterLimit=15;
     bot->militaryValueLimit=40000;bot->lastCalculatedSpice=36000;
     house->takeCredits(house->getCredits());house->addCredits(9000);
