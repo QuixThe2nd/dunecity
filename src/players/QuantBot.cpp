@@ -3450,6 +3450,24 @@ void QuantBot::build(int militaryValue) {
             && !getHouse()->isGroundUnitLimitReached() && !harvesterFactories.empty()
             && CityEconomyInvestmentPolicy::openingWorkersNeeded(itemCount[Unit_Harvester],fundedHarvesterTarget,brutalCityEconomy);
     };
+    // Keep money for the missing workers when market stock or a delivery is
+    // temporarily unavailable. Count queued workers, so the reserve releases
+    // as soon as the fleet is funded rather than waiting for it to arrive.
+    auto harvesterInvestmentReserve = [&]() {
+        if (gameMode != GameMode::Custom || supportMode || !(vanillaEconomy || citySimEnabled)
+            || lastCalculatedSpice <= 0 || getHouse()->isGroundUnitLimitReached()
+            || getHouse()->getNumItems(Structure_Refinery) == 0
+            || (harvesterFactories.empty() && getHouse()->getNumItems(Structure_StarPort) == 0)) return 0;
+        int target = vanillaEconomy ? spiceHarvesterTarget : fundedHarvesterTarget;
+        const auto& market = getHouse()->getChoam();
+        if (getHouse()->getNumItems(Structure_StarPort) > 0 && isAlliedWithHuman()
+            && market.getPrice(Unit_Harvester) > 0
+            && market.getPrice(Unit_Harvester) < data[Unit_Harvester][houseID].price
+            && getHouse()->getMaxHarvesters() > 0) target = getHouse()->getMaxHarvesters();
+        const int overrideLimit = getGameInitSettings().getGameOptions().maximumNumberOfHarvestersOverride;
+        if (overrideLimit >= 0) target = std::min(target, overrideLimit);
+        return std::max(0, target-itemCount[Unit_Harvester]) * data[Unit_Harvester][houseID].price;
+    };
     auto needsFirstTransport = [&]() {
         // Preserve early carryalls while Brutal continues growing its fleet.
         if (brutalCityEconomy ? CityEconomyInvestmentPolicy::openingWorkersNeeded(itemCount[Unit_Harvester],fundedHarvesterTarget)
@@ -3544,6 +3562,7 @@ void QuantBot::build(int militaryValue) {
                     getHouse()->getNumItems(Structure_Refinery), harvesterLimit))
             .set("repair_baseline", QuantBotBuildPolicy::baselineRepairYards(
                 getHouse()->getNumItems(Structure_HeavyFactory), militaryValue))
+            .set("harvester_investment_reserve", harvesterInvestmentReserve())
             .set("harvester_ai_limit", harvesterLimit).set("campaign_economy_push",campaignEconomyPush)
             .set("harvester_engine_limit", getHouse()->getMaxHarvesters())
             .set("funded_harvester_target", vanillaEconomy ? spiceHarvesterTarget : fundedHarvesterTarget)
@@ -3624,7 +3643,7 @@ void QuantBot::build(int militaryValue) {
         return false;
     };
     auto factoryPrefersHarvester = [&](const BuilderBase* factory) {
-        if (campaignEconomyPush && itemCount[Unit_Harvester]<spiceHarvesterTarget) return true;
+        if (harvesterInvestmentReserve() > 0) return true;
         return CityEconomyInvestmentPolicy::preferFactoryHarvester(itemCount[Unit_Harvester],
             citySimEnabled ? fundedHarvesterTarget : spiceHarvesterTarget,militaryValue,militaryValueLimit,
             data[Unit_Harvester][houseID].price,canBuildMilitaryVehicle(factory),
@@ -4430,6 +4449,8 @@ void QuantBot::build(int militaryValue) {
                 if (nuclearPlan && getHouse()->hasPower() && !powerGenerationPending()
                     && pBuilder->getItemID() != Structure_ConstructionYard && !transportProducer && !workerProducer && !expansionProducer)
                     protectedCash = std::max(protectedCash,data[Structure_NuclearPlant][houseID].price);
+                if (pBuilder->getItemID() != Structure_ConstructionYard && !expansionProducer && !transportProducer)
+                    protectedCash = std::max(protectedCash,harvesterInvestmentReserve());
                 reserve.reserved = money - QuantBotBuildPolicy::spendableCredits(money,protectedCash);
 				money -= reserve.reserved;
 
@@ -4668,8 +4689,8 @@ void QuantBot::build(int militaryValue) {
                             && factoryPrefersHarvester(pBuilder)
                             && itemCount[Unit_Harvester] < (vanillaEconomy ? spiceHarvesterTarget : fundedHarvesterTarget)
                             && pBuilder->isAvailableToBuild(Unit_Harvester) && !getHouse()->isGroundUnitLimitReached()
-                            && money + (vanillaEconomy ? reserve.reserved : 0) >= data[Unit_Harvester][houseID].price
-                                + (campaignEconomyPush ? 0 : vanillaEconomy ? 1000 : (openingWorkersNeeded() || brutalCityEconomy) ? 0 : data[Unit_Tank][houseID].price)) {
+                            && money + ((vanillaEconomy || harvesterInvestmentReserve() > 0) ? reserve.reserved : 0) >= data[Unit_Harvester][houseID].price
+                                + ((campaignEconomyPush || harvesterInvestmentReserve() > 0) ? 0 : vanillaEconomy ? 1000 : (openingWorkersNeeded() || brutalCityEconomy) ? 0 : data[Unit_Tank][houseID].price)) {
                             if (produceItemWithLogging(Unit_Harvester, __LINE__, "spice_economy")) {
                                 ++itemCount[Unit_Harvester];
                                 money -= data[Unit_Harvester][houseID].price;
@@ -4847,7 +4868,7 @@ void QuantBot::build(int militaryValue) {
 
                         const int transportUnits = itemCount[Unit_Tank] + itemCount[Unit_SiegeTank]
                             + itemCount[Unit_Launcher] + itemCount[Unit_Harvester];
-                        while (itemCount[Unit_Carryall] < transportUnits / 7)
+                        while (harvesterInvestmentReserve() == 0 && itemCount[Unit_Carryall] < transportUnits / 7)
                             if (!buyEconomicImport(Unit_Carryall, "starport_transport_capacity")) break;
 
                         // Imports are opportunistic: every discounted combat type
@@ -4870,7 +4891,7 @@ void QuantBot::build(int militaryValue) {
                         for (Uint32 unit : bargains) {
                             const int price = choam.getPrice(unit);
                             const int value = data[unit][houseID].price;
-                            while (money + reserve.reserved >= price && choam.getNumAvailable(unit) > 0
+                            while (money + reserve.reserved - harvesterInvestmentReserve() >= price && choam.getNumAvailable(unit) > 0
                                 && militaryValue + value <= militaryValueLimit
                                 && !getHouse()->isUnitLimitReached(unit)) {
                                 if (!produceItemWithLogging(unit, __LINE__, "starport_bargain")) break;

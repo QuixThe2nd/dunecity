@@ -72,22 +72,45 @@ void runStarportEconomyProbe(Game& game) {
     if (workers != 1 || transports != 1 || house->getCredits() != 0 || port->okToOrder())
         throw std::runtime_error("Economic imports did not spend reserved cash at above-normal prices");
     SDL_Log("STARPORT_ECONOMY_PROBE_PASS: 2700 credits buy first carryall at 1500 and harvester at 1200; order placed, no overspend");
-    // Below the former 2000-credit floor, buy all cheap combat types, including
-    // quads excluded by the old hardcoded list. Workers are already covered by
-    // the preceding order; no transport stock is available in this second case.
+    // Sold-out workers must not turn their reserved budget into military or
+    // extra carryalls. Once stock returns, use the saved money in bulk.
+    auto* restockPort = dynamic_cast<StarPort*>(place(Structure_StarPort));
+    for (auto& offer : market.availableItems) {
+        offer.num = (offer.itemID == Unit_Quad || offer.itemID == Unit_Carryall) ? 5 : 0;
+        offer.price = offer.itemID == Unit_Harvester ? 300 : 100;
+    }
+    restockPort->updateBuildList(); house->addCredits(800);
+    bot->difficulty = QuantBot::Difficulty::Hard;
+    auto planPorts = [&](StarPort* extra) {
+        savedStructures = structureList;
+        structureList.clear(); structureList.push_back(port); structureList.push_back(restockPort);
+        if (extra) structureList.push_back(extra);
+        try { bot->build(0); } catch (...) { structureList = savedStructures; throw; }
+        structureList = savedStructures;
+    };
+    planPorts(nullptr);
+    if (!restockPort->currentProductionQueue.empty() || house->getCredits() != 800)
+        throw std::runtime_error("Sold-out workers' reserve was spent on military or extra carryalls");
+    for (auto& offer : market.availableItems) if (offer.itemID == Unit_Harvester) offer.num = 2;
+    restockPort->updateBuildList(); planPorts(nullptr);
+    int restockedWorkers = 0;
+    for (const auto& queued : restockPort->currentProductionQueue) restockedWorkers += queued.itemID == Unit_Harvester;
+    if (restockedWorkers != 2 || restockPort->currentProductionQueue.size() != 2
+        || house->getCredits() != 200 || restockPort->okToOrder())
+        throw std::runtime_error("Restocked workers did not get the saved cash before military");
+    SDL_Log("STARPORT_WORKER_RESERVE_PASS: saved 800 while workers sold out; bought two at 300 on restock, retained 200");
+    // Once the worker target is covered by existing and paid cargo, release
+    // the reserve and buy all cheap combat types below the old 2000 floor.
     auto* bargainPort = dynamic_cast<StarPort*>(place(Structure_StarPort));
+    bot->harvesterLimit = house->getNumItems(Unit_Harvester) + workers + restockedWorkers;
     for (auto& offer : market.availableItems) {
         offer.num = (offer.itemID == Unit_Quad || offer.itemID == Unit_Tank
             || offer.itemID == Unit_Launcher || offer.itemID == Unit_SiegeTank) ? 2 : 0;
-        offer.price = 100;
+        offer.price = offer.itemID == Unit_Harvester ? 300 : 100;
     }
     bargainPort->updateBuildList();
-    house->addCredits(800);
-    bot->difficulty = QuantBot::Difficulty::Hard;
-    savedStructures = structureList;
-    structureList.clear(); structureList.push_back(port); structureList.push_back(bargainPort);
-    try { bot->build(0); } catch (...) { structureList = savedStructures; throw; }
-    structureList = savedStructures;
+    house->takeCredits(house->getCredits()); house->addCredits(800);
+    planPorts(bargainPort);
     for (Uint32 type : {Unit_Quad, Unit_Tank, Unit_Launcher, Unit_SiegeTank}) {
         int count = 0;
         for (const auto& queued : bargainPort->currentProductionQueue) count += queued.itemID == type;
@@ -119,5 +142,20 @@ void runStarportEconomyProbe(Game& game) {
     if (workers!=9 || house->getCredits()!=0 || workerPort->okToOrder())
         throw std::runtime_error("Human-allied Brutal failed to fill 15-worker fleet with nine bargain imports");
     SDL_Log("STARPORT_ALLIED_WORKERS_PASS: six existing + nine imports at 180 = 15; paid 1620");
+    // A factory must be able to spend that reserve on a worker, rather than
+    // freezing behind its own protection or choosing a military unit/upgrade.
+    auto* factory = dynamic_cast<BuilderBase*>(place(Structure_HeavyFactory));
+    if (!factory) throw std::runtime_error("Worker factory fixture placement failed");
+    factory->updateBuildList(); bot->harvesterLimit = 15; bot->lastCalculatedSpice = 200000;
+    bot->rockExpansionSite = Coord::Invalid(); bot->rockSurveyCycle = game.getGameCycleCount();
+    const int workerPrice = game.objectData.data[Unit_Harvester][HOUSE_HARKONNEN].price;
+    house->takeCredits(house->getCredits()); house->addCredits(workerPrice);
+    savedStructures = structureList;
+    structureList.clear(); structureList.push_back(factory);
+    try { bot->build(4000); } catch (...) { structureList = savedStructures; throw; }
+    structureList = savedStructures;
+    if (factory->getCurrentProducedItem() != Unit_Harvester || factory->isUpgrading())
+        throw std::runtime_error("Factory failed to spend protected worker cash on a harvester");
+    SDL_Log("FACTORY_WORKER_RESERVE_PASS: one worker's cash funds a harvester before military or upgrades");
     SDL_Log("CAMPAIGN_BALANCE_RESULT: probe=starport outcome=passed");
 }

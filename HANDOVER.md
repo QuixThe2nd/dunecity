@@ -1,3 +1,36 @@
+## 2026-09-15 — Reserve opening cash for harvesters, 1.0.696
+
+Stefan asked to prioritise early worker growth over military purchases after
+695 Atreides reached 15 existing/queued workers only at 11.15 game minutes.
+Session1789473383768916-0 (vanilla SCENA022, seed830102282) held a target15
+until about19.5min; the spice taper was not the opening bottleneck. Starport
+orders spent leftovers on cheap combat units while worker stock was exhausted,
+and bought additional carryalls before the worker target was covered.
+
+- Normal-development QuantBots now protect normal-price cash for the missing
+  sustainable worker fleet, including the existing human-ally bargain exception.
+  Pending workers count, so cash releases when orders cover the target.
+- Military factories respect that reserve; harvester factories can spend it and
+  prioritise workers while it is needed. Starport combat bargains use only cash
+  above the worker reserve, including while workers are sold out or in transit.
+- Additional Starport carryalls wait for the worker target; the first transport
+  remains eligible. Existing construction/power/expansion rules are preserved.
+- The reserve requires spice, a refinery and a worker producer, respects ground
+  caps/explicit limits, and excludes campaign-scripted/support-only controllers.
+  No timer or save-format change. Telemetry adds harvester_investment_reserve.
+
+Validation: 7/7 CTests; pre/post dependency checks; native vanilla and city
+Starport fixtures save800 during worker stockout, buy two workers at300 on
+restock and keep200, then release cash for eight military bargains once the
+fleet is covered. Existing nine-at180/fifteen-worker case still passes. A real
+heavy factory spends one worker's protected cash on a harvester rather than
+military/upgrades in both mods. Campaign helper fixture verifies paid cargo,
+pending refinery workers and no duplicate capacity funding. Artifacts:
+/tmp/dunecity-696-{imports-final,city-imports-final,helper}; /tmp/ctest-696.log.
+
+Built in build-692. Local install is /Applications/dunecity.app; verify the
+installed version before continuing. No public push or downloads/web release.
+
 ## 2026-09-15 — Allied harvester caps and radar power, 1.0.695
 
 Stefan reported a shared Atreides Brutal helper ignoring 180-credit harvesters.
