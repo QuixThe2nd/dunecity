@@ -500,6 +500,25 @@ void House::incrementUnits(int itemID) {
 }
 
 
+int House::getMaxUnits() const {
+    // Derive from the saved controllers; keep the authored cap intact for
+    // Easy/Medium and for houses whose high-difficulty partner is removed.
+    for (const auto& player : getPlayerList())
+        if (const auto* bot = dynamic_cast<const QuantBot*>(player.get()))
+            if (bot->ignoresUnitCountLimit()) return 0;
+    return maxUnits;
+}
+
+int House::getMaxHarvesters() const {
+    int limit = maxHarvesters;
+    for (const auto& player : getPlayerList())
+        if (const auto* bot = dynamic_cast<const QuantBot*>(player.get())) {
+            const int ceiling = bot->harvesterCountCeiling();
+            if (ceiling > 0) limit = limit > 0 ? std::min(limit, ceiling) : ceiling;
+        }
+    return limit;
+}
+
 bool House::isUnitLimitReached(int itemID) const {
     if(!isUnit(itemID)) {
         return false;

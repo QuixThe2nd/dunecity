@@ -98,7 +98,7 @@ rows = [json.loads(line) for line in events.read_text().splitlines()]
 for row in rows:
     # The pressure fixture switches difficulty in-engine and checks each tier
     # itself; its Hard/Brutal waves must not inherit the CLI's default Easy cap.
-    if not args.pressure_probe and row['event']=='ground_hunt' and row['data'].get('campaign_limited') and args.enemy_difficulty in ('easy','medium'):
+    if not args.pressure_probe and row['event']=='ground_hunt' and row['data'].get('campaign_limited') and args.enemy_difficulty in ('easy','medium','hard'):
         d=row['data']
         # Caps apply to this dispatch. Surviving units from older waves are
         # deliberately allowed alongside it after the repeat timer expires.

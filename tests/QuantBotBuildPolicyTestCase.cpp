@@ -813,11 +813,11 @@ TEST_CASE("Campaign alliance gates overlapping houses and recovery independently
     REQUIRE(fits(easy,{1,4,1400,0},300)); // The late Easy wave may reach 1,700.
     REQUIRE_FALSE(fits(easy,{1,4,1400,0},301)); // Value cap, even with a troop slot.
     REQUIRE_FALSE(fits(easy,{1,5,500,0},50)); // Count cap, even with cheap infantry.
-    // A large first army cannot consume the second Hard house's attack slot.
+    // Hard has a fixed credit budget; Brutal retains unlimited wave size.
     const Pressure largeArmy{1,40,30000,1000};
-    REQUIRE(canLaunch(hard,largeArmy,10000,0,100));
+    REQUIRE_FALSE(canLaunch(hard,largeArmy,10000,0,100));
     REQUIRE(canLaunch(brutal,largeArmy,10000,0,100));
-    REQUIRE(fits(hard,largeArmy,1000));
+    REQUIRE_FALSE(fits(hard,largeArmy,1000));
     REQUIRE(fits(brutal,largeArmy,1000));
     REQUIRE_FALSE(canLaunch(hard,{},1100,1200,100));
     REQUIRE_FALSE(canLaunch(brutal,ended,1099,0,100));
@@ -852,8 +852,8 @@ TEST_CASE("Easy campaign pressure stays small with one-to-three-minute repeat wa
                 const auto mediumDelay=repeatDelayMs(1,seed,cycle,house);
                 REQUIRE(easyDelay>=60000);
                 REQUIRE(easyDelay<=180000);
-                REQUIRE(mediumDelay>=120000);
-                REQUIRE(mediumDelay<=240000);
+                REQUIRE(mediumDelay>=60000);
+                REQUIRE(mediumDelay<=180000);
                 REQUIRE(repeatDelayMs(0,seed,cycle,house)==easyDelay);
             }
 }
@@ -1478,14 +1478,33 @@ TEST_CASE("Campaign opening follows authored trigger with independent bounded de
     using namespace CampaignDifficultyPolicy;
     std::set<uint32_t> offsets;
     for(uint32_t seed=0;seed<32;++seed) for(uint32_t house=0;house<6;++house) {
-        for(int tier=0;tier<2;++tier) {
+        for(int tier=0;tier<3;++tier) {
             const auto delay=openingDelayMs(tier,seed,45000,house);
             CHECK(delay<=120000);
             CHECK(delay==openingDelayMs(tier,seed,45000,house));
             offsets.insert(delay);
         }
-        CHECK(openingDelayMs(2,seed,45000,house)==0);
         CHECK(openingDelayMs(3,seed,45000,house)==0);
     }
     CHECK(offsets.size()>100);
+}
+
+TEST_CASE("Medium and Hard campaign waves use fixed credits and independent opening delays", "[quantbot][campaign]") {
+    using namespace CampaignDifficultyPolicy;
+    for (int tech : {1, 4, 8}) {
+        for (int difficulty : {1, 2}) {
+            const auto p=profile(difficulty,tech);
+            const int budget=difficulty==1 ? 2500 : 3500;
+            CHECK(p.enemyCommitPercent==100);
+            CHECK(fits(p,{1,100,budget-100,0},100));
+            CHECK_FALSE(fits(p,{1,1,budget-100,0},101));
+            for (uint32_t house=0;house<6;++house) {
+                CHECK(openingDelayMs(difficulty,1599783965,45000,house)<=120000);
+                const auto delay=repeatDelayMs(difficulty,1599783965,45000,house);
+                CHECK(delay>=60000);CHECK(delay<=180000);
+            }
+        }
+    }
+    CHECK(openingDelayMs(3,1599783965,45000,0)==0);
+    CHECK(openingDelayMs(2,1599783965,45000,0)!=openingDelayMs(2,1599783965,45000,1));
 }

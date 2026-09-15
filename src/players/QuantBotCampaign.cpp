@@ -35,12 +35,12 @@ bool QuantBot::campaignCombatUnit(const UnitBase* unit) const {
 }
 
 bool QuantBot::reserveDamagedUnitForRepair(const UnitBase* unit) const {
-    // Easy campaign troops cannot recover at home without a repair yard.
+    // Easy/Medium campaign troops cannot recover at home without a repair yard.
     // Keep them available for combat instead of withdrawing and excluding them
     // from every later wave. Explicit retreat/manual orders remain protected.
     return unit->isBadlyDamaged()
         && !(currentGame && isCampaignGameType(currentGame->gameType)
-            && difficulty==Difficulty::Easy && !getHouse()->hasRepairYard());
+            && (difficulty==Difficulty::Easy || difficulty==Difficulty::Medium) && !getHouse()->hasRepairYard());
 }
 
 CampaignDifficultyPolicy::Pressure QuantBot::campaignPressure() const {
@@ -70,7 +70,7 @@ int QuantBot::campaignRequiredArmy(int configuredThreshold) const {
 
 bool QuantBot::campaignCanLaunch() const {
     if (!isCampaignEnemy()) return true;
-    // Each successful Easy/Medium dispatch starts its next-wave countdown.
+    // Each successful Easy/Medium/Hard dispatch starts its next-wave countdown.
     // Surviving attackers keep fighting but never block a later ready wave.
     return campaignWave.initialized && getGameCycleCount() >= campaignWave.opening
         && (!campaignProfile().limitedWave || attackTimer <= 0);

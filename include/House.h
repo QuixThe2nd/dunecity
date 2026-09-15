@@ -115,8 +115,8 @@ public:
     inline int getNumVisibleFriendlyUnits() const { return numVisibleFriendlyUnits; }
 
     inline int getQuota() const { return quota; };
-    inline int getMaxUnits() const { return maxUnits; };
-    inline int getMaxHarvesters() const { return maxHarvesters; };
+    int getMaxUnits() const;
+    int getMaxHarvesters() const;
 
     inline void informContactWithEnemy() { bHadContactWithEnemy = true; };
     inline bool hadContactWithEnemy() const { return bHadContactWithEnemy; };
@@ -142,9 +142,10 @@ public:
         \return true, if the limit is already reached, false if building further ground units is allowed
     */
     inline bool isGroundUnitLimitReached() const {
-        if (maxUnits == 0) return false;  // 0 = unlimited units
+        const int limit = getMaxUnits();
+        if (limit == 0) return false;  // 0 = unlimited units
         int numGroundUnit = numUnits - numItem[Unit_Soldier] - numItem[Unit_Trooper] - numItem[Unit_Carryall] - numItem[Unit_ChemicalCarryall] - numItem[Unit_Ornithopter];
-        return (numGroundUnit + (numItem[Unit_Soldier]+2)/3 + (numItem[Unit_Trooper]+2)/3  >= maxUnits);
+        return (numGroundUnit + (numItem[Unit_Soldier]+2)/3 + (numItem[Unit_Trooper]+2)/3  >= limit);
     };
 
     /**
@@ -152,9 +153,10 @@ public:
         \return true, if the limit is already reached, false if building further infantry units is allowed
     */
     inline bool isInfantryUnitLimitReached() const {
-        if (maxUnits == 0) return false;  // 0 = unlimited units
+        const int limit = getMaxUnits();
+        if (limit == 0) return false;  // 0 = unlimited units
         int numGroundUnit = numUnits - numItem[Unit_Soldier] - numItem[Unit_Trooper] - numItem[Unit_Carryall] - numItem[Unit_ChemicalCarryall] - numItem[Unit_Ornithopter];
-        return (numGroundUnit + numItem[Unit_Soldier]/3 + numItem[Unit_Trooper]/3  >= maxUnits);
+        return (numGroundUnit + numItem[Unit_Soldier]/3 + numItem[Unit_Trooper]/3  >= limit);
     };
 
     /**
@@ -162,8 +164,9 @@ public:
         \return true, if the limit is already reached, false if building further air units is allowed
     */
     inline bool isAirUnitLimitReached() const {
-        if (maxUnits == 0) return false;  // 0 = unlimited units
-        return (numItem[Unit_Carryall] + numItem[Unit_ChemicalCarryall] + numItem[Unit_Ornithopter] >= 11*std::max(maxUnits,25)/25);
+        const int limit = getMaxUnits();
+        if (limit == 0) return false;  // 0 = unlimited units
+        return (numItem[Unit_Carryall] + numItem[Unit_ChemicalCarryall] + numItem[Unit_Ornithopter] >= 11*std::max(limit,25)/25);
     }
 
     /**
@@ -177,8 +180,9 @@ public:
         \return true, if the limit is already reached, false if building further harvesters is allowed
     */
     inline bool isHarvesterLimitReached() const {
-        if (maxHarvesters == 0) return false;  // 0 = unlimited harvesters
-        return ((numItem[Unit_Harvester] + numItem[Unit_RebelHarvester]) >= maxHarvesters);
+        const int limit = getMaxHarvesters();
+        if (limit == 0) return false;  // 0 = unlimited harvesters
+        return ((numItem[Unit_Harvester] + numItem[Unit_RebelHarvester]) >= limit);
     }
 
     inline Choam& getChoam() { return choam; };

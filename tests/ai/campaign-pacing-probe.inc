@@ -10,12 +10,12 @@ void runCampaignPacingProbe(Game& game) {
         }
     require(partner && !enemies.empty(),"Pacing fixture needs partner and enemy");
     auto* bot=enemies.front();
-    for(auto tier:{QuantBot::Difficulty::Easy,QuantBot::Difficulty::Medium,QuantBot::Difficulty::Hard}) {
+    for(auto tier:{QuantBot::Difficulty::Easy,QuantBot::Difficulty::Medium,QuantBot::Difficulty::Hard,QuantBot::Difficulty::Brutal}) {
         bot->difficulty=tier;bot->initialItemCount[Structure_Refinery]=2;
         bot->initialMilitaryValue=1000;bot->lastCalculatedSpice=200000;bot->harvesterLimit=100;
         game.gameInitSettings.gameOptions.maximumNumberOfHarvestersOverride=100;
         bot->update();
-        const int expected=2*getQuantBotConfig().getSettings(int(tier)).harvesterLimitPerRefineryMultiplier;
+        const int expected=tier==QuantBot::Difficulty::Brutal ? 6 : 2*getQuantBotConfig().getSettings(int(tier)).harvesterLimitPerRefineryMultiplier;
         require(bot->harvesterLimit==expected,"High game ceiling replaced campaign difficulty economy cap");
         bot->update();require(bot->harvesterLimit==expected,"Campaign worker cap drifted on next update");
         game.gameInitSettings.gameOptions.maximumNumberOfHarvestersOverride=1;
@@ -25,6 +25,8 @@ void runCampaignPacingProbe(Game& game) {
     game.gameInitSettings.gameOptions.maximumNumberOfHarvestersOverride=100;
     partner->lastCalculatedSpice=200000;partner->update();
     require(partner->harvesterLimit>2,"Human partner incorrectly inherited small enemy worker cap");
+    partner->difficulty=QuantBot::Difficulty::Brutal;
+    partner->update();require(partner->harvesterLimit==6,"Brutal helper escaped six-worker cap");
     for(auto* enemy:enemies) {
         enemy->difficulty=QuantBot::Difficulty::Easy;enemy->campaignWave={};
         enemy->campaignWave.initialized=true;enemy->attackTimer=INT32_MAX;

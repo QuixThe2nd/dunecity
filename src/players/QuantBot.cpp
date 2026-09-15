@@ -450,9 +450,10 @@ void QuantBot::update() {
 			logDebug("Initial: Item: %d  Count: %d", i, initialItemCount[i]);
 		}
 
-		// Allow Campaign AI (including support mode) one Repair Yard
+		// Allow campaign controllers a repair-yard target, except Medium:
+        // Medium preserves only the count actually present at mission start.
 		// Note: supportMode sets gameMode to Custom, so check currentGame->gameType instead
-		if ((initialItemCount[Structure_RepairYard] == 0) && currentGame && isCampaignGameType(currentGame->gameType) && currentGame->techLevel > 4) {
+		if (difficulty!=Difficulty::Medium && (initialItemCount[Structure_RepairYard] == 0) && currentGame && isCampaignGameType(currentGame->gameType) && currentGame->techLevel > 4) {
 			initialItemCount[Structure_RepairYard] = 1;
 			if (initialItemCount[Structure_Radar] == 0) {
 				initialItemCount[Structure_Radar] = 1;
@@ -781,6 +782,8 @@ void QuantBot::update() {
     if (getHouse()->getMaxHarvesters() > 0)
         baseHarvesterLimit = std::min(baseHarvesterLimit, getHouse()->getMaxHarvesters());
 
+    // Brutal expands its army freely, but keeps at most six economic workers.
+    if (difficulty == Difficulty::Brutal) baseHarvesterLimit = std::min(baseHarvesterLimit, 6);
 	// Apply spice-based reduction for all modes and difficulties
 	int maxHarvestersForSpice = lastCalculatedSpice / 2000;
 	int oldLimit = harvesterLimit;
@@ -1027,7 +1030,7 @@ void QuantBot::onDamage(const ObjectBase* pObject, int damage, Uint32 damagerID)
 				if (getHouse()->hasRepairYard()
 					&& pGroundUnit->getHealth() / pGroundUnit->getMaxHealth() < 0.6_fix
 
-					// Medium and higher use their repair yard; Easy keeps engine auto-repair.
+					// Medium can use an authored or player-built yard; Easy keeps engine auto-repair.
 					&& !(gameMode == GameMode::Campaign && difficulty == Difficulty::Easy)
 					) {
 					doRepair(pGroundUnit);
@@ -4300,6 +4303,7 @@ void QuantBot::build(int militaryValue) {
 
                 // Record actual queue acceptance for unit and structure production.
 				auto produceItemWithLogging = [&](Uint32 itemID, int sourceLine, const char* rule = "unit_mix_or_prerequisite") {
+                    if (itemID==Structure_RepairYard && !canAddRepairYard(itemCount[Structure_RepairYard])) return false;
 					if (gameMode == GameMode::Campaign && !supportMode && currentGame) {
 						std::string itemName = getItemNameByID(itemID);
 						logDebug("Queuing %s (ID:%d)", itemName.c_str(), itemID);
@@ -4358,10 +4362,12 @@ void QuantBot::build(int militaryValue) {
                 };
                 if (queueCampaignWindtrap(0)) continue;
 
-                // Medium and higher campaign controllers establish/replace one repair
+                // Hard/Brutal establish repair capacity; Medium only replaces an authored
                 // yard before optional expansion, including its missing prerequisites.
                 // Count queued structures and preserve normal costs/placement rules.
-                if (isCampaignGameType(currentGame->gameType) && difficulty>=Difficulty::Medium
+                if (isCampaignGameType(currentGame->gameType)
+                    && (difficulty==Difficulty::Hard || difficulty==Difficulty::Brutal
+                        || (difficulty==Difficulty::Medium && initialItemCount[Structure_RepairYard]>0))
                     && data[Structure_RepairYard][houseID].enabled
                     && currentGame->techLevel>=data[Structure_RepairYard][houseID].techLevel
                     && pBuilder->getItemID()==Structure_ConstructionYard
@@ -5428,7 +5434,7 @@ void QuantBot::build(int militaryValue) {
                 // Establish repairs before more factories/tech consume the opening
                 // grant. Count queued yards to avoid duplicate orders from parallel CYs.
                 if (itemID == NONE_ID && !skipRemainingStructureLogic
-                    && gameMode == GameMode::Custom
+                    && gameMode == GameMode::Custom && canAddRepairYard(itemCount[Structure_RepairYard])
                     && !openingWorkersNeeded()
                     && itemCount[Structure_RepairYard] < QuantBotBuildPolicy::baselineRepairYards(
                         getHouse()->getNumItems(Structure_HeavyFactory), militaryValue)
@@ -5449,7 +5455,7 @@ void QuantBot::build(int militaryValue) {
                         ? QuantBotBuildPolicy::desiredSpiceRefineries(spiceHarvesterTarget, itemCount[Unit_Harvester])
                         : itemCount[Unit_Harvester] / 3)
 			&& pBuilder->isAvailableToBuild(Structure_Refinery)
-			&& !(gameMode == GameMode::Campaign && itemCount[Structure_Refinery] >= 2 && itemCount[Structure_RepairYard] == 0 && currentGame && currentGame->techLevel >= 5)) {
+			&& !(gameMode == GameMode::Campaign && (difficulty!=Difficulty::Medium || initialItemCount[Structure_RepairYard]>0) && itemCount[Structure_Refinery] >= 2 && itemCount[Structure_RepairYard] == 0 && currentGame && currentGame->techLevel >= 5)) {
 						itemID = Structure_Refinery; structureRule = "refinery_economy";
 					}
 				// 4. Refinery (< 4, money < 2000) — non-city-sim only.
@@ -5566,7 +5572,7 @@ void QuantBot::build(int militaryValue) {
 				}
 				// 8. Repair Yard (only if starport or heavy factory exists)
 				if (itemID == NONE_ID && !skipRemainingStructureLogic
-					&& itemCount[Structure_RepairYard] == 0
+					&& canAddRepairYard(itemCount[Structure_RepairYard]) && itemCount[Structure_RepairYard] == 0
 					&& (itemCount[Structure_StarPort] > 0 || itemCount[Structure_HeavyFactory] > 0)
 					&& pBuilder->isAvailableToBuild(Structure_RepairYard)
                     && (!isCitySim || (!openingWorkersNeeded()
@@ -5745,12 +5751,12 @@ void QuantBot::build(int militaryValue) {
 						&& ((itemCount[Structure_Refinery] * 3.5_fix < itemCount[Unit_Harvester])
 					|| (currentGame && currentGame->techLevel < 4))
 						&& pBuilder->isAvailableToBuild(Structure_Refinery)
-						&& !(gameMode == GameMode::Campaign && itemCount[Structure_Refinery] >= 2 && itemCount[Structure_RepairYard] == 0 && currentGame && currentGame->techLevel >= 5)) {
+						&& !(gameMode == GameMode::Campaign && (difficulty!=Difficulty::Medium || initialItemCount[Structure_RepairYard]>0) && itemCount[Structure_Refinery] >= 2 && itemCount[Structure_RepairYard] == 0 && currentGame && currentGame->techLevel >= 5)) {
 						itemID = Structure_Refinery; structureRule = "refinery_economy";
 					}
 				// 14. Expand repair only when existing capacity is busy and production supports it.
 				if (itemID == NONE_ID && !skipRemainingStructureLogic
-							&& pBuilder->isAvailableToBuild(Structure_RepairYard) && money > std::max(2000, economyReserve + data[Structure_RepairYard][houseID].price)
+							&& canAddRepairYard(itemCount[Structure_RepairYard]) && pBuilder->isAvailableToBuild(Structure_RepairYard) && money > std::max(2000, economyReserve + data[Structure_RepairYard][houseID].price)
 							&& QuantBotBuildPolicy::needsExtraRepairYard(itemCount[Structure_RepairYard],
 								activeRepairYardCount, getHouse()->getNumItems(Structure_HeavyFactory), militaryValue)) {
 							itemID = Structure_RepairYard; structureRule = "repair_capacity";
@@ -6683,8 +6689,8 @@ void QuantBot::attack(int militaryValue) {
 
 	// Main attack loop - check military strength threshold
 	// Campaign mode: Use difficulty-specific threshold from config
-	// Custom mode: Use global config threshold (same for all difficulties)
-	float attackThresholdPercent = (gameMode == GameMode::Campaign) 
+	// Custom mode: global threshold, except Brutal uses its 25% difficulty threshold.
+	float attackThresholdPercent = (gameMode == GameMode::Campaign || difficulty == Difficulty::Brutal)
 		? diffSettings.attackThresholdPercent 
 		: config.attackThresholdPercent;
 
@@ -6708,7 +6714,7 @@ void QuantBot::attack(int militaryValue) {
 
 	// Campaign attacks must remain possible after losing a repair yard, or on
     // scenarios where it cannot be built. Repair remains useful, not mandatory.
-	if (!campaign && getHouse()->getNumItems(Structure_RepairYard) == 0 && currentGame->techLevel > 4) {
+	if (!campaign && (difficulty!=Difficulty::Medium || initialItemCount[Structure_RepairYard]>0) && getHouse()->getNumItems(Structure_RepairYard) == 0 && currentGame->techLevel > 4) {
 		traceDecision("attack_deferred", AITelemetry::Record().set("reason", "repair_prerequisite"));
 		logDebug("Don't attack. Wait until you have a repair yard.");
 		return;

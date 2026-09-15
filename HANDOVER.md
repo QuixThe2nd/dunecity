@@ -1,3 +1,57 @@
+## 2026-09-15 — QuantBot difficulty balance, 1.0.693
+
+Stefan requested the following after the 691 Atreides/Brutal-helper loss to
+three Hard campaign enemies. Implemented:
+
+- Brutal campaign military multiplier 4.0, readiness 25%. Brutal custom/shared
+  helpers also use their difficulty threshold rather than the global 40%.
+  Custom map-size military ceilings are unchanged.
+- Medium automatic campaign waves use up to 2,500 credits; Hard uses up to
+  3,500. Both are credit-based, without the old count/percentage ceilings.
+  Each house waits independently 0–2 game minutes after the authored offensive
+  reinforcement trigger and 1–3 minutes after each dispatch. Existing survivors
+  do not reset/block the timer. Brutal still opens immediately at the trigger
+  and launches again on readiness. Scripted reinforcements remain separate.
+- Medium does not invent a repair-yard target when it starts without one.
+  Stefan clarified that authored starting yards must still be replaced normally.
+  The preserved initial count caps Medium additions, including queued yards;
+  it can use existing yards. A missing authored yard/prerequisites is restored
+  promptly. Damaged Medium troops without a yard remain eligible to fight.
+- Hard/Brutal QuantBot houses have unlimited ground/infantry/air count capacity,
+  including a human's shared house. House derives the effective limit from its
+  controllers without overwriting the authored/saved cap. Easy/Medium/Defend
+  and other-controller houses retain their caps. Monetary military limits remain.
+- Brutal has a six-harvester ceiling in both planning and engine production,
+  including shared houses. Lower scenario/lobby ceilings and spice reductions
+  still win. Existing excess units are not destroyed. No save layout changed.
+
+Built at build-692/bin/dunecity.app as 1.0.693 and installed to
+/Applications/dunecity.app, verified version/signature. Updated only the two
+Brutal numeric settings in existing local main/vanilla/dunecity/Tornie INIs;
+backups /tmp/dunecity-693-config-backup. Previous installed app retained at
+/tmp/dunecity-before-693.app. New campaigns initialize the new starting-value
+multiplier; saved military ceilings and already-calculated openings persist.
+No public push, release or website deployment in this task.
+
+Validation: all seven CTest groups passed; dependency and version checks passed.
+Real-engine pressure fixture covers independent openings, fixed wave budgets,
+repeat timers with survivors, manual orders, saved bot state, restored low-tier
+unit caps, high-tier infantry/air/ground exemptions and retained worker caps.
+Pacing fixture covers six workers for Brutal enemies/helpers and lower overrides.
+Repair fixture covers Medium zero-start refusal, authored replacement, queued
+count protection and Hard repair establishment for both enemy/helper roles.
+Evidence: /tmp/dunecity-693-final-{pressure,pacing}/,
+/tmp/dunecity-693-replacement-repair/, /tmp/dunecity-693-release-ctest.log.
+
+Natural native SCENA022, Atreides Brutal helper vs Hard, seed1599783965:
+Hard dispatched 3,500 at12.01/12.23/12.27min; Ordos next3,500 at13.57 and
+Harkonnen3,450 at14.21, within the independent1–3min gaps. All Hard/Brutal
+snapshots show max_units0; helper worker limit6 and readiness10,000. The helper
+still lost at14.82min, maximum sampled military4,040. These requested settings
+work, but do not establish balanced play or solve the helper's military buildup.
+This is an observer simulation with no human orders and concrete degradation on,
+not a replay of Stefan's game. Evidence: /tmp/dunecity-693-natural-hard/.
+
 ## 2026-09-15 — Easy campaign pressure adjustment, 1.0.692
 
 Stefan tested 691 and still found Harkonnen too passive with many launchers.
