@@ -6839,8 +6839,9 @@ void QuantBot::launchGroundHunt() {
     }
     if (count==0) return; // An empty house checking readiness is not an attack.
     if (limited && profile.limitedWave) {
-        attackTimer=MILLI2CYCLES(120000+CampaignDifficultyPolicy::staggerMs(
-            getGameInitSettings().getRandomSeed(),getGameCycleCount(),getHouse()->getHouseID(),120000));
+        attackTimer=MILLI2CYCLES(CampaignDifficultyPolicy::repeatDelayMs(
+            static_cast<int>(difficulty),
+            getGameInitSettings().getRandomSeed(),getGameCycleCount(),getHouse()->getHouseID()));
         traceDecision("attack_schedule",AITelemetry::Record().set("delay_cycles",attackTimer)
             .set("reason","next_wave_after_dispatch"));
     }

@@ -114,8 +114,9 @@ void runCampaignPressureProbe(Game& game) {
             const auto cycle=game.getGameCycleCount();
             for(size_t i=0;i<expected-4;++i) recovering[i]->doSetAttackMode(GUARD);
             const int pause=bot->attackTimer;
-            require(pause>=MILLI2CYCLES(120000) && pause<=MILLI2CYCLES(240000),
-                "Dispatch did not schedule a two-to-four-minute countdown");
+            const int minimum=tier==QuantBot::Difficulty::Easy ? 60000 : 120000;
+            require(pause>=MILLI2CYCLES(minimum) && pause<=MILLI2CYCLES(minimum+120000),
+                "Dispatch countdown is outside its difficulty range");
             for(int attempt=0;attempt<10;++attempt)bot->attack(40*price);
             require(bot->campaignWave.members==initial,"New wave launched before countdown expired");
             bot->updateCampaignWave();

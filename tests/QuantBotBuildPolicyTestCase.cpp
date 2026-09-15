@@ -810,7 +810,8 @@ TEST_CASE("Campaign alliance gates overlapping houses and recovery independently
     REQUIRE_FALSE(canLaunch(easy,ended,1099,0,100));
     REQUIRE(canLaunch(easy,ended,1100,0,100));
     REQUIRE_FALSE(canLaunch(easy,{},1100,1200,100));
-    REQUIRE_FALSE(fits(easy,{1,4,1400,0},300)); // Value cap, even with a troop slot.
+    REQUIRE(fits(easy,{1,4,1400,0},300)); // The late Easy wave may reach 1,700.
+    REQUIRE_FALSE(fits(easy,{1,4,1400,0},301)); // Value cap, even with a troop slot.
     REQUIRE_FALSE(fits(easy,{1,5,500,0},50)); // Count cap, even with cheap infantry.
     // A large first army cannot consume the second Hard house's attack slot.
     const Pressure largeArmy{1,40,30000,1000};
@@ -833,6 +834,28 @@ TEST_CASE("Campaign wave membership and deadlines survive stream round trips", "
     REQUIRE(restored.lastActive==original.lastActive);
     REQUIRE(restored.members==original.members);
     REQUIRE(restored.front==original.front);
+}
+TEST_CASE("Easy campaign pressure stays small with one-to-three-minute repeat waves", "[quantbot][campaign]") {
+    using namespace CampaignDifficultyPolicy;
+    // Opening missions keep their old budgets; late waves can add a tank
+    // behind three 450-credit launchers, without admitting a fourth launcher.
+    REQUIRE(profile(0,3).value==900);
+    REQUIRE(profile(0,6).value==1200);
+    const auto easy=profile(0,8);
+    REQUIRE(fits(easy,{1,3,1350,0},300));
+    REQUIRE_FALSE(fits(easy,{1,3,1350,0},450));
+    REQUIRE(easy.enemyCommitPercent==50);
+    for(uint32_t seed:{0u,99480356u,540497013u,UINT32_MAX})
+        for(uint32_t house=0;house<6;++house)
+            for(uint32_t cycle:{45000u,90000u,120000u}) {
+                const auto easyDelay=repeatDelayMs(0,seed,cycle,house);
+                const auto mediumDelay=repeatDelayMs(1,seed,cycle,house);
+                REQUIRE(easyDelay>=60000);
+                REQUIRE(easyDelay<=180000);
+                REQUIRE(mediumDelay>=120000);
+                REQUIRE(mediumDelay<=240000);
+                REQUIRE(repeatDelayMs(0,seed,cycle,house)==easyDelay);
+            }
 }
 TEST_CASE("Campaign windtrap accounting covers commitments without duplicate generators", "[quantbot][campaign][power]") {
     using namespace CampaignDifficultyPolicy;

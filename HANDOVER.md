@@ -1,3 +1,47 @@
+## 2026-09-15 — Easy campaign pressure adjustment, 1.0.692
+
+Stefan tested 691 and still found Harkonnen too passive with many launchers.
+The exact process used build/bin/dunecity.app, session1789459263866226-0,
+SCENA022, seed99480356. Harkonnen's timer was working: waves at 12.31,15.04,
+17.40,21.04,23.76 game minutes each sent four units worth1,450. At17.40 an
+older survivor remained (five active members after four new dispatches).
+Snapshots around20min had six launchers and military3,900; no readiness
+deferrals between20–24min. This is insufficient pressure under the existing
+cap/cadence, not a repeat of the wave-survivor timer deadlock.
+
+Stefan specified a 1–3-game-minute gap and corrected his requested late Easy
+attack ceiling from2,000 to1,700 credits. Implemented those exact Easy values.
+Early/middle Easy caps remain900/1,200 and late count cap remainsfive. Each
+dispatch still spends at most50% of ready army value. Opening timing, Medium's
+larger waves and2–4min gap, Hard/Brutal commitment, repair and defence policies
+are unchanged. Uses existing serialized attackTimer; no new save state.
+
+Built separately under build-692/bin/dunecity.app to preserve the app running
+from build/bin. All seven CTest groups passed, as did the real-engine pressure
+fixture (opening gates, repeat timer despite survivors, reserves, all four
+tiers, save state). Version, dependency and app-signature checks passed.
+
+Natural isolated native comparisons, full QuantBot Easy Atreides vs Easy,
+Vanilla SCENA022 seed99480356, default harvester limit, no human orders:
+691 won at31.37min; 692 won at29.39min. Enemy ground dispatches increased
+from8 to9, dispatched value from10,600 to13,450, and total enemy raw damage
+from11,281 to13,425. Harkonnen's first692 wave was1,700 credits at12.31min;
+its second was1,550 at14.47min. Ordos/Sardaukar later launched fresh waves
+with previous survivors still active. Every new Easy dispatch stayed within
+five units/1,700 and its ready-army budget. The observer run uses concrete
+degradation enabled, unlike Stefan's live game, and is not an exact replay.
+These runs confirm increased pressure, not a conclusion about human balance.
+A level4 regression naturally won at15.74min. No skip or forced victory.
+
+The runner's postprocessing still rejected accumulated survivors above one
+wave cap, contrary to691's explicitly requested overlapping-wave rule. It now
+checks each dispatch's members/value and budget instead of aggregate survivors.
+The first692 simulation finished normally but this stale check rejected its
+report; rerunning after correction passed with identical cycle110200 result.
+Evidence: /tmp/dunecity-691-live-seed-baseline/,
+/tmp/dunecity-692-{live-seed-verified,level4,pressure}/,
+/tmp/dunecity-692-ctest.log. Not installed or published.
+
 ## 2026-09-15 — Timed campaign waves and repair eligibility, 1.0.691
 
 Stefan explicitly changed the Easy/Medium campaign rule: start the next-wave
