@@ -14,7 +14,8 @@ void runCampaignNuclearProbe(Game& game) {
     bot->initialMilitaryValue=1000;bot->militaryValueLimit=2000;bot->lastCalculatedSpice=100000;
     for(int i=ItemID_FirstID;i<=ItemID_LastID;++i)bot->initialItemCount[i]=house->getNumItems(i);
     ++bot->initialItemCount[Structure_NuclearPlant];
-    house->addCredits(10000);house->powerRequirement=0;
+    // Even a one-power shortage must prefer an affordable, placeable reactor.
+    house->addCredits(10000);house->powerRequirement=house->getProducedPower()+1;
     while(yard->getProductionQueueSize())yard->doCancelItem(yard->getCurrentProducedItem());
     yard->buildList.push_back(BuildItem(Structure_NuclearPlant,1000));
     yard->buildList.push_back(BuildItem(Structure_WindTrap,300));

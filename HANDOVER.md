@@ -1,3 +1,54 @@
+## 2026-09-15 — Starport-led QuantBot opening, 1.0.694
+
+Stefan corrected the intended economy strategy: build four–five refineries,
+then starport prerequisites/starport, repair support, and only then heavy/high-tech
+production. Normal QuantBot construction now targets four refineries before its
+first port, bounded by sustainable map workers. It walks the active mod's actual
+prerequisites, counts pending buildings, saves for the next feasible step, and
+uses the existing placement/foundation handling. Power recovery remains prior.
+Missions below starport technology retain their early-tech progression; vanilla
+Easy/Medium/Hard campaign enemies retain their authored rebuild lists.
+
+Starports now purchase every available cheap combat type (including trikes/quads),
+independent of factory mix targets, best relative market price first. Removed the
+hardcoded four-type shortlist and the 2,000 spare-credit requirement. Needed
+harvesters/carryalls and bargains can use generic reserved cash after already
+committed construction costs; imports remain paid once, stock checked, queue
+acceptance checked, and military-value bounded. Harvester imports are batched to
+the useful worker target and engine ceiling, including existing/pending workers.
+Brutal's six-worker ceiling is unchanged: four refinery workers leave two import
+slots, five leave one. Market `Choam::isCheap` classification remains unchanged.
+
+Dune City-specific requests:
+- Removed the starport population gate; normal tech/prerequisites still apply.
+- Every QuantBot difficulty may add a missing repair yard. Vanilla Medium remains
+  replacement-only. Added repair-capacity fixture coverage for city Medium.
+- After the first windtrap, a power order chooses an affordable, placeable nuclear
+  plant rather than comparing spare windtrap sites/cost-per-current-power demand.
+  Unavailable, unplaceable, or unaffordable nuclear falls back to wind power; the
+  existing longer-term reactor saving policy still operates.
+
+Validation: all seven CTest suites and dependency checks passed. Native fixtures
+passed for vanilla/city Starport imports (eight discounted units across four types
+for 800 credits), above-normal-price essential imports, five-worker bulk orders
+with pending-worker accounting, vanilla repair replacement rules, city repair
+addition, and nuclear ordering/temporary congestion/lost-site refunds/small-site
+wind fallback. Nuclear fixture now starts with only a one-power deficit.
+
+Isolated observer games (no human orders, seed486409243, Harkonnen campaign9):
+vanilla Brutal helper ordered four refineries, port5.01min, repair7.65, heavy8.13,
+high-tech9.92; first port order included two harvesters together. City Medium
+ordered fourth refinery4.32, port4.69, repair9.47, heavy10.61. These are sequence
+checks, not win-rate balance evidence. Campaign4 retained refinery/light/heavy
+progression with no inaccessible-starport reservation. Diagnostics live in
+`/tmp/dunecity-694-{imports,city-imports,workers,repair,city-repair2,nuclear,vanilla,city-medium,early}`.
+The first city repair fixture needed free rock added to isolate policy from its
+artificially crowded forced placements; the corrected fixture passed.
+
+Built in `build-692` (historical directory name), installed as
+`/Applications/dunecity.app` version1.0.694 after Stefan quit the game. No public
+push, downloads, or website deployment in this change.
+
 ## 2026-09-15 — QuantBot difficulty balance, 1.0.693
 
 Stefan requested the following after the 691 Atreides/Brutal-helper loss to

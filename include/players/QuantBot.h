@@ -72,9 +72,7 @@ public:
     bool permitsPoliceReinforcement(int unitValue) const;
     bool ignoresUnitCountLimit() const { return difficulty==Difficulty::Hard || difficulty==Difficulty::Brutal; }
     int harvesterCountCeiling() const { return difficulty==Difficulty::Brutal ? 6 : 0; }
-    bool canAddRepairYard(int includingQueued) const {
-        return difficulty!=Difficulty::Medium || includingQueued<initialItemCount[Structure_RepairYard];
-    }
+    bool canAddRepairYard(int includingQueued) const;
 
     void onObjectWasBuilt(const ObjectBase* pObject) override;
     void onDecrementStructures(int itemID, const Coord& location) override;

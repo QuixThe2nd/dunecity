@@ -3109,6 +3109,12 @@ Coord QuantBot::findPlaceLocationSimple(Uint32 itemID) {
 }
 
 
+bool QuantBot::canAddRepairYard(int includingQueued) const {
+    return (currentGame && currentGame->isCitySimEnabled())
+        || difficulty != Difficulty::Medium
+        || includingQueued < initialItemCount[Structure_RepairYard];
+}
+
 void QuantBot::build(int militaryValue) {
     AITelemetry::PerformanceScope perfScope("ai.build", getGameCycleCount(), getHouse()->getHouseID());
     refreshTacticalDanger();
@@ -4375,6 +4381,10 @@ void QuantBot::build(int militaryValue) {
                     && itemCount[Structure_RepairYard]==0
                     && getHouse()->getNumItems(Structure_Refinery)>0
                     && getHouse()->getNumItems(Unit_Harvester)>0
+                    && ((gameMode == GameMode::Campaign && !citySimEnabled && difficulty != Difficulty::Brutal)
+                        || !data[Structure_StarPort][houseID].enabled
+                        || currentGame->techLevel < data[Structure_StarPort][houseID].techLevel
+                        || getHouse()->getNumItems(Structure_StarPort)>0)
                     && (getHouse()->hasHeavyFactory() || getHouse()->getNumItems(Structure_StarPort)>0)) {
                     Uint32 repairStep=Structure_RepairYard;
                     if (!pBuilder->isAvailableToBuild(repairStep)) {
@@ -4428,7 +4438,7 @@ void QuantBot::build(int militaryValue) {
                 reserve.reserved = money - QuantBotBuildPolicy::spendableCredits(money,protectedCash);
 				money -= reserve.reserved;
 
-				if (!transportProducer && !workerProducer && !expansionProducer && !pBuilder->isUpgrading() && pBuilder->getProductionQueueSize() < 1
+				if (pBuilder->getItemID() != Structure_StarPort && !transportProducer && !workerProducer && !expansionProducer && !pBuilder->isUpgrading() && pBuilder->getProductionQueueSize() < 1
 					&& money > 1500) {
 					const int customItem = chooseLowPriorityCustomUnit(pBuilder);
 					if (customItem != ItemID_Invalid) {
@@ -4803,7 +4813,9 @@ void QuantBot::build(int militaryValue) {
                         const int workerTarget = vanillaEconomy ? spiceHarvesterTarget : harvesterLimit;
                         auto buyEconomicImport = [&](Uint32 item, const char* rule) {
                             const int price = choam.getPrice(item);
-                            const int cash = money + (vanillaEconomy ? reserve.reserved : 0);
+                            const int cash = money + reserve.reserved;
+                            if (item == Unit_Harvester && getHouse()->getMaxHarvesters() > 0
+                                && itemCount[item] >= getHouse()->getMaxHarvesters()) return false;
                             if (price <= 0 || cash < price || choam.getNumAvailable(item) <= 0
                                 || !pStarPort->isAvailableToBuild(item)) return false;
                             traceDecision("starport_economy_purchase", AITelemetry::Record()
@@ -4824,49 +4836,40 @@ void QuantBot::build(int militaryValue) {
                             if (!buyEconomicImport(Unit_Harvester, "starport_spice_economy")) break;
                         }
 
-						int itemCountUnits = itemCount[Unit_Tank] + itemCount[Unit_SiegeTank] + itemCount[Unit_Launcher] + itemCount[Unit_Harvester];
+                        const int transportUnits = itemCount[Unit_Tank] + itemCount[Unit_SiegeTank]
+                            + itemCount[Unit_Launcher] + itemCount[Unit_Harvester];
+                        while (itemCount[Unit_Carryall] < transportUnits / 7)
+                            if (!buyEconomicImport(Unit_Carryall, "starport_transport_capacity")) break;
 
-						while (money > choam.getPrice(Unit_Carryall) && choam.getNumAvailable(Unit_Carryall) > 0 && itemCount[Unit_Carryall] < itemCountUnits / 7) {
-							produceItemWithLogging(Unit_Carryall, __LINE__);
-							itemCount[Unit_Carryall]++;
-							money = money - choam.getPrice(Unit_Carryall);
-						}
-
-						while (militaryValue < militaryValueLimit && money > choam.getPrice(Unit_SiegeTank) && choam.getNumAvailable(Unit_SiegeTank) > 0
-							&& choam.isCheap(Unit_SiegeTank) && militaryValue < militaryValueLimit && money > 2000) {
-							produceItemWithLogging(Unit_SiegeTank, __LINE__);
-							itemCount[Unit_SiegeTank]++;
-							money = money - choam.getPrice(Unit_SiegeTank);
-							militaryValue += data[Unit_SiegeTank][houseID].price;
-						}
-
-						while (militaryValue < militaryValueLimit && money > choam.getPrice(Unit_Launcher) && choam.getNumAvailable(Unit_Launcher) > 0
-							&& choam.isCheap(Unit_Launcher) && militaryValue < militaryValueLimit && money > 2000) {
-							produceItemWithLogging(Unit_Launcher, __LINE__);
-							itemCount[Unit_Launcher]++;
-							money = money - choam.getPrice(Unit_Launcher);
-							militaryValue += data[Unit_Launcher][houseID].price;
-						}
-
-						while (militaryValue < militaryValueLimit && money > choam.getPrice(Unit_Tank) && choam.getNumAvailable(Unit_Tank) > 0
-							&& choam.isCheap(Unit_Tank) && militaryValue < militaryValueLimit && money > 2000) {
-							produceItemWithLogging(Unit_Tank, __LINE__);
-							itemCount[Unit_Tank]++;
-							money = money - choam.getPrice(Unit_Tank);
-							militaryValue += data[Unit_Tank][houseID].price;
-						}
-
-
-
-						while (militaryValue < militaryValueLimit && money > choam.getPrice(Unit_Ornithopter) && choam.getNumAvailable(Unit_Ornithopter) > 0
-							&& choam.isCheap(Unit_Ornithopter) && militaryValue < militaryValueLimit && money > 2000) {
-							produceItemWithLogging(Unit_Ornithopter, __LINE__);
-							itemCount[Unit_Ornithopter]++;
-							money = money - choam.getPrice(Unit_Ornithopter);
-							militaryValue += data[Unit_Ornithopter][houseID].price;
-						}
-
-
+                        // Imports are opportunistic: every discounted combat type
+                        // is eligible, regardless of the factory composition targets.
+                        // Buy the best percentage discount first, with stable item-ID
+                        // tie breaking. Keep the military-value budget and normal caps.
+                        std::vector<Uint32> bargains;
+                        for (const auto& offer : pStarPort->getBuildList()) {
+                            const Uint32 unit = offer.itemID;
+                            if (!isUnit(unit) || unit == Unit_Harvester || unit == Unit_Carryall
+                                || unit == Unit_MCV || data[unit][houseID].price <= 0
+                                || choam.getPrice(unit) <= 0 || !choam.isCheap(unit)) continue;
+                            bargains.push_back(unit);
+                        }
+                        std::sort(bargains.begin(), bargains.end(), [&](Uint32 a, Uint32 b) {
+                            const int64_t left = int64_t(choam.getPrice(a)) * data[b][houseID].price;
+                            const int64_t right = int64_t(choam.getPrice(b)) * data[a][houseID].price;
+                            return left != right ? left < right : a < b;
+                        });
+                        for (Uint32 unit : bargains) {
+                            const int price = choam.getPrice(unit);
+                            const int value = data[unit][houseID].price;
+                            while (money + reserve.reserved >= price && choam.getNumAvailable(unit) > 0
+                                && militaryValue + value <= militaryValueLimit
+                                && !getHouse()->isUnitLimitReached(unit)) {
+                                if (!produceItemWithLogging(unit, __LINE__, "starport_bargain")) break;
+                                ++itemCount[unit];
+                                money -= price;
+                                militaryValue += value;
+                            }
+                        }
 
 						doPlaceOrder(pStarPort);
 					}
@@ -5225,6 +5228,50 @@ void QuantBot::build(int militaryValue) {
                     if (emitStatsLog) traceDecision("nuclear_investment",AITelemetry::Record()
                         .set("funded",itemID != NONE_ID).set("cash",money)
                         .set("price",data[Structure_NuclearPlant][houseID].price).set("reserve",cityPowerReserve));
+                }
+                // Starport opening: four income-producing refineries, the port,
+                // then its repair support before optional factories. Small/spice-poor
+                // maps use fewer workers; missions that lock the port keep their
+                // normal early-tech progression. Authored campaign rebuild lists
+                // are handled above and do not acquire extra opening structures.
+                if (itemID == NONE_ID && !skipRemainingStructureLogic
+                    && data[Structure_StarPort][houseID].enabled
+                    && currentGame->techLevel >= data[Structure_StarPort][houseID].techLevel) {
+                    Uint32 step = NONE_ID;
+                    if (getHouse()->getNumItems(Structure_StarPort) == 0) {
+                        const int refineryGoal = std::min(4, mapSpiceHarvesterTarget);
+                        step = itemCount[Structure_Refinery] < refineryGoal
+                            ? Structure_Refinery : Structure_StarPort;
+                    } else if (getHouse()->getNumItems(Structure_RepairYard) == 0
+                        && canAddRepairYard(itemCount[Structure_RepairYard])
+                        && data[Structure_RepairYard][houseID].enabled
+                        && currentGame->techLevel >= data[Structure_RepairYard][houseID].techLevel) {
+                        step = Structure_RepairYard;
+                    }
+                    // Walk missing prerequisites, stopping at a pending build.
+                    // This uses each mod's actual tech tree, without adding heavy
+                    // or high-tech factories unless that tree requires them.
+                    for (int depth = 0; step != NONE_ID && depth < Structure_LastID; ++depth) {
+                        if (itemCount[step] > 0 && step != Structure_Refinery) {
+                            skipRemainingStructureLogic = true;
+                            structureRule = "starport_opening_pending";
+                            break;
+                        }
+                        if (pBuilder->isAvailableToBuild(step)) {
+                            if (findPlaceLocation(step).isValid()) {
+                                skipRemainingStructureLogic = true;
+                                structureRule = "starport_opening";
+                                if (money >= data[step][houseID].price) itemID = step;
+                            }
+                            break;
+                        }
+                        Uint32 prerequisite = NONE_ID;
+                        for (int i = Structure_FirstID; i <= Structure_LastID; ++i) {
+                            if (data[step][houseID].prerequisiteStructuresSet[i]
+                                && getHouse()->getNumItems(i) == 0) { prerequisite = i; break; }
+                        }
+                        step = prerequisite;
+                    }
                 }
 				// Low-spice economy: skip additional refineries, pivot to R/I/C zones
 				const bool lowSpiceEconomy = (lastCalculatedSpice < 500);
@@ -5889,38 +5936,12 @@ void QuantBot::build(int militaryValue) {
                         ? findPlaceLocation(Structure_NuclearPlant) : Coord::Invalid();
                     const int windOutput = std::max(1,-data[Structure_WindTrap][houseID].power);
                     const int windNeeded = (need+windOutput-1)/windOutput;
-                    std::vector<Coord> windSites;
-                    const Coord size = getStructureSize(Structure_WindTrap);
-                    if (windSite.isValid()) windSites.push_back(windSite);
-                    // Count disjoint usable footprints only up to this order's
-                    // demand. Overlapping candidate tiles are not spare land.
-                    if (!nuclearPlan && windSite.isValid() && nuclearSite.isValid()
-                        && !QuantBotBuildPolicy::preferNuclearPower(need,windOutput,
-                            data[Structure_WindTrap][houseID].price,data[Structure_NuclearPlant][houseID].price,
-                            windNeeded,std::max(0,money),
-                            getHouse()->hasPower() ? cityWorkingReserve : 0,!getHouse()->hasPower())) {
-                        for (int y=0; y<=getMap().getSizeY()-size.y && int(windSites.size())<windNeeded; ++y)
-                            for (int x=0; x<=getMap().getSizeX()-size.x && int(windSites.size())<windNeeded; ++x) {
-                                const Coord site(x,y);
-                                if (!getMap().okayToPlaceStructure(x,y,size.x,size.y,false,getHouse(),false,Structure_WindTrap)
-                                    || overlapsReservedStructure(x,y,size.x,size.y) || dangerAt(site,size)>0
-                                    || nearRecentStructureLoss(x,y,size.x,size.y)
-                                    || !preservesGroundAccess(Structure_WindTrap,site)
-                                    || !reactorClearance(Structure_WindTrap,site)
-                                    || !cityRoadImpact(getMap(),x,y,size.x,size.y,Structure_WindTrap).preservesConnections
-                                    || wouldLandlockNeighbouringZone(getMap(),houseID,x,y,size.x,size.y)) continue;
-                                bool overlaps = false;
-                                for (const Coord p : windSites)
-                                    if (x<p.x+size.x && x+size.x>p.x && y<p.y+size.y && y+size.y>p.y) { overlaps=true; break; }
-                                if (!overlaps) windSites.push_back(site);
-                            }
-                    }
-                    const int reserveCash = getHouse()->hasPower() ? cityWorkingReserve : 0;
                     const int cash = std::max(0,money);
-                    const bool nuclear = nuclearSite.isValid() && ((nuclearPlan
-                        && money >= data[Structure_NuclearPlant][houseID].price)
-                        || QuantBotBuildPolicy::preferNuclearPower(need,windOutput,data[Structure_WindTrap][houseID].price,
-                            data[Structure_NuclearPlant][houseID].price,windSites.size(),cash,reserveCash,!getHouse()->hasPower()));
+                    // Once the first windtrap establishes power, prefer a reactor
+                    // whenever its real footprint and price are feasible. Extra
+                    // windtrap room is no longer a reason to choose less capacity.
+                    const bool nuclear = nuclearSite.isValid()
+                        && cash >= data[Structure_NuclearPlant][houseID].price;
                     itemID = nuclear ? Structure_NuclearPlant : windSite.isValid() ? Structure_WindTrap : NONE_ID;
                     if (itemID == NONE_ID) skipRemainingStructureLogic = true;
                     traceDecision("city_generator_choice", AITelemetry::Record().set("item",itemID)
@@ -5931,8 +5952,7 @@ void QuantBot::build(int militaryValue) {
                         .set("nuclear_available",pBuilder->isAvailableToBuild(Structure_NuclearPlant))
                         .set("nuclear_placement",placementScoreDetails[Structure_NuclearPlant])
                         .set("nuclear_site",nuclearSite.isValid()).set("nuclear_price",data[Structure_NuclearPlant][houseID].price)
-                        .set("working_reserve",reserveCash).set("wind_needed",windNeeded)
-                        .set("wind_sites",int(windSites.size())).set("nuclear",nuclear)
+                        .set("wind_needed",windNeeded).set("wind_site",windSite.isValid()).set("nuclear",nuclear)
                         .set("industrial_demand",ownIndValve));
                 }
             if (itemID!=NONE_ID && itemID!=Structure_WindTrap

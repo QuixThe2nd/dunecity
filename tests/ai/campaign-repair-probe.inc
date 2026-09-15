@@ -1,6 +1,9 @@
 // Diagnostic-only real construction queue checks for both campaign roles.
 void runCampaignRepairProbe(Game& game) {
     auto require=[](bool ok,const char* reason){if(!ok){SDL_Log("CAMPAIGN_REPAIR_FAIL: %s",reason);throw std::runtime_error(reason);}};
+    if(game.isCitySimEnabled())
+        for(int y=0;y<currentGameMap->getSizeY();++y)for(int x=0;x<currentGameMap->getSizeX();++x)
+            if(!currentGameMap->getTile(x,y)->hasAStructure())currentGameMap->getTile(x,y)->setType(Terrain_Rock);
     QuantBot* partner=nullptr;QuantBot* enemy=nullptr;
     for(int h=0;h<NUM_HOUSES;++h) if(auto* house=game.getHouse(h))
         for(const auto& player:house->getPlayerList()) if(auto* bot=dynamic_cast<QuantBot*>(player.get())) {
@@ -23,6 +26,7 @@ void runCampaignRepairProbe(Game& game) {
         };
         for(auto item:{Structure_WindTrap,Structure_Refinery,Structure_HeavyFactory,Structure_LightFactory})
             if(!house->getNumItems(item))place(item);
+        if((bot==partner || game.isCitySimEnabled()) && !house->getNumItems(Structure_StarPort))place(Structure_StarPort);
         if(!house->getNumItems(Unit_Harvester))house->createUnit(Unit_Harvester,true);
         auto originalStructures=structureList;
         for(auto* building:originalStructures)
@@ -48,13 +52,15 @@ void runCampaignRepairProbe(Game& game) {
         place(Structure_Radar);yard->updateBuildList();
         require(yard->isAvailableToBuild(Structure_RepairYard),"Repair prerequisites still missing");
         bot->difficulty=QuantBot::Difficulty::Medium;
-        bot->initialItemCount[Structure_RepairYard]=0; // Started without a yard: never add one.
+        bot->initialItemCount[Structure_RepairYard]=0; // Only vanilla Medium is replacement-only.
         for(int attempt=0;attempt<3;++attempt) {
             bot->build(4000);
+            if(game.isCitySimEnabled())
+                require(yard->getCurrentProducedItem()==Structure_RepairYard,"City Medium failed to add a repair yard");
             for(auto* building:structureList) if(building->getOwner()==house)
                 if(auto* builder=dynamic_cast<BuilderBase*>(building)) {
                     for(const auto& item:builder->currentProductionQueue)
-                        require(item.itemID!=Structure_RepairYard,"Medium queued a repair yard");
+                        require(game.isCitySimEnabled() || item.itemID!=Structure_RepairYard,"Vanilla Medium queued a repair yard");
                     while(builder->getProductionQueueSize()) builder->doCancelItem(builder->getCurrentProducedItem());
                     bot->builderPlaceLocations.erase(builder->getObjectID());
                     bot->reservedStructures.erase(builder->getObjectID());
