@@ -954,7 +954,7 @@ void QuantBot::onDamage(const ObjectBase* pObject, int damage, Uint32 damagerID)
 		}
 
         if (isCampaignEnemy() && damage>0 && campaignCombatUnit(pGroundUnit)
-            && pGroundUnit->canAttack(pDamager) && !pGroundUnit->isBadlyDamaged()
+            && pGroundUnit->canAttack(pDamager) && !reserveDamagedUnitForRepair(pGroundUnit)
             && pGroundUnit->getAttackMode()!=RETREAT) {
             // GUARD only searches its own weapon range, so a tank otherwise
             // remains idle while an outranging launcher kills it. Retaliation
@@ -1027,8 +1027,8 @@ void QuantBot::onDamage(const ObjectBase* pObject, int damage, Uint32 damagerID)
 				if (getHouse()->hasRepairYard()
 					&& pGroundUnit->getHealth() / pGroundUnit->getMaxHealth() < 0.6_fix
 
-					// don't do manual repairs if it's campaign and easy or medium difficulty
-					&& !(gameMode == GameMode::Campaign && (difficulty == Difficulty::Easy || difficulty == Difficulty::Medium))
+					// Medium and higher use their repair yard; Easy keeps engine auto-repair.
+					&& !(gameMode == GameMode::Campaign && difficulty == Difficulty::Easy)
 					) {
 					doRepair(pGroundUnit);
 				}
@@ -4358,10 +4358,10 @@ void QuantBot::build(int militaryValue) {
                 };
                 if (queueCampaignWindtrap(0)) continue;
 
-                // Experienced campaign controllers establish/replace one repair
+                // Medium and higher campaign controllers establish/replace one repair
                 // yard before optional expansion, including its missing prerequisites.
                 // Count queued structures and preserve normal costs/placement rules.
-                if (isCampaignGameType(currentGame->gameType) && difficulty>=Difficulty::Hard
+                if (isCampaignGameType(currentGame->gameType) && difficulty>=Difficulty::Medium
                     && data[Structure_RepairYard][houseID].enabled
                     && currentGame->techLevel>=data[Structure_RepairYard][houseID].techLevel
                     && pBuilder->getItemID()==Structure_ConstructionYard
@@ -6461,7 +6461,7 @@ void QuantBot::scrambleUnitsAndDefend(const ObjectBase* intruder, bool clearingS
             && unit->isAFlyingUnit() == intruder->isAFlyingUnit()
             && blockDistance(contact,unit->getLocation()) <= 8) threatValue += value(unit);
         if (unit->getOwner()!=getHouse() || !unit->isRespondable() || humanControls(unit)
-            || !unit->canAttack(intruder) || unit->isBadlyDamaged() || unit->getAttackMode()==RETREAT
+            || !unit->canAttack(intruder) || reserveDamagedUnitForRepair(unit) || unit->getAttackMode()==RETREAT
             || unit->getItemID()==Unit_Saboteur || unit->getItemID()==Unit_Harvester
             || unit->getItemID()==Unit_Ornithopter) continue; // Air planner checks AA before defending.
         if (clearingSpice && blockDistance(contact,unit->getLocation())>clearingRadius) continue;
@@ -6586,7 +6586,7 @@ bool QuantBot::tryLaunchOrnithopterStrike(const QuantBotConfig::DifficultySettin
         const ObjectBase* target=nullptr;
         double bestScore=-1;
         int bestRank=0;
-        if(!unit->isBadlyDamaged() && unit->getAttackMode()!=RETREAT) {
+        if(!reserveDamagedUnitForRepair(unit) && unit->getAttackMode()!=RETREAT) {
             for(const auto& candidate:candidates) {
                 if (isCampaignEnemy() && candidate.rank==2
                     && !campaignWave.members.count(unit->getObjectID())) continue;
@@ -6754,7 +6754,7 @@ void QuantBot::launchGroundHunt() {
         const int price=std::max(100,currentGame->objectData.data[unit->getItemID()][unit->getOriginalHouseID()].price);
         armyValue+=price;
         if (unit->getAttackMode()==HUNT) committedValue+=price;
-        if (unit->isBadlyDamaged() || unit->getAttackMode()==RETREAT) continue;
+        if (reserveDamagedUnitForRepair(unit) || unit->getAttackMode()==RETREAT) continue;
         if (unit->hasATarget()) continue;
         if (!limited && (!unit->isAGroundUnit() || unit->getItemID()==Unit_Saboteur
             || (unit->getAttackMode()==HUNT && !unit->wasForced()))) continue;
@@ -6838,6 +6838,12 @@ void QuantBot::launchGroundHunt() {
         ++count; value+=std::max(100,currentGame->objectData.data[unit->getItemID()][unit->getOriginalHouseID()].price);
     }
     if (count==0) return; // An empty house checking readiness is not an attack.
+    if (limited && profile.limitedWave) {
+        attackTimer=MILLI2CYCLES(120000+CampaignDifficultyPolicy::staggerMs(
+            getGameInitSettings().getRandomSeed(),getGameCycleCount(),getHouse()->getHouseID(),120000));
+        traceDecision("attack_schedule",AITelemetry::Record().set("delay_cycles",attackTimer)
+            .set("reason","next_wave_after_dispatch"));
+    }
     traceDecision("ground_hunt",AITelemetry::Record().set("members",count).set("value",value)
         .set("campaign_limited",limited).set("army_value",armyValue).set("committed_value",committedValue)
         .set("available_value",availableValue).set("required_ready",requiredReady)
@@ -7461,7 +7467,7 @@ void QuantBot::retreatAllUnits() {
                 || unit->getItemID()==Unit_Ornithopter
                 || !target || target->getHealth()<=0 || !target->isActive()
                 || target->getOwner()->getTeamID()==getHouse()->getTeamID()
-                || unit->isBadlyDamaged() || unit->getAttackMode()==RETREAT
+                || reserveDamagedUnitForRepair(unit) || unit->getAttackMode()==RETREAT
                 || (isCampaignEnemy() && !campaignDefensiveContact(unit,target))) {
                 if (unit && unit->getOwner()==getHouse() && !humanControls(unit)
                     && unit->getAttackMode()==AREAGUARD) const_cast<UnitBase*>(unit)->setForced(false);
@@ -7550,7 +7556,7 @@ void QuantBot::retreatAllUnits() {
             if (!supportMode && pUnit->getOwner() == getHouse() && pUnit->isAGroundUnit()
                 && pUnit->isRespondable() && pUnit->isActive() && pUnit->canAttack()
                 && pUnit->getItemID() != Unit_Harvester && pUnit->getItemID() != Unit_Saboteur
-                && !pUnit->isBadlyDamaged() && !pUnit->hasATarget() && !pUnit->wasForced()
+                && !reserveDamagedUnitForRepair(pUnit) && !pUnit->hasATarget() && !pUnit->wasForced()
                 && pUnit->getAttackMode() != HUNT && pUnit->getAttackMode() != RETREAT
                 && squadRallyLocation.isValid()) {
                 moveToOptimalSquadPosition(pUnit,rallyRadius,&rallyOrdersRemaining);
