@@ -99,7 +99,7 @@ void runCampaignPressureProbe(Game& game) {
             bot->militaryValueLimit=31*price*100/pct;
             std::vector<UnitBase*> recovering;
             for(auto* unit:assaultArmy) if(unit->getOwner()==bot->getHouse() && recovering.size()<5) {
-                unit->setHealth(1);recovering.push_back(unit);
+                unit->doSetAttackMode(RETREAT);recovering.push_back(unit);
             }
             bot->attack(0);
             require(bot->campaignWave.members.empty(),"Aggregate readiness was bypassed");
@@ -109,35 +109,36 @@ void runCampaignPressureProbe(Game& game) {
             require(initial.size()==expected,"First wave missed its configured size");
             for(int attempt=0;attempt<10;++attempt)bot->attack(40*price);
             require(bot->campaignWave.members==initial,"Away or injured troops satisfied fresh-wave readiness");
-            // Replacements can become ready while the first wave is fighting,
-            // but Easy/Medium must not stack them into a larger assault.
+            // Ready replacements wait for the dispatch countdown, not for
+            // the current attackers to die or return.
             const auto cycle=game.getGameCycleCount();
-            for(size_t i=0;i<expected-4;++i) recovering[i]->setHealth(recovering[i]->getMaxHealth());
-            for(int attempt=0;attempt<10;++attempt)bot->attack(40*price);
-            require(bot->campaignWave.members==initial,"Easy/Medium stacked multiple small waves");
-            for(auto id:initial) {
-                auto* casualty=dynamic_cast<UnitBase*>(game.getObjectManager().getObject(id));
-                require(casualty,"First-wave unit missing");casualty->setHealth(0);
-            }
-            bot->updateCampaignWave();
-            require(bot->attackTimer>=MILLI2CYCLES(120000) && bot->attackTimer<=MILLI2CYCLES(240000),
-                "Easy/Medium break is outside two to four minutes");
-            bot->attack(40*price);
-            require(bot->campaignWave.members.empty(),"Ready army skipped the post-wave break");
+            for(size_t i=0;i<expected-4;++i) recovering[i]->doSetAttackMode(GUARD);
             const int pause=bot->attackTimer;
+            const int minimum=tier==QuantBot::Difficulty::Easy ? 60000 : 120000;
+            require(pause>=MILLI2CYCLES(minimum) && pause<=MILLI2CYCLES(minimum+120000),
+                "Dispatch countdown is outside its difficulty range");
+            for(int attempt=0;attempt<10;++attempt)bot->attack(40*price);
+            require(bot->campaignWave.members==initial,"New wave launched before countdown expired");
             bot->updateCampaignWave();
-            require(bot->attackTimer==pause,"Ordinary wave update discarded the break");
-            // The main AI update decrements the already serialized attackTimer.
+            require(bot->attackTimer==pause,"Wave maintenance restarted the countdown");
             game.gameCycleCount+=pause;bot->attackTimer=1;
             bot->attack(40*price);
-            require(bot->campaignWave.members.empty(),"Wave launched before timer expired");
+            require(bot->campaignWave.members==initial,"Wave launched one tick before countdown expired");
             bot->attackTimer=0;bot->attack(40*price);
-            require(game.getGameCycleCount()>cycle && bot->campaignWave.members.size()==expected,
-                "Ready second wave failed after the break expired");
-            for(auto id:initial)require(!bot->campaignWave.members.count(id),"Dead attacker rejoined next wave");
+            require(game.getGameCycleCount()>cycle && bot->campaignWave.members.size()==2*expected,
+                "Surviving first wave blocked a ready second wave");
+            for(auto id:initial)require(bot->campaignWave.members.count(id),"New wave discarded surviving attackers");
             const auto second=bot->campaignWave.members;
             for(int attempt=0;attempt<10;++attempt)bot->attack(40*price);
-            require(bot->campaignWave.members==second,"Insufficient reserves trickled into another wave");
+            require(bot->campaignWave.members==second,"Second dispatch did not restart its countdown");
+            const int remaining=bot->attackTimer;
+            for(auto id:second) {
+                auto* casualty=dynamic_cast<UnitBase*>(game.getObjectManager().getObject(id));
+                require(casualty,"Wave member missing");casualty->setHealth(0);
+            }
+            bot->updateCampaignWave();
+            require(bot->campaignWave.members.empty() && bot->attackTimer==remaining,
+                "Wave casualties changed the already-running countdown");
         }
         for (auto tier:{QuantBot::Difficulty::Hard,QuantBot::Difficulty::Brutal}) {
             reset(tier);
@@ -284,6 +285,6 @@ void runCampaignPressureProbe(Game& game) {
         require(SavePNG(screenshot.get(),filename.c_str())==0,"Menu screenshot failed");
     }
     SDL_SetRenderTarget(renderer,nullptr);
-    SDL_Log("CAMPAIGN_PRESSURE_PROBE_PASS: opening gates, fresh-wave readiness, Easy/Medium no stacking and post-wave break, reserve protection, saved cooldown, scripted cargo and sustained combat");
+    SDL_Log("CAMPAIGN_PRESSURE_PROBE_PASS: opening gates, fresh-wave readiness, Easy/Medium dispatch countdown with surviving attackers, reserve protection, saved cooldown, scripted cargo and sustained combat");
     SDL_Log("CAMPAIGN_BALANCE_RESULT: probe=pressure outcome=passed");
 }

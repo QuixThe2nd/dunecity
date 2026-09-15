@@ -131,6 +131,7 @@ private:
     bool campaignCanLaunch() const;
     int campaignRequiredArmy(int configuredThreshold) const;
     bool campaignCombatUnit(const UnitBase* unit) const;
+    bool reserveDamagedUnitForRepair(const UnitBase* unit) const;
     bool campaignLocalContact(const ObjectBase* target) const;
     bool campaignDefensiveContact(const UnitBase* unit, const ObjectBase* target) const;
     bool campaignControlsUnit(const UnitBase* unit);

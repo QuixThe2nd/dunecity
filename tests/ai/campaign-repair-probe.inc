@@ -9,7 +9,7 @@ void runCampaignRepairProbe(Game& game) {
         }
     require(partner && enemy,"Repair fixture requires both campaign roles");
     for(auto* bot:{partner,enemy}) {
-        require(bot->difficulty>=QuantBot::Difficulty::Hard,"Run repair probe with Hard or Brutal controllers");
+        require(bot->difficulty>=QuantBot::Difficulty::Medium,"Run repair probe with Medium, Hard or Brutal controllers");
         auto* house=const_cast<House*>(bot->getHouse());
         auto place=[&](Uint32 item) {
             for(int y=1;y<currentGameMap->getSizeY()-4;y+=4)
@@ -35,6 +35,9 @@ void runCampaignRepairProbe(Game& game) {
         require(yard,"Missing fixture construction yard");
         yard->updateBuildList();
         require(yard->isAvailableToBuild(Structure_Radar),"Radar prerequisites missing in fixture");
+        // Keep this fixture about repair prerequisites; Medium correctly
+        // prioritizes required power before optional construction.
+        while(house->getProducedPower()<house->getPowerRequirement()+200)place(Structure_WindTrap);
         house->addCredits(10000);bot->lastCalculatedSpice=100000;
         if(bot==partner) bot->gameMode=QuantBot::GameMode::Custom;
         bot->build(4000);

@@ -1,3 +1,97 @@
+## 2026-09-15 — Easy campaign pressure adjustment, 1.0.692
+
+Stefan tested 691 and still found Harkonnen too passive with many launchers.
+The exact process used build/bin/dunecity.app, session1789459263866226-0,
+SCENA022, seed99480356. Harkonnen's timer was working: waves at 12.31,15.04,
+17.40,21.04,23.76 game minutes each sent four units worth1,450. At17.40 an
+older survivor remained (five active members after four new dispatches).
+Snapshots around20min had six launchers and military3,900; no readiness
+deferrals between20–24min. This is insufficient pressure under the existing
+cap/cadence, not a repeat of the wave-survivor timer deadlock.
+
+Stefan specified a 1–3-game-minute gap and corrected his requested late Easy
+attack ceiling from2,000 to1,700 credits. Implemented those exact Easy values.
+Early/middle Easy caps remain900/1,200 and late count cap remainsfive. Each
+dispatch still spends at most50% of ready army value. Opening timing, Medium's
+larger waves and2–4min gap, Hard/Brutal commitment, repair and defence policies
+are unchanged. Uses existing serialized attackTimer; no new save state.
+
+Built separately under build-692/bin/dunecity.app to preserve the app running
+from build/bin. All seven CTest groups passed, as did the real-engine pressure
+fixture (opening gates, repeat timer despite survivors, reserves, all four
+tiers, save state). Version, dependency and app-signature checks passed.
+
+Natural isolated native comparisons, full QuantBot Easy Atreides vs Easy,
+Vanilla SCENA022 seed99480356, default harvester limit, no human orders:
+691 won at31.37min; 692 won at29.39min. Enemy ground dispatches increased
+from8 to9, dispatched value from10,600 to13,450, and total enemy raw damage
+from11,281 to13,425. Harkonnen's first692 wave was1,700 credits at12.31min;
+its second was1,550 at14.47min. Ordos/Sardaukar later launched fresh waves
+with previous survivors still active. Every new Easy dispatch stayed within
+five units/1,700 and its ready-army budget. The observer run uses concrete
+degradation enabled, unlike Stefan's live game, and is not an exact replay.
+These runs confirm increased pressure, not a conclusion about human balance.
+A level4 regression naturally won at15.74min. No skip or forced victory.
+
+The runner's postprocessing still rejected accumulated survivors above one
+wave cap, contrary to691's explicitly requested overlapping-wave rule. It now
+checks each dispatch's members/value and budget instead of aggregate survivors.
+The first692 simulation finished normally but this stale check rejected its
+report; rerunning after correction passed with identical cycle110200 result.
+Evidence: /tmp/dunecity-691-live-seed-baseline/,
+/tmp/dunecity-692-{live-seed-verified,level4,pressure}/,
+/tmp/dunecity-692-ctest.log. Not installed or published.
+
+## 2026-09-15 — Timed campaign waves and repair eligibility, 1.0.691
+
+Stefan explicitly changed the Easy/Medium campaign rule: start the next-wave
+countdown on dispatch, never wait for surviving attackers to finish. Each
+successful dispatch now starts the existing deterministic 2–4 game-minute
+attackTimer. Wave extinction no longer restarts it. Opening gates, readiness,
+per-dispatch count/value limits, manual orders and saved-state layout remain.
+Hard/Brutal retain readiness-driven attacks. This supersedes the 688 wave-end
+cooldown described below.
+
+Medium now prioritizes one missing repair yard (including prerequisites), as
+Hard/Brutal already did, and can issue vehicle repair orders. Actual and queued
+yards prevent duplicate priority orders. Easy campaign controllers without a
+repair yard keep damaged combat units eligible for attacks and defence instead
+of withdrawing/excluding them. Existing-yard repair and explicit retreat orders
+remain protected; saboteurs stay independent.
+
+Live 690 diagnosis: process 6279 wrote session 1789457442473833-0, SCENA022,
+seed540497013. Atreides had actual support=1, named "Atreides (AI Support)".
+This economy-only controller deliberately skips attack and defence commands;
+the menu/factory mappings for full QuantBot Easy and AI Support Easy are correct.
+Atreides military value was 9,590 against an 8,000 limit, explaining paused
+military production despite abundant credits. Stefan will start a new game with
+full QuantBot Easy. Harkonnen dispatched at 24.41min but had no wave-end/new
+dispatch by 39.04min: 690 survivor gating held the next countdown. Sardaukar did
+dispatch repeatedly, including 28.04, 33.11 and 38.08min. Late-map Easy's current
+5-unit/1,500-value cap explains small expensive waves; this change does not
+increase that cap. Live snapshots: ../outputs/campaign-690-live-diagnosis/.
+
+Validation: all seven CTest groups passed; real-engine pressure fixture proves
+another full wave dispatches after the timer with all first-wave units alive,
+and casualties do not reset it. Defence fixture passed all four difficulties,
+new Easy no-yard/with-yard transitions, manual retreat and saboteur isolation.
+Medium repair fixture passed both helper/enemy roles, missing prerequisites and
+exactly one queued yard. The fixture supplies sufficient power because Medium
+correctly builds required windtraps first.
+
+Independent natural native run: Vanilla Atreides level9, seed540497013, full
+QuantBot Easy vs Easy, harvester limit100, no human commands or forced victory:
+won at cycle117445 (31.32 game minutes). Atreides logged 13 ground dispatches,
+10 defence responses and 89 production orders. Sardaukar dispatched at 13.32,
+16.47 and 19.80min; enemies also recorded defence responses. This is a fresh
+simulation, not a replay of Stefan's support-mode game; concrete degradation
+was enabled in the simulation and disabled in the live session. One AI win is
+not evidence of human difficulty balance.
+
+Evidence: /tmp/dunecity-691-{pressure,defence,repair-medium-final,atreides-natural}/
+and /tmp/dunecity-691-ctest.log. Dependency audits and native signature passed.
+Built locally at build/bin/dunecity.app as 1.0.691; not installed or published.
+
 ## 2026-09-15 — Independent saboteurs, 1.0.690
 
 Stefan's live 689 SCENH022 seed282721298 appeared cleared but victory did not

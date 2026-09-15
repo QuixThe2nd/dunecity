@@ -94,6 +94,48 @@ void runCampaignDefenceProbe(Game& game) {
             require(tank->getAttackMode()==RETREAT,"Wave holding cancelled a repair retreat");
             SDL_Log("CAMPAIGN_DEFENCE_TIER_PASS: tier=%d retaliation, base and remote-worker response, Area Guard, retreat",int(tier));
         }
+        // Easy cannot heal at home without a yard. Exercise actual damaged
+        // attackers, fresh-wave selection and the transition when a yard exists.
+        structureList=savedStructures;
+        const auto beforeYards=structureList;
+        for(auto* existing:beforeYards) if(existing->getOwner()==house
+            && existing->getItemID()==Structure_RepairYard) {
+            savedStructures.remove(existing);existing->destroy();
+        }
+        structureList.clear();structureList.push_back(building);
+        require(!house->hasRepairYard(),"No-yard fixture retained repair capacity");
+        bot->difficulty=QuantBot::Difficulty::Easy;
+        bot->campaignWave={};bot->campaignWave.initialized=true;
+        bot->campaignWave.opening=0;bot->campaignWave.launched=game.getGameCycleCount();
+        tank->setHealth(tank->getMaxHealth()/4);
+        bot->doSetAttackMode(tank,AREAGUARD);bot->doAttackObject(tank,launcher,true);
+        bot->campaignWave.members.insert(tank->getObjectID());
+        bot->updateCampaignWave();bot->campaignControlsUnit(tank);
+        require(bot->campaignWave.members.count(tank->getObjectID()) && tank->getTarget()==launcher,
+            "Easy withdrew damaged attacker despite having no repair yard");
+        bot->campaignWave.members.clear();bot->attackTimer=0;bot->militaryValueLimit=0;
+        for(auto* unit:{tank,backup}) {
+            unit->setHealth(unit->getMaxHealth()/4);
+            bot->doMove2Pos(unit,unit->getX(),unit->getY(),false);bot->doSetAttackMode(unit,GUARD);
+        }
+        bot->launchGroundHunt();
+        require(!bot->campaignWave.members.empty(),"No-yard Easy excluded damaged troops from a fresh wave");
+        StructureBase* repair=nullptr;
+        for(int y=1;y<currentGameMap->getSizeY()-4 && !repair;y+=4)
+            for(int x=1;x<currentGameMap->getSizeX()-4 && !repair;x+=4) {
+                bool clear=true;
+                for(int dy=0;dy<3;++dy)for(int dx=0;dx<3;++dx)
+                    if(currentGameMap->getTile(x+dx,y+dy)->hasAGroundObject())clear=false;
+                if(clear)repair=house->placeStructure(NONE_ID,Structure_RepairYard,x,y,true,true);
+            }
+        require(repair && house->hasRepairYard(),"Could not add repair capacity");
+        savedStructures.push_back(repair);
+        bot->updateCampaignWave();
+        require(bot->campaignWave.members.empty(),"Easy retained damaged assault members despite available repairs");
+        bot->doSetAttackMode(tank,RETREAT);bot->holdCampaignUnit(tank);
+        require(tank->getAttackMode()==RETREAT,"Explicit retreat order was overwritten");
+        structureList.clear();
+        SDL_Log("CAMPAIGN_REPAIR_WITHDRAWAL_PASS: no-yard Easy keeps damaged attackers and can dispatch them; existing-yard repair and explicit retreat preserved");
         // Palace saboteurs are independent attackers. AI must not modify even
         // explicit forced orders; Palace supplies Hunt when the unit spawns.
         auto* saboteur=spawn(house,Unit_Saboteur,2,3);

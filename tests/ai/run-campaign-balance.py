@@ -100,10 +100,12 @@ for row in rows:
     # itself; its Hard/Brutal waves must not inherit the CLI's default Easy cap.
     if not args.pressure_probe and row['event']=='ground_hunt' and row['data'].get('campaign_limited') and args.enemy_difficulty in ('easy','medium'):
         d=row['data']
-        if (d['alliance_units']>d['alliance_unit_cap']
+        # Caps apply to this dispatch. Surviving units from older waves are
+        # deliberately allowed alongside it after the repeat timer expires.
+        if (d['members']>d['alliance_unit_cap']
+                or d['value']>d['alliance_value_cap']
+                or d['alliance_units']>d['alliance_unit_cap']
                 or d['alliance_value']>d['alliance_value_cap']
-                or d['active_units']>d['alliance_unit_cap']
-                or d['active_value']>d['alliance_value_cap']
                 or d['alliance_value']>d['attack_budget']):
             raise RuntimeError('Automatic campaign force exceeded its wave budget')
 summary = {'result':results[0],'sourceCommit':subprocess.check_output(['git','rev-parse','HEAD'],cwd=root,text=True).strip(),
