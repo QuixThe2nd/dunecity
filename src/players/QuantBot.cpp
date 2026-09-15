@@ -422,22 +422,16 @@ void QuantBot::update() {
 		attackTimer = std::numeric_limits<Sint32>::max();
 	}
 
-    // Campaign enemies rebuild the scenario's starting base. A human's
-    // co-controller must instead develop a base from the mission's limited
-    // starting assets. Inspect actual controllers after loading, not isAI():
-    // legacy saves may mark a mixed human/bot house as AI-controlled.
-    const auto& controllers = getHouse()->getPlayerList();
-    const bool sharesHumanHouse = std::any_of(controllers.begin(), controllers.end(), [](const auto& player) {
-        return dynamic_cast<const HumanPlayer*>(player.get()) != nullptr;
-    });
-    if (sharesHumanHouse && gameMode == GameMode::Campaign) {
+    // Both co-controllers and separate human-allied houses develop an economy;
+    // only opponents use the campaign enemy rebuild/pressure restrictions.
+    if (isAlliedWithHuman() && gameMode == GameMode::Campaign) {
         gameMode = GameMode::Custom;
         initialMilitaryValue = -1;
         const auto& config = getQuantBotConfig();
         attackTimer = supportMode ? std::numeric_limits<Sint32>::max()
             : SimpleArmyPolicy::attackDelay(MILLI2CYCLES(config.attackTimerMs),
                 currentGame->getGameInitSettings().getRandomSeed(), getGameCycleCount(), getHouse()->getHouseID());
-        logDebug("Shared human house: using economy development instead of campaign enemy rebuild limits");
+        logDebug("Human-allied house: using economy development instead of campaign enemy rebuild limits");
     }
 
 	if (initialMilitaryValue < 0) {
@@ -782,8 +776,9 @@ void QuantBot::update() {
     if (getHouse()->getMaxHarvesters() > 0)
         baseHarvesterLimit = std::min(baseHarvesterLimit, getHouse()->getMaxHarvesters());
 
-    // Brutal expands its army freely, but keeps at most six economic workers.
-    if (difficulty == Difficulty::Brutal) baseHarvesterLimit = std::min(baseHarvesterLimit, 6);
+    // Only opposing Brutal houses receive the six-worker difficulty ceiling.
+    if (const int ceiling = harvesterCountCeiling(); ceiling > 0)
+        baseHarvesterLimit = std::min(baseHarvesterLimit, ceiling);
 	// Apply spice-based reduction for all modes and difficulties
 	int maxHarvestersForSpice = lastCalculatedSpice / 2000;
 	int oldLimit = harvesterLimit;
@@ -4810,7 +4805,19 @@ void QuantBot::build(int militaryValue) {
                         // Economic imports may use the cash held for the economy,
                         // just as factory-built harvesters do. Market discounts are
                         // irrelevant to needed workers and the first transport.
-                        const int workerTarget = vanillaEconomy ? spiceHarvesterTarget : harvesterLimit;
+                        int workerTarget = vanillaEconomy ? spiceHarvesterTarget : harvesterLimit;
+                        // A bargain worker is a cheap economy upgrade for a human
+                        // ally. Fill the permitted fleet instead of stopping at the
+                        // normal-price, remaining-spice planning target.
+                        const bool bargainWorkers = isAlliedWithHuman() && lastCalculatedSpice > 0
+                            && choam.getPrice(Unit_Harvester) > 0
+                            && choam.getPrice(Unit_Harvester) < data[Unit_Harvester][houseID].price;
+                        if (bargainWorkers) {
+                            if (getHouse()->getMaxHarvesters() > 0)
+                                workerTarget = getHouse()->getMaxHarvesters();
+                            const int overrideLimit = getGameInitSettings().getGameOptions().maximumNumberOfHarvestersOverride;
+                            if (overrideLimit >= 0) workerTarget = std::min(workerTarget, overrideLimit);
+                        }
                         auto buyEconomicImport = [&](Uint32 item, const char* rule) {
                             const int price = choam.getPrice(item);
                             const int cash = money + reserve.reserved;
@@ -4830,11 +4837,13 @@ void QuantBot::build(int militaryValue) {
                             money -= price;
                             return true;
                         };
-                        if (itemCount[Unit_Carryall] == 0)
+                        if (!bargainWorkers && itemCount[Unit_Carryall] == 0)
                             buyEconomicImport(Unit_Carryall, "first_economic_transport");
                         while (itemCount[Unit_Harvester] < workerTarget) {
                             if (!buyEconomicImport(Unit_Harvester, "starport_spice_economy")) break;
                         }
+                        if (bargainWorkers && itemCount[Unit_Carryall] == 0)
+                            buyEconomicImport(Unit_Carryall, "first_economic_transport");
 
                         const int transportUnits = itemCount[Unit_Tank] + itemCount[Unit_SiegeTank]
                             + itemCount[Unit_Launcher] + itemCount[Unit_Harvester];

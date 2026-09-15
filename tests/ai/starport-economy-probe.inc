@@ -96,5 +96,28 @@ void runStarportEconomyProbe(Game& game) {
     if (house->getCredits() != 0 || bargainPort->okToOrder())
         throw std::runtime_error("Bargain order overspent or was not dispatched");
     SDL_Log("STARPORT_BARGAIN_PASS: 800 credits buy eight units across four types, including quads");
+    // The reported regression: six existing workers, 180-credit harvesters,
+    // and a 15-worker human-allied ceiling. Fill all nine vacancies at once,
+    // even if a legacy/remaining-spice planner target still says six.
+    auto* workerPort = dynamic_cast<StarPort*>(place(Structure_StarPort));
+    house->maxHarvesters = 15;
+    bot->difficulty = QuantBot::Difficulty::Brutal;
+    while (house->getNumItems(Unit_Harvester) < 6) house->createUnit(Unit_Harvester,true);
+    bot->harvesterLimit = 6; bot->lastCalculatedSpice = 20000;
+    for (auto& offer : market.availableItems) {
+        offer.num = offer.itemID == Unit_Harvester ? 9 : offer.itemID == Unit_Carryall ? 1 : 0;
+        if (offer.itemID == Unit_Carryall) offer.price = 800;
+        if (offer.itemID == Unit_Harvester) offer.price = 180;
+    }
+    workerPort->updateBuildList();house->addCredits(1620);
+    savedStructures = structureList;
+    structureList.clear();structureList.push_back(workerPort);
+    try { bot->build(0); } catch (...) { structureList=savedStructures;throw; }
+    structureList=savedStructures;
+    workers=0;
+    for (const auto& queued : workerPort->currentProductionQueue) workers += queued.itemID==Unit_Harvester;
+    if (workers!=9 || house->getCredits()!=0 || workerPort->okToOrder())
+        throw std::runtime_error("Human-allied Brutal failed to fill 15-worker fleet with nine bargain imports");
+    SDL_Log("STARPORT_ALLIED_WORKERS_PASS: six existing + nine imports at 180 = 15; paid 1620");
     SDL_Log("CAMPAIGN_BALANCE_RESULT: probe=starport outcome=passed");
 }

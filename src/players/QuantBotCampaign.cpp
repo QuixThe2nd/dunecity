@@ -9,18 +9,23 @@
 #include <Trigger/ReinforcementTrigger.h>
 #include <Trigger/TriggerManager.h>
 
-bool QuantBot::isCampaignEnemy() const {
-    if (!currentGame || !isCampaignGameType(currentGame->gameType) || supportMode
-        || difficulty == Difficulty::Defend) return false;
-    for (const auto& player : getHouse()->getPlayerList())
-        if (dynamic_cast<const HumanPlayer*>(player.get())) return false;
-    // AI-only allies of a human must not inherit beginner-facing enemy caps.
-    for (int h=0;h<NUM_HOUSES;++h) if (const auto* house=getHouse(h)) {
+bool QuantBot::isAlliedWithHuman() const {
+    if (!getHouse()) return false;
+    for (int h=0; h<NUM_HOUSES; ++h) if (const auto* house=getHouse(h)) {
         if (house->getTeamID()!=getHouse()->getTeamID()) continue;
         for (const auto& player : house->getPlayerList())
-            if (dynamic_cast<const HumanPlayer*>(player.get())) return false;
+            if (dynamic_cast<const HumanPlayer*>(player.get())) return true;
     }
-    return true;
+    return false;
+}
+
+int QuantBot::harvesterCountCeiling() const {
+    return difficulty == Difficulty::Brutal && !isAlliedWithHuman() ? 6 : 0;
+}
+
+bool QuantBot::isCampaignEnemy() const {
+    return currentGame && isCampaignGameType(currentGame->gameType)
+        && !supportMode && difficulty != Difficulty::Defend && !isAlliedWithHuman();
 }
 
 CampaignDifficultyPolicy::Profile QuantBot::campaignProfile() const {

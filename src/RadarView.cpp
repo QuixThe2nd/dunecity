@@ -138,11 +138,11 @@ void RadarView::draw(Point position)
 
 void RadarView::update() {
     if(pLocalHouse->hasRadarOn()) {
-        if(currentRadarMode != RadarMode::RadarOn && currentRadarMode != RadarMode::AnimationRadarOn && currentRadarMode != RadarMode::AnimationRadarOff) {
+        if(currentRadarMode != RadarMode::RadarOn && currentRadarMode != RadarMode::AnimationRadarOn) {
             switchRadarMode(true);
         }
     } else {
-        if(currentRadarMode != RadarMode::RadarOff && currentRadarMode != RadarMode::AnimationRadarOn && currentRadarMode != RadarMode::AnimationRadarOff) {
+        if(currentRadarMode != RadarMode::RadarOff && currentRadarMode != RadarMode::AnimationRadarOff) {
             switchRadarMode(false);
         }
     }

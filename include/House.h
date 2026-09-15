@@ -73,7 +73,9 @@ public:
     inline bool hasSandworm() const { return (numItem[Unit_Sandworm] > 0); }
     inline bool hasRadar() const { return (numItem[Structure_Radar] > 0); }
 
-    inline bool hasRadarOn() const { return (hasRadar() && hasPower()); }
+    // Radar always needs its full power allocation, even when other
+    // production is allowed to operate without power (vanilla rules).
+    inline bool hasRadarOn() const { return hasRadar() && producedPower >= powerRequirement; }
     bool isPowerRequired() const;
     bool hasPower() const;
 

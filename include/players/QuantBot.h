@@ -71,7 +71,8 @@ public:
     std::string getDifficultyName() const;
     bool permitsPoliceReinforcement(int unitValue) const;
     bool ignoresUnitCountLimit() const { return difficulty==Difficulty::Hard || difficulty==Difficulty::Brutal; }
-    int harvesterCountCeiling() const { return difficulty==Difficulty::Brutal ? 6 : 0; }
+    bool isAlliedWithHuman() const;
+    int harvesterCountCeiling() const;
     bool canAddRepairYard(int includingQueued) const;
 
     void onObjectWasBuilt(const ObjectBase* pObject) override;

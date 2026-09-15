@@ -34,7 +34,10 @@ void runCampaignPressureProbe(Game& game) {
             if(unlimited) require(!house->isInfantryUnitLimitReached() && !house->isAirUnitLimitReached(),
                 "Infantry/air retained a count limit");
             require(house->isHarvesterLimitReached(),"Removing unit ceiling removed the worker ceiling");
-            if(tier==QuantBot::Difficulty::Brutal) require(house->getMaxHarvesters()<=6,"Brutal engine worker cap exceeds six");
+            if(tier==QuantBot::Difficulty::Brutal) {
+                if(bot==partner) require(bot->harvesterCountCeiling()==0,"Shared helper inherited enemy worker cap");
+                else require(house->getMaxHarvesters()<=6,"Brutal enemy engine worker cap exceeds six");
+            }
         }
         house->maxUnits=savedLimit;house->numItem[Unit_Harvester]=savedWorkers;bot->difficulty=savedDifficulty;
     }

@@ -1,3 +1,45 @@
+## 2026-09-15 — Allied harvester caps and radar power, 1.0.695
+
+Stefan reported a shared Atreides Brutal helper ignoring 180-credit harvesters.
+Live 694 session `1789471829089566-0`, vanilla SCENA022.INI, seed703750746,
+62x62: telemetry confirmed `harvester_ai_limit=6`, `harvester_engine_limit=6`,
+`harvester_target=6` on human house1. The six-worker difficulty restriction from
+693 had been incorrectly applied to human helpers. Stefan clarified that this
+is an ENEMY cap and classification must use alliance with human players.
+Evidence excerpt: `../outputs/radar-allied-harvesters-695/evidence.json`.
+
+- Extracted the existing human-team scan into `isAlliedWithHuman()`, shared by
+  campaign enemy classification and harvester ceilings. Brutal's six-worker cap
+  now excludes both human co-controllers and separate human-allied houses. Their
+  configured/map/explicit ceiling applies (15 in the reported vanilla map).
+- Campaign human-allied houses use normal economy development, including separate
+  allied houses loaded with campaign mode. Classification uses actual controllers
+  and team IDs, never local-player identity or the unreliable mixed-house AI flag.
+- If harvesters are below normal price and spice remains, a human ally fills its
+  permitted fleet in one affordable order instead of the ordinary remaining-spice
+  target. Bargain workers precede the first carryall and military imports; cash,
+  market stock, explicit overrides, engine cap, and pending workers are respected.
+  Enemy targets remain difficulty-limited. Normal-price investment taper remains.
+- Radar now directly requires an outpost and producedPower >= powerRequirement,
+  independent of generic power exemptions and the rocket-turret power option.
+  Previously vanilla hasPower() returned true despite the observed100/405 power
+  deficit. The general power rules/turret option are unchanged. Radar transitions
+  can reverse immediately if power is lost/restored mid-animation.
+
+Validation: 7/7 CTests and dependency checks passed. Native Starport fixture bought
+nine harvesters at180 for1620 with six already present, despite a stale target6,
+filling a human-allied fleet of15 even with a carryall available. Pacing fixture
+verified shared helper15, separate ally15/normal development, opposing Brutal6,
+and lower explicit limits. Pressure/wave fixture passed. Native radar tests in
+vanilla and Dune City cover deficit, exact equality, surplus, missing outpost,
+shutdown, and interruption/reversal of activation. The initial test incorrectly
+required an animation when an immediate completed-on state was also valid; fixed
+that assertion and both mod tests passed. No save-format change.
+
+Built in `build-692`; installed `/Applications/dunecity.app` 1.0.695 after verifying
+the game was closed. Previous app at `/tmp/dunecity-before-695.app`. Signature and
+version checked. No public push or downloads/web release in this change.
+
 ## 2026-09-15 — Starport-led QuantBot opening, 1.0.694
 
 Stefan corrected the intended economy strategy: build four–five refineries,

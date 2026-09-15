@@ -26,7 +26,18 @@ void runCampaignPacingProbe(Game& game) {
     partner->lastCalculatedSpice=200000;partner->update();
     require(partner->harvesterLimit>2,"Human partner incorrectly inherited small enemy worker cap");
     partner->difficulty=QuantBot::Difficulty::Brutal;
-    partner->update();require(partner->harvesterLimit==6,"Brutal helper escaped six-worker cap");
+    game.gameInitSettings.gameOptions.maximumNumberOfHarvestersOverride=15;
+    partner->update();require(partner->harvesterLimit==15,"Brutal helper inherited the enemy six-worker cap");
+    auto* allyHouse=const_cast<House*>(bot->getHouse());
+    const int enemyTeam=allyHouse->teamID;
+    allyHouse->teamID=partner->getHouse()->getTeamID();
+    bot->difficulty=QuantBot::Difficulty::Brutal;bot->lastCalculatedSpice=200000;
+    bot->update();
+    require(bot->isAlliedWithHuman() && !bot->isCampaignEnemy(),"Separate ally misclassified as enemy");
+    require(bot->harvesterCountCeiling()==0 && bot->harvesterLimit==15,"Separate ally retained enemy worker cap");
+    require(bot->gameMode==QuantBot::GameMode::Custom,"Separate ally retained campaign rebuild logic");
+    allyHouse->teamID=enemyTeam;bot->gameMode=QuantBot::GameMode::Campaign;
+    bot->update();require(bot->harvesterCountCeiling()==6 && bot->harvesterLimit==6,"Opponent lost six-worker cap");
     for(auto* enemy:enemies) {
         enemy->difficulty=QuantBot::Difficulty::Easy;enemy->campaignWave={};
         enemy->campaignWave.initialized=true;enemy->attackTimer=INT32_MAX;
