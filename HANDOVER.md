@@ -1,3 +1,27 @@
+## 2026-09-15 — SimCity starting defences and allied opening, 1.0.698
+
+Added ten Rocket-Turrets per player to the bundled single-player
+`2P - 192x192 - SimCity.ini`. Every construction yard, refinery, repair yard,
+factory, House IX, outpost and nuclear plant now has at least two rocket turrets
+within five tiles of its centre. Additions occupy unused rock, preserve roads,
+existing buildings and units, and reinforce both starting cities equally.
+The historical user-map packing script was not rerun; this is an additive edit
+to the shipped scenario.
+
+Human-allied campaign QuantBots enter normal development with attackTimer=0,
+so their existing army threshold can authorize the first attack immediately.
+Loaded legacy countdowns greater than60s are discarded instead of shortened to60s.
+Normal60s repeat breaks remain. Enemy campaign trigger/opening logic, support
+and Defend exclusions are unchanged. No save-format change.
+
+Validation: 7/7 CTests, pre/post dependency checks, native pacing probe verifies
+new and loaded allied opening removal plus retained60s repeat break; native
+pressure probe verifies enemy reinforcement/opening gates remain enforced.
+Artifacts /tmp/dunecity-698-{pacing,pressure}, /tmp/ctest-698.log. Map verification
+checks20 additions only, unique IDs, unused rock and exact built-bundle copy.
+Built in build-692 and installed /Applications/dunecity.app as1.0.698; previous
+app backed up at /tmp/dunecity-before-698.app. No public push or deployment.
+
 ## 2026-09-15 — Keep artillery assaults engaged; campaign limits, 1.0.697
 
 Stefan reported Atreides launchers returning home after Hunt in vanilla campaign

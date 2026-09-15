@@ -429,16 +429,17 @@ void QuantBot::update() {
         initialMilitaryValue = -1;
         const auto& config = getQuantBotConfig();
         attackTimer = supportMode ? std::numeric_limits<Sint32>::max()
-            : isCampaignGameType(currentGame->gameType) ? MILLI2CYCLES(60000)
+            : isCampaignGameType(currentGame->gameType) ? 0
             : SimpleArmyPolicy::attackDelay(MILLI2CYCLES(config.attackTimerMs),
                 currentGame->getGameInitSettings().getRandomSeed(), getGameCycleCount(), getHouse()->getHouseID());
         logDebug("Human-allied house: using economy development instead of campaign enemy rebuild limits");
     }
 
-    // Loaded helpers may still carry the older, longer attack countdown.
+    // Allies have no campaign opening grace. Discard a legacy opening timer
+    // on load, but preserve the normal 60-second break between their attacks.
     if (!supportMode && difficulty != Difficulty::Defend && isAlliedWithHuman()
-        && isCampaignGameType(currentGame->gameType))
-        attackTimer = std::min(attackTimer, static_cast<int>(MILLI2CYCLES(60000)));
+        && isCampaignGameType(currentGame->gameType) && attackTimer > MILLI2CYCLES(60000))
+        attackTimer = 0;
 
 	if (initialMilitaryValue < 0) {
 		// Run once after objects exist, including a new partner added to a

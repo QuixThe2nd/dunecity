@@ -50,8 +50,15 @@ void runCampaignPacingProbe(Game& game) {
     game.gameInitSettings.mission=savedMission;partnerHouse->maxHarvesters=savedWorkerLimit;
     game.gameInitSettings.gameOptions.maximumNumberOfHarvestersOverride=15;
     partner->lastCalculatedSpice=200000;partner->update();
+    partner->gameMode=QuantBot::GameMode::Campaign;
+    partner->attackTimer=MILLI2CYCLES(720000);partner->update();
+    require(partner->attackTimer==0 && partner->campaignCanLaunch(),"New ally retained campaign opening delay");
+    partner->attackTimer=MILLI2CYCLES(720000);partner->update();
+    require(partner->attackTimer==0,"Loaded ally retained legacy opening delay");
     partner->attack(100000);
     require(partner->attackTimer==MILLI2CYCLES(60000),"Campaign ally attack interval is not60 seconds");
+    partner->update();
+    require(partner->attackTimer==MILLI2CYCLES(60000),"Ally lost its break between attacks");
     SDL_Log("ALLIED_CAMPAIGN_LIMITS_PASS: levels8/9 Brutal20, Hard15, smaller maps unchanged, override3, spice target9, attack interval60s");
     auto* allyHouse=const_cast<House*>(bot->getHouse());
     const int enemyTeam=allyHouse->teamID;
