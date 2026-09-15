@@ -1,3 +1,37 @@
+## 2026-09-15 — Custom economy parity and local base defence, 1.0.699
+
+Stefan clarified custom-game allies/opponents should share normal economy rules,
+with military built alongside workers; aggressive full-fleet saving belongs to
+campaign helpers. Seven-worker Brutal ceiling now applies only to campaign
+enemies. Custom bots retain authored map/override/spice ceilings regardless of
+human alliance. Full-fleet worker cash reserve and bargain bypass of spice
+planning are campaign-helper-only. Custom Starport orders allocate at most half
+available cash to economy while army value is below target, except emergency
+first two workers; remaining money buys cheap troops. Existing factory capital
+balance again applies without the campaign reserve overriding it.
+
+Base defenders were released from defenceAssignments upon entering guard range,
+allowing regroup to steal them after target loss; proportional response could
+also leave nearby troops idle despite the base being attacked. Rescan visible
+units actively firing at owned structures before regroup, using actual weapon
+range (isInAttackRange instead reflects guard orders and always passes Hunt).
+Scramble all eligible responders within12 tiles for such a base attack; preserve
+assignments through arrival until target death/departure, reacquire targets, and
+exclude assigned defenders from regroup/new offensive dispatch. Human orders,
+saboteurs, explicit retreats and damaged units reserved for repair remain exempt.
+
+Remote 698 PR build caught Tornie QuantBot Config checksum stale after693 tuning.
+Updated only its hash in the existing manifest; integrity checks remain enabled.
+No698 public release occurred. Release notes now cover693–699 together.
+
+Validation: 7/7 CTests; pre/post dependency checks; native vanilla and city
+Starport probes preserve campaign purchases and custom1800 buys5 workers plus9
+tanks; native army probe verifies nearby regroup travel interrupted for base
+attack, assignment retained/reacquired and Hunt/kiting unchanged. Native defence
+and pacing probes pass. /tmp/dunecity-699-{imports,city-imports,army-final,defence,pacing};
+/tmp/ctest-699-final.log. Local699 installed with698 backup at
+/tmp/dunecity-before-699.app. Public release pending PR47 and stable tag builds.
+
 ## 2026-09-15 — SimCity starting defences and allied opening, 1.0.698
 
 Added ten Rocket-Turrets per player to the bundled single-player

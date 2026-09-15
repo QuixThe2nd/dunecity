@@ -3462,7 +3462,8 @@ void QuantBot::build(int militaryValue) {
     // temporarily unavailable. Count queued workers, so the reserve releases
     // as soon as the fleet is funded rather than waiting for it to arrive.
     auto harvesterInvestmentReserve = [&]() {
-        if (gameMode != GameMode::Custom || supportMode || !(vanillaEconomy || citySimEnabled)
+        if (!isCampaignGameType(currentGame->gameType) || !isAlliedWithHuman()
+            || gameMode != GameMode::Custom || supportMode || !(vanillaEconomy || citySimEnabled)
             || lastCalculatedSpice <= 0 || getHouse()->isGroundUnitLimitReached()
             || getHouse()->getNumItems(Structure_Refinery) == 0
             || (harvesterFactories.empty() && getHouse()->getNumItems(Structure_StarPort) == 0)) return 0;
@@ -4838,7 +4839,8 @@ void QuantBot::build(int militaryValue) {
                         // A bargain worker is a cheap economy upgrade for a human
                         // ally. Fill the permitted fleet instead of stopping at the
                         // normal-price, remaining-spice planning target.
-                        const bool bargainWorkers = isAlliedWithHuman() && lastCalculatedSpice > 0
+                        const bool bargainWorkers = isCampaignGameType(currentGame->gameType)
+                            && isAlliedWithHuman() && lastCalculatedSpice > 0
                             && choam.getPrice(Unit_Harvester) > 0
                             && choam.getPrice(Unit_Harvester) < data[Unit_Harvester][houseID].price;
                         if (bargainWorkers) {
@@ -4847,9 +4849,17 @@ void QuantBot::build(int militaryValue) {
                             const int overrideLimit = getGameInitSettings().getGameOptions().maximumNumberOfHarvestersOverride;
                             if (overrideLimit >= 0) workerTarget = std::min(workerTarget, overrideLimit);
                         }
+                        // Custom games grow the economy and army together. After
+                        // the first two workers, keep half this order's cash for
+                        // combat while the army is below its target.
+                        const bool mixedCustomSpending = !isCampaignGameType(currentGame->gameType)
+                            && militaryValue < militaryValueLimit;
+                        int economicBudget = mixedCustomSpending ? std::max(0,money+reserve.reserved)/2 : INT_MAX;
                         auto buyEconomicImport = [&](Uint32 item, const char* rule) {
                             const int price = choam.getPrice(item);
                             const int cash = money + reserve.reserved;
+                            const bool bootstrapWorker = item == Unit_Harvester && itemCount[item] < 2;
+                            if (mixedCustomSpending && !bootstrapWorker && price > economicBudget) return false;
                             if (item == Unit_Harvester && getHouse()->getMaxHarvesters() > 0
                                 && itemCount[item] >= getHouse()->getMaxHarvesters()) return false;
                             if (price <= 0 || cash < price || choam.getNumAvailable(item) <= 0
@@ -4864,6 +4874,7 @@ void QuantBot::build(int militaryValue) {
                             // The scoped reserve is restored after this builder;
                             // deducting here charges this order exactly once.
                             money -= price;
+                            if (mixedCustomSpending) economicBudget = std::max(0,economicBudget-price);
                             return true;
                         };
                         if (!bargainWorkers && itemCount[Unit_Carryall] == 0)
@@ -6495,6 +6506,9 @@ void QuantBot::scrambleUnitsAndDefend(const ObjectBase* intruder, bool clearingS
     if (supportMode || !intruder || intruder->getHealth() <= 0
         || intruder->getOwner()->getTeamID() == getHouse()->getTeamID()) return;
     const Coord contact = intruder->getLocation();
+    const auto* victim = intruder->isAUnit() ? static_cast<const UnitBase*>(intruder)->getTarget() : nullptr;
+    const bool baseAttack = !clearingSpice && victim && victim->isAStructure()
+        && victim->getOwner() == getHouse();
     if (!getMap().tileExists(contact)) return;
     if (isCampaignEnemy() && !campaignLocalContact(intruder)) return;
     // Debounce volleys by local district, independently for air and ground.
@@ -6546,9 +6560,14 @@ void QuantBot::scrambleUnitsAndDefend(const ObjectBase* intruder, bool clearingS
         if (hostileTarget && blockDistance(unit->getLocation(),target->getLocation())<=unit->getWeaponRange()) continue;
         candidates.push_back({unit->getObjectID(),value(unit),blockDistance(contact,unit->getLocation()).lround()});
     }
-    const auto response=clearingSpice
+    auto response=clearingSpice
         ? SimpleArmyPolicy::clearingForce(threatValue,committed,candidates,clearingRadius)
         : SimpleArmyPolicy::reinforcements(threatValue,committed,candidates);
+    // Troops already beside an attacked base must fight, even if distant
+    // responders satisfy the proportional reinforcement budget.
+    if (baseAttack) for (const auto& candidate : candidates)
+        if (candidate.distance <= 12 && std::find(response.begin(),response.end(),candidate.id)==response.end())
+            response.push_back(candidate.id);
     int dispatched=0;
     for (const auto id:response) {
         const auto* unit=dynamic_cast<const UnitBase*>(getObject(id));
@@ -6821,7 +6840,7 @@ void QuantBot::launchGroundHunt() {
         armyValue+=price;
         if (unit->getAttackMode()==HUNT) committedValue+=price;
         if (reserveDamagedUnitForRepair(unit) || unit->getAttackMode()==RETREAT) continue;
-        if (unit->hasATarget()) continue;
+        if (unit->hasATarget() || defenceAssignments.count(unit->getObjectID())) continue;
         if (!limited && (!unit->isAGroundUnit() || unit->getItemID()==Unit_Saboteur
             || (unit->getAttackMode()==HUNT && !unit->wasForced()))) continue;
         if (limited && (scriptedAssaults.count(unit->getObjectID())
@@ -7424,6 +7443,7 @@ void QuantBot::kiteAwayFromThreat(const UnitBase* pUnit, const ObjectBase* pThre
  */
 void QuantBot::moveToOptimalSquadPosition(const UnitBase* unit, FixPoint radius, int* orderBudget) {
     if (!unit || unit->getItemID()==Unit_Saboteur || !unit->isRespondable() || humanControls(unit) || unit->hasATarget()
+        || defenceAssignments.count(unit->getObjectID())
         || unit->wasForced() || unit->isMoving() || unit->getAttackMode()==HUNT) return;
     Coord regroup = unit->getAttackMode()==RETREAT ? squadRallyLocation : findSquadCenter(getHouse()->getHouseID());
     if (regroup.isInvalid()) regroup=squadRallyLocation;
@@ -7504,6 +7524,15 @@ void QuantBot::retreatAllUnits() {
         if (!supportMode) squadRallyLocation = findSquadRallyLocation();
         const QuantBotConfig& config = getQuantBotConfig();
         const QuantBotConfig::DifficultySettings& diffSettings = config.getSettings(static_cast<int>(difficulty));
+        // Recheck active base attacks before regrouping, including units already
+        // moving away. Damage callbacks alone miss newly arrived defenders.
+        for (const auto* intruder : getUnitList()) {
+            if (!intruder->isActive() || !intruder->isVisible(getHouse()->getTeamID())
+                || intruder->getOwner()->getTeamID()==getHouse()->getTeamID()) continue;
+            const auto* victim=intruder->getTarget();
+            if (victim && victim->isAStructure() && victim->getOwner()==getHouse()
+                && intruder->isInWeaponRange(victim)) scrambleUnitsAndDefend(intruder);
+        }
         // Defence is sized on contact. No fixed reserve owns troops or prevents
         // the main body helping when a city/harvester is under attack.
         for (auto it=defenceAssignments.begin();it!=defenceAssignments.end();) {
@@ -7518,7 +7547,7 @@ void QuantBot::retreatAllUnits() {
                 || !target || target->getHealth()<=0 || !target->isActive()
                 || target->getOwner()->getTeamID()==getHouse()->getTeamID()
                 || reserveDamagedUnitForRepair(unit) || unit->getAttackMode()==RETREAT
-                || (isCampaignEnemy() && !campaignDefensiveContact(unit,target))) {
+                || !campaignDefensiveContact(unit,target)) {
                 if (unit && unit->getOwner()==getHouse() && !humanControls(unit)
                     && unit->getAttackMode()==AREAGUARD) const_cast<UnitBase*>(unit)->setForced(false);
                 it=defenceAssignments.erase(it);
@@ -7529,8 +7558,8 @@ void QuantBot::retreatAllUnits() {
                     const_cast<UnitBase*>(unit)->setForced(false);
                     // Retain the anchored self-defense permission until the
                     // attacker dies or leaves; wave enforcement runs each tick.
-                    if (isCampaignEnemy()) ++it;
-                    else it=defenceAssignments.erase(it);
+                    if (unit->getTarget()!=target) doAttackObject(unit,target,false);
+                    ++it;
                 } else {
                     if (unit->getTarget()!=target || !unit->wasForced())
                         doAttackObject(unit,target,true);

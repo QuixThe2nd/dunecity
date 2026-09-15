@@ -1,6 +1,6 @@
 // Real command-path regression for artillery losing Hunt during short dodges.
 void runArmyMovementProbe(Game& game) {
-    auto require=[](bool ok,const char* why){if(!ok)throw std::runtime_error(why);};
+    auto require=[](bool ok,const char* why){if(!ok){SDL_Log("ARMY_MOVEMENT_FAIL: %s",why);throw std::runtime_error(why);}};
     auto* owner=game.getHouse(HOUSE_HARKONNEN);
     QuantBot* bot=nullptr;
     for(const auto& player:owner->getPlayerList())
@@ -63,6 +63,22 @@ void runArmyMovementProbe(Game& game) {
         bot->doAttackObject(artillery,threat,false);
         const Coord manualDestination=artillery->getDestination();
         bot->checkAllUnits();require(artillery->getDestination()==manualDestination,"Kiting replaced a human order");
+        // An active attack on our base interrupts nearby regroup travel and
+        // remains assigned even after the defender reaches firing range.
+        auto* base=owner->placeStructure(NONE_ID,Structure_WindTrap,origin.x,origin.y+8,true,true);
+        require(base,"Base defence fixture placement failed");
+        threat->setLocation(origin+Coord(3,8));threat->doAttackObject(base,true);
+        homeGuard->setLocation(origin+Coord(1,6));
+        bot->doMove2Pos(homeGuard,origin.x+15,origin.y,false);
+        bot->doSetAttackMode(homeGuard,AREAGUARD);
+        bot->defenceResponseCycles.clear();bot->checkAllUnits();
+        require(homeGuard->getTarget()==threat,"Nearby base defender kept regrouping instead of fighting");
+        require(bot->defenceAssignments.count(homeGuard->getObjectID()),"In-range defender lost base assignment");
+        bot->doMove2Pos(homeGuard,homeGuard->getX(),homeGuard->getY(),false);
+        bot->moveToOptimalSquadPosition(homeGuard,1);
+        require(homeGuard->getDestination()==homeGuard->getLocation(),"Regroup stole assigned base defender");
+        bot->checkAllUnits();
+        require(homeGuard->getTarget()==threat,"Base defender did not reacquire its live attacker");
     } catch(...) {unitList=saved;throw;}
     unitList=saved;
     SDL_Log("ARMY_MOVEMENT_PASS: Hunt survives short dodge and arrival; buildings remain siege targets; assault centre excludes home guard/worker; human order preserved");

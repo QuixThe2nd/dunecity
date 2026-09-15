@@ -21,7 +21,7 @@ bool QuantBot::isAlliedWithHuman() const {
 }
 
 int QuantBot::harvesterCountCeiling() const {
-    return difficulty == Difficulty::Brutal && !isAlliedWithHuman() ? 7 : 0;
+    return difficulty == Difficulty::Brutal && isCampaignEnemy() ? 7 : 0;
 }
 
 int QuantBot::campaignAllyHarvesterLimit() const {

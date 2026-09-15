@@ -158,5 +158,31 @@ void runStarportEconomyProbe(Game& game) {
     if (factory->getCurrentProducedItem() != Unit_Harvester || factory->isUpgrading())
         throw std::runtime_error("Factory failed to spend protected worker cash on a harvester");
     SDL_Log("FACTORY_WORKER_RESERVE_PASS: one worker's cash funds a harvester before military or upgrades");
+    // Custom games buy workers and combat together, without the campaign
+    // helper's full-fleet cash reservation or enemy seven-worker ceiling.
+    game.gameType=GameType::CustomGame;
+    bot->harvesterLimit=15;bot->lastCalculatedSpice=200000;
+    if (bot->harvesterCountCeiling()!=0) throw std::runtime_error("Custom ally inherited campaign worker cap");
+    for (int h=0;h<NUM_HOUSES;++h) if(auto* other=game.getHouse(h))
+        for(const auto& player:other->getPlayerList()) if(auto* qb=dynamic_cast<QuantBot*>(player.get())) {
+            qb->difficulty=QuantBot::Difficulty::Brutal;
+            if(qb->harvesterCountCeiling()!=0) throw std::runtime_error("Custom opponent inherited campaign worker cap");
+        }
+    auto* mixedPort=dynamic_cast<StarPort*>(place(Structure_StarPort));
+    for(auto& offer:market.availableItems) {
+        offer.num=offer.itemID==Unit_Harvester ? 10 : offer.itemID==Unit_Tank ? 20 : 0;
+        offer.price=offer.itemID==Unit_Harvester ? 180 : 100;
+    }
+    mixedPort->updateBuildList();house->takeCredits(house->getCredits());house->addCredits(1800);
+    savedStructures=structureList;structureList.clear();structureList.push_back(mixedPort);
+    try {bot->build(4000);}catch(...){structureList=savedStructures;throw;}
+    structureList=savedStructures;
+    int customWorkers=0,customTanks=0;
+    for(const auto& queued:mixedPort->currentProductionQueue) {
+        customWorkers+=queued.itemID==Unit_Harvester;customTanks+=queued.itemID==Unit_Tank;
+    }
+    if(customWorkers<1 || customWorkers*180>900 || customTanks<1)
+        throw std::runtime_error("Custom Starport failed to mix worker and army investment");
+    SDL_Log("CUSTOM_MIXED_IMPORTS_PASS: workers=%d tanks=%d, campaign fleet reserve absent",customWorkers,customTanks);
     SDL_Log("CAMPAIGN_BALANCE_RESULT: probe=starport outcome=passed");
 }
