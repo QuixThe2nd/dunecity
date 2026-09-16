@@ -1,3 +1,36 @@
+## 2026-09-16 — Restore heavy production before extra light factories, 1.0.700
+
+Browser session1789523730176999-0 (vanilla SCENH022, seed158928782,
+Harkonnen human/QuantBot) lost both light and heavy factories at602.416s.
+Light replacements finished648,705.6,753.6s; heavy returned only900.8s.
+Extra lights were selected by light_unit_backlog. The configured mix had
+collapsed to100% quads because availability came only from surviving factories;
+quad performance did not justify this (reward115.546 vs launchers1119.996).
+Evidence exported to /tmp/harkonnen-1789523730176999-0.jsonl.
+
+Keep recoverable heavy units in the strategic mix after a heavy factory loss,
+using existing saved House loss counters plus enabled/tech/prerequisite gates.
+Actual production still obeys normal factory upgrades and availability. Restore
+one lost heavy line (including a missing light prerequisite) before optional
+construction. Count pending buildings to avoid duplicate replacements; wait for
+its purchase price only when a valid site exists. In normal openings, build one
+heavy before expanding beyond one light factory, after existing opening economy
+priorities. Low-tech/disabled-heavy missions retain light expansion. Optional
+vanilla concrete now respects the planner's save/wait flag, matching roads.
+
+Validation: native1.0.700 build, pre/post Ninja dependency checks, version check,
+and7/7 CTests (/tmp/ctest-700-final.log). New real-engine factory-recovery probe
+passes vanilla and city: simultaneous losses, preserved tank demand, light then
+heavy recovery, insufficient/exact funds, pending duplicate prevention, busy
+light production, and blocked placement. Results in
+/tmp/dunecity-700-factory-{vanilla,dunecity}. Runner:
+python3 tests/ai/run-campaign-balance.py --build-dir build-692 --output-dir <new-dir>
+--level 9 --mod vanilla --house harkonnen --partner-difficulty brutal
+--enemy-difficulty hard --seed 700 --minutes 1 --factory-recovery-probe
+
+Built app: build-692/bin/dunecity.app. Not installed or published by this change;
+the live browser/downloads remain1.0.699. No save-format changes.
+
 ## 2026-09-15 — Custom economy parity and local base defence, 1.0.699
 
 Stefan clarified custom-game allies/opponents should share normal economy rules,

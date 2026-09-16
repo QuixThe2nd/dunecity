@@ -4075,6 +4075,28 @@ void QuantBot::build(int militaryValue) {
             } else available[i] |= builder->isAvailableToBuild(mixItems[i]);
         }
     }
+    // Losing a producer is a rebuilding need, not evidence that its units
+    // should disappear from the strategic army mix. Use saved house history
+    // so this also survives loading a game after the factory was destroyed.
+    // Actual production still uses each factory's normal build/upgrade gates.
+    if (getHouse()->getNumLostItems(Structure_HeavyFactory) > 0) {
+        auto recoverableHeavyUnit = [&](Uint32 unit) {
+            const auto& spec = data[unit][houseID];
+            if (!spec.enabled || spec.price <= 0 || spec.techLevel > currentGame->techLevel
+                || spec.builder != Structure_HeavyFactory) return false;
+            for (int prerequisite = Structure_FirstID; prerequisite <= Structure_LastID; ++prerequisite)
+                if (spec.prerequisiteStructuresSet[prerequisite]
+                    && getHouse()->getNumItems(prerequisite) == 0
+                    && getHouse()->getNumLostItems(prerequisite) == 0) return false;
+            return true;
+        };
+        for (size_t i = 0; i < 4; ++i) {
+            if (i == 3) {
+                for (Uint32 special : {Unit_Devastator, Unit_SonicTank, Unit_Deviator})
+                    available[i] |= recoverableHeavyUnit(special);
+            } else available[i] |= recoverableHeavyUnit(mixItems[i]);
+        }
+    }
     if (getHouse()->isAirUnitLimitReached()) available[4]=false;
     UnitMixPolicy::Weights configuredWeights{};
     for (size_t i=0; i<5; ++i) configuredWeights[i] = configured[i];
@@ -5278,6 +5300,39 @@ void QuantBot::build(int militaryValue) {
                         .set("funded",itemID != NONE_ID).set("cash",money)
                         .set("price",data[Structure_NuclearPlant][houseID].price).set("reserve",cityPowerReserve));
                 }
+                // Restore a lost heavy production line before optional growth.
+                // Walk missing prerequisites (e.g. the light factory lost in the
+                // same attack); pending buildings prevent duplicate orders.
+                if (itemID == NONE_ID && !skipRemainingStructureLogic
+                    && itemCount[Structure_HeavyFactory] == 0
+                    && getHouse()->getNumLostItems(Structure_HeavyFactory) > 0
+                    && data[Structure_HeavyFactory][houseID].enabled
+                    && data[Structure_HeavyFactory][houseID].techLevel <= currentGame->techLevel) {
+                    Uint32 step = Structure_HeavyFactory;
+                    for (int depth = 0; step != NONE_ID && depth < Structure_LastID; ++depth) {
+                        if (itemCount[step] > 0) {
+                            skipRemainingStructureLogic = true;
+                            structureRule = "heavy_recovery_pending";
+                            break;
+                        }
+                        if (pBuilder->isAvailableToBuild(step)) {
+                            if (findPlaceLocation(step).isValid()) {
+                                skipRemainingStructureLogic = true;
+                                structureRule = "save_heavy_recovery";
+                                if (money >= data[step][houseID].price) {
+                                    itemID = step;
+                                    structureRule = "heavy_production_recovery";
+                                }
+                            }
+                            break;
+                        }
+                        Uint32 prerequisite = NONE_ID;
+                        for (int i = Structure_FirstID; i <= Structure_LastID; ++i)
+                            if (data[step][houseID].prerequisiteStructuresSet[i]
+                                && getHouse()->getNumItems(i) == 0) { prerequisite = i; break; }
+                        step = prerequisite;
+                    }
+                }
                 // Starport opening: four income-producing refineries, the port,
                 // then its repair support before optional factories. Small/spice-poor
                 // maps use fewer workers; missions that lock the port keep their
@@ -5576,6 +5631,21 @@ void QuantBot::build(int militaryValue) {
 					+ itemCount[Structure_ZoneIndustrial];
 				const bool cityIncomeReady = !isCitySim || kCityZoneCount >= kCityIncomeReadyZones || money > 3000;
 
+                // One light line is enough until the first heavy line exists.
+                // Do not mistake an opening's temporary all-light mix for a need
+                // to build several light factories before unlocking tanks.
+                if (itemID == NONE_ID && !skipRemainingStructureLogic
+                    && itemCount[Structure_LightFactory] > 0
+                    && itemCount[Structure_HeavyFactory] == 0
+                    && pBuilder->isAvailableToBuild(Structure_HeavyFactory)
+                    && findPlaceLocation(Structure_HeavyFactory).isValid()) {
+                    skipRemainingStructureLogic = true;
+                    structureRule = "save_first_heavy";
+                    if (money >= data[Structure_HeavyFactory][houseID].price) {
+                        itemID = Structure_HeavyFactory;
+                        structureRule = "first_heavy_before_expansion";
+                    }
+                }
                 // Fund combat-air capacity before optional ground-factory expansion.
                 // Pending factories prevent duplicate lanes across parallel yards.
                 if (itemID == NONE_ID && !skipRemainingStructureLogic && airBacklog
@@ -5586,6 +5656,9 @@ void QuantBot::build(int militaryValue) {
                 // Expand saturated light production before optional heavy capacity.
                 // Pending factories count, so parallel yards add one lane at a time.
                 if (itemID == NONE_ID && !skipRemainingStructureLogic && lightBacklog
+                    && (itemCount[Structure_HeavyFactory] > 0
+                        || !data[Structure_HeavyFactory][houseID].enabled
+                        || data[Structure_HeavyFactory][houseID].techLevel > currentGame->techLevel)
                     && pBuilder->isAvailableToBuild(Structure_LightFactory)
                     && findPlaceLocation(Structure_LightFactory).isValid()) {
                     itemID = Structure_LightFactory; structureRule = "light_unit_backlog";
@@ -6260,7 +6333,7 @@ void QuantBot::build(int militaryValue) {
 
 		// City yards use the demand-ranked fallback before placement above.
 		// Outside city mode an otherwise idle yard can extend concrete.
-		if (!isCitySim && money > 500 && pBuilder->getProductionQueueSize() < 1
+		if (!isCitySim && !skipRemainingStructureLogic && money > 500 && pBuilder->getProductionQueueSize() < 1
 			&& itemID == NONE_ID && pBuilder->isAvailableToBuild(Structure_Slab1)) {
 			Coord slabLocation = findSlabPlaceLocation(Structure_Slab1);
 			if (slabLocation.isValid()) doProduceItem(pBuilder, Structure_Slab1);
