@@ -30,10 +30,12 @@ parser.add_argument('--mod', choices=('vanilla','dunecity'), default='vanilla')
 parser.add_argument('--house', choices=tuple(h for h in house_names if h!='neutral'), default='harkonnen')
 parser.add_argument('--roster', help='Explicit custom-map house:team slots in lobby order, comma-separated')
 parser.add_argument('--harvester-limit', type=int, choices=range(-1,101), default=-1)
+parser.add_argument('--structures-degrade-on-concrete', action=argparse.BooleanOptionalAction, default=None)
 parser.add_argument('--partner-difficulty', choices=('easy','medium','hard','brutal'), default='easy')
 parser.add_argument('--enemy-ai', choices=('quantbot','ai-player'), default='quantbot', help='Enemy controller family; AI Player has Easy/Medium/Hard')
 parser.add_argument('--enemy-difficulty', choices=('easy','medium','hard','brutal'), default='easy')
 parser.add_argument('--shared-spending-probe', action='store_true')
+parser.add_argument('--opening-economy-probe', action='store_true')
 parser.add_argument('--starport-probe', action='store_true', help='Exercise reserved cash with above-normal Starport prices')
 parser.add_argument('--helper-economy-probe', action='store_true', help='Verify advanced campaign helper worker investment and paid imports')
 parser.add_argument('--stats-probe', action='store_true', help='Verify campaign results with a shared human/AI house')
@@ -96,7 +98,7 @@ if args.custom_map:
         except ValueError:
             parser.error('Roster must contain known house:team entries.')
         if (len(requested)!=len(roster) or len({h for h,_ in requested})!=len(requested)
-                or any(h==6 or t<1 for h,t in requested)
+                or any(t<1 for h,t in requested)
                 or names.index(args.house) not in {h for h,_ in requested}):
             parser.error('Roster must match map slot count, use distinct playable houses and include --house.')
         roster=requested
@@ -146,11 +148,14 @@ env = dict(os.environ,DUNECITY_USERDIR=str(out/'profile'),SDL_VIDEODRIVER='dummy
            BALANCE_ATTACK_PERCENT=str(args.attack_percent),BALANCE_ENEMY=args.enemy_difficulty,BALANCE_ENEMY_AI=args.enemy_ai,
            BALANCE_HOUSE=str(house_names.index(args.house)),BALANCE_HARVESTER_LIMIT=str(args.harvester_limit))
 env['BALANCE_CAPTURE_MIB'] = str(args.capture_mib)
+if args.structures_degrade_on_concrete is not None:
+    env['BALANCE_DEGRADE_ON_CONCRETE'] = str(int(args.structures_degrade_on_concrete))
 if args.custom_map:
     env['BALANCE_CUSTOM_MAP'] = str(args.custom_map.resolve())
     env['BALANCE_ROSTER'] = ','.join(f'{house}:{team}' for house, team in roster)
 (out/'setup.json').write_text(json.dumps({**vars(args), 'resolved_roster': roster}, default=str, indent=2)+'\n')
 if args.shared_spending_probe: env['BALANCE_SHARED_SPENDING_PROBE'] = '1'
+if args.opening_economy_probe: env['BALANCE_OPENING_ECONOMY_PROBE'] = '1'
 if args.nuclear_probe: env['BALANCE_NUCLEAR_PROBE'] = '1'
 if args.radar_probe: env['BALANCE_RADAR_PROBE'] = '1'
 if args.army_probe: env['BALANCE_ARMY_PROBE'] = '1'

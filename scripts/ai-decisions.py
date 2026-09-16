@@ -80,6 +80,13 @@ CREATE VIEW IF NOT EXISTS capital_plans AS
  json_extract(data,'$.repair_waiting') AS repair_waiting,
  json_extract(data,'$.refinery_capacity_target') AS refinery_target,
  json_extract(data,'$.refinery_waiting') AS refinery_waiting,
+ json_extract(data,'$.refinery_field_returners_blocked') AS refinery_field_returners_blocked,
+ json_extract(data,'$.refinery_unbooked_bays') AS refinery_unbooked_bays,
+ json_extract(data,'$.walking_trip_cycles') AS walking_trip_cycles,
+ json_extract(data,'$.trip_cycles') AS trip_cycles,
+ json_extract(data,'$.starport_market_available') AS starport_market_available,
+ json_extract(data,'$.funded_factory_opening') AS funded_factory_opening,
+ json_extract(data,'$.city_growth_protected') AS city_growth_protected,
  json_extract(data,'$.selected') AS selected,json_extract(data,'$.reason') AS reason
  FROM events WHERE event='capital_plan';
 CREATE VIEW IF NOT EXISTS capital_candidates AS

@@ -83,6 +83,25 @@ void runSharedSpendingProbe(Game& game) {
             require(zone,"City did not grow demanded R/I/C alongside worker");
         }
         if (game.isCitySimEnabled()) {
+            const int yardUpgrade=yard->curUpgradeLev;
+            const bool growthRocketEnabled=game.objectData.data[Structure_RocketTurret][HOUSE_HARKONNEN].enabled;
+            game.objectData.data[Structure_RocketTurret][HOUSE_HARKONNEN].enabled=false;
+            yard->curUpgradeLev=yard->getMaxUpgradeLevel();yard->updateBuildList();
+            // Low-value land makes the next army purchase outrank the lot in
+            // the raw four-minute forecast, reproducing the stagnant Fremen.
+            game.getCitySimulation()->houseState_[HOUSE_HARKONNEN].avgLandValue=64;
+            reset(218,0);bot->build(10000);
+            bool fundedZone=false;
+            for(const auto& order:yard->currentProductionQueue)fundedZone|=DuneCity::isCityZoneStructure(order.itemID);
+            require(fundedZone,"Idle yard saved affordable city growth cash for a more expensive military unit");
+            reset(1000,0);bot->build(10000);
+            fundedZone=false;
+            for(const auto& order:yard->currentProductionQueue)fundedZone|=DuneCity::isCityZoneStructure(order.itemID);
+            require(fundedZone,"City growth lost its funding alongside the army");
+            require(heavy->getProductionQueueSize()>0 || heavy->isUpgrading(),"Protected city growth starved independently affordable military production");
+            game.objectData.data[Structure_RocketTurret][HOUSE_HARKONNEN].enabled=growthRocketEnabled;
+            yard->curUpgradeLev=yardUpgrade;yard->updateBuildList();
+            game.getCitySimulation()->houseState_[HOUSE_HARKONNEN].avgLandValue=160;
             reset(price+1000,1000000);
             structureList.push_back(secondYard);
             bot->build(10000);

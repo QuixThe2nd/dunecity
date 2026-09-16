@@ -603,28 +603,9 @@ void INIMapLoader::loadHouses()
             maxUnits = inifile->getIntValue(houseName,"MaxUnits",maxUnit);
         }
 
-        int maxHarvesters = 0;
-        if(currentGame->getGameInitSettings().getGameOptions().maximumNumberOfHarvestersOverride >= 0) {
-            maxHarvesters = currentGame->getGameInitSettings().getGameOptions().maximumNumberOfHarvestersOverride;
-        } else {
-            // Use map size defaults from ObjectData.ini
-            const int mapsize = currentGameMap->getSizeX() * currentGameMap->getSizeY();
-            if (mapsize <= 1024) {
-                maxHarvesters = currentGame->objectData.harvesterLimitSmallMap;
-            } else if (mapsize < 4096) {
-                maxHarvesters = currentGame->objectData.harvesterLimitMediumMap;
-            } else if (mapsize < 16384) {
-                maxHarvesters = currentGame->objectData.harvesterLimitLargeMap;
-            } else {
-                maxHarvesters = currentGame->objectData.harvesterLimitHugeMap;
-            }
-        }
-
-        // Named houses use this path; getOrCreateHouse handles implicit houses.
-        // Both must apply the same vanilla default before constructing the House.
-        if (currentGame->getGameInitSettings().getGameOptions().maximumNumberOfHarvestersOverride < 0
-            && !DuneCity::powerRulesEnabled(currentGame->isCitySimEnabled(), currentGame->getGameInitSettings().getModName()))
-            maxHarvesters = DuneCity::vanillaHarvesterCapacity(maxHarvesters);
+        // Only an explicit lobby setting imposes a harvester ceiling.
+        const int maxHarvesters = std::max(0,
+            currentGame->getGameInitSettings().getGameOptions().maximumNumberOfHarvestersOverride);
 
         int quota = inifile->getIntValue(houseName,"Quota",0);
 
@@ -1113,23 +1094,8 @@ House* INIMapLoader::getOrCreateHouse(int houseID) {
             }
         }
 
-        int maxHarvesters = 0;
-        if(currentGame->getGameInitSettings().getGameOptions().maximumNumberOfHarvestersOverride >= 0) {
-            maxHarvesters = currentGame->getGameInitSettings().getGameOptions().maximumNumberOfHarvestersOverride;
-        } else {
-            if (mapsize <= 1024) {
-                maxHarvesters = currentGame->objectData.harvesterLimitSmallMap;
-            } else if (mapsize < 4096) {
-                maxHarvesters = currentGame->objectData.harvesterLimitMediumMap;
-            } else if (mapsize < 16384) {
-                maxHarvesters = currentGame->objectData.harvesterLimitLargeMap;
-            } else {
-                maxHarvesters = currentGame->objectData.harvesterLimitHugeMap;
-            }
-        }
-        if (currentGame->getGameInitSettings().getGameOptions().maximumNumberOfHarvestersOverride < 0
-            && !DuneCity::powerRulesEnabled(currentGame->isCitySimEnabled(), currentGame->getGameInitSettings().getModName()))
-            maxHarvesters = DuneCity::vanillaHarvesterCapacity(maxHarvesters);
+        const int maxHarvesters = std::max(0,
+            currentGame->getGameInitSettings().getGameOptions().maximumNumberOfHarvestersOverride);
         auto pNewHouse = std::make_unique<House>(houseID, 0, maxUnits, maxHarvesters, team, 0);
 
         const GameInitSettings::HouseInfoList& houseInfoList = pGame->getGameInitSettings().getHouseInfoList();

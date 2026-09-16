@@ -13,6 +13,7 @@
 
 #include "starport-economy-probe.inc"
 #include "shared-spending-probe.inc"
+#include "opening-economy-probe.inc"
 #include "army-movement-probe.inc"
 #include "factory-recovery-probe.inc"
 #include "radar-power-probe.inc"
@@ -44,6 +45,8 @@ int runCampaignBalanceProbe() {
     settings.network.metaServer = "http://127.0.0.1:1/";
     settings.gameOptions.fogOfWar = false;
     settings.gameOptions.immortalHumanPlayer = false;
+    if (std::getenv("BALANCE_DEGRADE_ON_CONCRETE"))
+        settings.gameOptions.structuresDegradeOnConcrete=std::atoi(std::getenv("BALANCE_DEGRADE_ON_CONCRETE"))!=0;
     if (std::getenv("BALANCE_HARVESTER_LIMIT"))
         settings.gameOptions.maximumNumberOfHarvestersOverride=std::atoi(std::getenv("BALANCE_HARVESTER_LIMIT"));
     if (std::getenv("BALANCE_PACING_PROBE")) settings.gameOptions.maximumNumberOfHarvestersOverride=100;
@@ -89,6 +92,10 @@ int runCampaignBalanceProbe() {
         AITelemetry::log().limit=std::stoull(std::getenv("BALANCE_CAPTURE_MIB"))*1024*1024;
     game->bReplay = false;
     game->initializeGameLoop();
+    if (std::getenv("BALANCE_OPENING_ECONOMY_PROBE")) {
+        runOpeningEconomyProbe(*game);game.reset();currentGame=nullptr;pLocalPlayer=nullptr;
+        return MENU_QUIT_DEFAULT;
+    }
     if (std::getenv("BALANCE_SHARED_SPENDING_PROBE")) {
         runSharedSpendingProbe(*game);game.reset();currentGame=nullptr;pLocalPlayer=nullptr;
         return MENU_QUIT_DEFAULT;

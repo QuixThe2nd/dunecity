@@ -1,4 +1,4 @@
-# QuantBot shared spending — 1.0.703
+# QuantBot shared spending — 1.0.704
 
 A deterministic, four-simulated-minute forecast compares the next economy,
 combat-unit and additional-production investments. It is a bounded scoring
@@ -21,6 +21,13 @@ permit. Saving for a worthwhile worker does not reserve the cost of an entire
 hypothetical future fleet. Existing human-allied campaign full-fleet rules are
 an explicit exception; custom allies and opponents use normal shared spending.
 
+An available, demanded R/C/I lot takes precedence over saving for another
+military unit. Reserve only that lot and its foundation, then let factories spend
+the remainder. This prevents permanently idle yards when a cheap plot has a lower
+four-minute return than the next launcher. Power recovery, crime prevention,
+transport and genuine unloading bottlenecks retain their existing priorities.
+This is continued long-term growth, not a requirement to fill the army first.
+
 Falling cash alone is not a shortage. The four-minute runway comparison is:
 
 `projected cash = cash − unpaid orders + forecast net income − continued production cost`
@@ -41,6 +48,20 @@ provides runway even with falling cash, while a larger base can exhaust the same
 grant faster. Otherwise marginal priorities protect the next investment. Dune
 City retains city/service candidates; factory expansion must leave funding for
 existing construction throughput as well as unit lines.
+
+For the first heavy factory in a custom game, budget its missing prerequisites
+and four minutes of operation. If available/projected cash covers both plus the
+working buffer, unlock that production line before extra opening refineries or
+the Starport. A rich map does not need to wait through an income bootstrap.
+Poorer openings retain their income-first progression. Both Starport construction
+paths require an enabled unit in the map's CHOAM catalogue: zero stock can restock,
+but an absent entry cannot. Owning a heavy factory does not waive this check.
+
+The default/zero harvester option means no engine ceiling. A positive Game Options
+override is enforced. Old serialized map-size defaults no longer restrict a
+loaded house. QuantBot still chooses economic targets from remaining spice and
+income/capacity, and campaign enemy/late-mission helper policies still shape its
+own fleet; those decisions no longer impose an engine cap on a shared human house.
 
 ## Comparison
 
@@ -67,7 +88,10 @@ Spice receipts compare the current fleet with the expanded fleet over the same
 remaining resource pool, including harvesting during delivery delay. This
 reduces the value of extra harvesters as the existing fleet can exhaust the
 remaining fields. The travel estimate is a bounded local sample, not a new
-pathfinding pass, and does not explicitly model carryall routing. Forecasts
+pathfinding pass. Existing Carryalls shorten the supported share of the fleet's
+trip estimate (up to five workers each), using flight speed plus a pickup/landing
+allowance; queued aircraft do not count as delivered capacity. It does not model
+individual Carryall routing. Forecasts
 remain estimates; use delivered-spice and tax telemetry to assess their error.
 
 The first carryall uses the displayed Starport price, includes paid/in-flight
@@ -91,6 +115,10 @@ These are initial tuning baselines, not measured optimal ratios:
   remaining spice and actual unloading queues refine it; vanilla's existing
   opening refinery priorities remain. A persistent ten-second queue of at least
   two full workers can justify an extra bay without waiting for the estimate.
+  Count loaded field returners targeting occupied bays too: they are blocked
+  before they reach the base because no free bay can accept a Carryall delivery.
+  Only free, unbooked bays offset that queue. Pending refineries prevent duplicate
+  queue-relief orders. This now reaches the vanilla build path as well as city.
 
 If Carryalls are below target and the Starport is sold out (or absent), a legal
 first High Tech Factory receives transport priority. An existing or pending
@@ -112,7 +140,7 @@ ordinary purchases cannot. Running repair bills are not reserved in full.
 
 ## Decision capture and SQLite
 
-Telemetry version 13, policy `city-capacity-recovery-v69`, records:
+Telemetry version 14, policy `funded-growth-opening-v70`, records:
 
 - `capital_plan`: cash/commitments, horizon, resource and income estimates,
   military target/current value, producer queues, all common spending
@@ -121,6 +149,10 @@ Telemetry version 13, policy `city-capacity-recovery-v69`, records:
   projected cash, construction/unit operating costs, funded army target,
   transport/repair/refinery targets and queues, and property crime counts.
   Cash-funded vanilla passes are captured too, with reason `funded_parallel_production`.
+  Version 14 adds usable Starport market, funded first-factory capital/operating
+  costs, protected city growth, unbooked refinery bays, blocked field returners,
+  and walking versus transport-adjusted trip estimates. SQLite exposes these
+  decisions; protected growth uses reason `protect_demanded_city_growth`.
 - `city_economy_comparison` and `zone_evaluation`: detailed tax/refinery
   forecasts, demand, growth confidence and placement rejection reasons.
 - `production_order`: accepted/rejected queue order, actual quote, rule,

@@ -1,3 +1,53 @@
+## 2026-09-16 — Fund continuous city growth and rich openings, 1.0.704
+
+Native703 All against Atreides session1789556870788357-0, seed1293696382,
+Atreides Brutal vs four legacy AI Player Hard, had97k cash and no heavy factory
+at4min. Its empty CHOAM catalogue could never supply its Starport. Re-running
+engine700/37e5772 on the same seed/options won34.70min with the former default60
+worker limit: the limit alone did not explain703's loss. Rich openings now budget
+the first heavy line's missing prerequisites plus four minutes of operation and
+unlock it before extra refineries/port/repair when funded. Both ordinary Starport
+paths check enabled CHOAM membership (zero stock is restockable, absent is not).
+
+Default/-1 and explicit0 mean no engine harvester cap; positive Game Options
+limits still apply. Ignore legacy map-derived caps stored on houses. QuantBot
+custom targets come from remaining spice and economic planning; campaign enemy
+and late-campaign helper planning policies remain AI decisions, not shared-house
+engine restrictions. Explicit0 no longer incorrectly prevents economic imports.
+
+Native703 DuneCity session1789558312233110-0, seed118157932, four Brutal houses,
+showed Fremen with4 idle CYs, positive demand,1100 free base-rock tiles and an
+affordable100-credit residential plot. Saving218 spendable credits toward a450
+launcher withheld all construction cash. When military wins the raw score,
+reserve one useful demanded R/C/I lot instead, then let factories spend the rest.
+Services/real income bottlenecks keep their priority. No new timers/save fields.
+
+Refinery pressure now counts loaded field returners to occupied bays before
+they walk to within6 tiles. Offset only free unbooked bays; pending refineries
+prevent repeated additions. Credit existing Carryalls' supported fleet share in
+the delivery forecast. The queue relief branch now works in vanilla too.
+Telemetry14/funded-growth-opening-v70 and SQLite expose protected city growth,
+market eligibility, funded opening costs, blocked field returns and adjusted trips.
+
+Final704 tests:7/7 CTest groups, pre/post Ninja dependency checks, codesign and
+version metadata pass. Engine probes cover poor/rich openings, absent/sold-out/
+disabled markets, default/explicit caps, distant loaded returns, city/vanilla
+shared budgets and campaign pacing. Low-land-value218/1000-credit city fixtures
+actually trigger protected growth; the latter also funds military production.
+All against Atreides same seed wins20.17min with default unlimited and21.65min
+with configured60 (old700:34.70min). First heavy ordered1.44min vs703's3.47min;
+no Starport ordered. Configured60 run has a one-worker transient overshoot from
+existing concurrent delivery/completion semantics; this patch does not change
+that engine behaviour. Default run's peak delivered fleet is120.
+
+City test uses current native roster Fremen1/Neutral2/Atreides3/Sardaukar4 and
+seed118157932. Fremen orders61 lots +89 combat units in minutes30–35; native703
+ordered0 lots +109 combat units then. It still loses at38.78min in this all-Brutal
+FFA: proof of continued growth, not proof of optimal combat balance or a guaranteed
+win. Three completed match captures pass the spending/link/overspend audit.
+Full evidence: docs/quantbot-704-growth-review.md. Native build:
+build-692/bin/dunecity.app. No replacement of a running app or public deployment.
+
 ## 2026-09-16 — Restore city growth and use support queues/runway, 1.0.703
 
 Reported native 702 session `1789545923897200-0`, DuneCity seed1105042893,
