@@ -107,6 +107,10 @@ target_include_directories(dunelegacy_tests
         ${CMAKE_CURRENT_SOURCE_DIR}
         ${CMAKE_SOURCE_DIR}/src/enet  # For enet headers
         ${CMAKE_SOURCE_DIR}/src      # For audio/sounds.h and other src-level headers
+        # p2pkit SDK headers (path + install guard defined in the top-level
+        # CMakeLists.txt): PacketStreamTestCase drives NetworkPacketBuffer/
+        # NetworkPacketView, which are thin adapters over them.
+        ${DUNECITY_P2PKIT_DIR}/emscripten/include
 )
 
 # Link libraries

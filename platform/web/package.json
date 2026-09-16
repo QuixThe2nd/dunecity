@@ -2,7 +2,7 @@
   "name": "dunecity-webrtc-glue",
   "version": "1.0.0",
   "private": true,
-  "description": "Unit tests for the DuneCity browser WebRTC bridge (platform/web/webrtc_glue.js).",
+  "description": "Unit tests for the DuneCity browser WebRTC adapter (platform/web/dunecity_webrtc_config.js) over the p2pkit Emscripten SDK.",
   "scripts": {
     "build:iife": "node ../../tools/web/build-p2pkit-iife.mjs",
     "test": "node --test test/*.test.cjs"
@@ -11,10 +11,9 @@
     "node": ">=20"
   },
   "dependencies": {
-    "p2pkit": "github:QuixThe2nd/p2pkit#bcd00aa6e66f94d9caecc43294c2c6452d569a4a"
+    "p2pkit": "github:QuixThe2nd/p2pkit#c9858937e33a8d946b12f0181579587df8783936"
   },
   "devDependencies": {
-    "esbuild": "^0.25.0",
     "ws": "^8.18.0"
   },
   "license": "UNLICENSED"

@@ -19,121 +19,89 @@
 
 #include <misc/OutputStream.h>
 
+#include <p2pkit-wasm/packet.h>
+
 #include <cstdint>
-#include <cstring>
-#include <string>
 #include <vector>
 
 /**
-    ENet-independent growable packet buffer used by the browser (WebRTC) transport.
-    Byte-for-byte compatible with ENetPacketOStream: same little-endian primitive
-    encoding, same string framing (uint32 length + raw bytes), same container
-    framing inherited from OutputStream. The constructor accepts the ENet packet
-    flags used at the existing call sites but ignores them; the send mode is chosen
-    by the transport that transmits the finished buffer, not by the buffer itself.
+    ENet-independent growable packet buffer used by the browser (WebRTC)
+    transport. The byte encoding is owned by the p2pkit Emscripten SDK
+    (p2pkit_wasm::PacketBuffer, installed from the p2pkit dependency pinned in
+    platform/web/package.json); this class is the thin Dune-side adaptation to
+    the game's OutputStream interface. Byte-for-byte compatible with
+    ENetPacketOStream: same little-endian primitive encoding, same string
+    framing (uint32 length + raw bytes), same container framing inherited from
+    OutputStream. The constructor accepts the ENet packet flags used at the
+    existing call sites but ignores them; the send mode is chosen by the
+    transport that transmits the finished buffer, not by the buffer itself.
 */
 class NetworkPacketBuffer : public OutputStream
 {
 public:
     explicit NetworkPacketBuffer(uint32_t flags = 0)
-     : currentPos(0) {
-        (void) flags;   // ENet packet flags are meaningless without ENet; kept for call-site compatibility
-        buffer.reserve(16);
+     : buffer(flags) {
     }
 
     void flush() override
     {
-        ;
+        buffer.flush();
     }
 
     // write operations
 
     void writeString(const std::string& str) override
     {
-        ensureBufferSize(currentPos + str.length() + sizeof(Uint32));
-
-        writeUint32(static_cast<Uint32>(str.length()));
-
-        if(!str.empty()) {
-            memcpy(buffer.data() + currentPos, str.data(), str.length());
-            currentPos += str.length();
-        }
+        buffer.writeString(str);
     }
 
     void writeUint8(Uint8 x) override
     {
-        ensureBufferSize(currentPos + sizeof(Uint8));
-        buffer[currentPos] = x;
-        currentPos += sizeof(Uint8);
+        buffer.writeUint8(x);
     }
 
     void writeUint16(Uint16 x) override
     {
-        ensureBufferSize(currentPos + sizeof(Uint16));
-        const Uint16 tmp = SDL_SwapLE16(x);
-        memcpy(buffer.data() + currentPos, &tmp, sizeof(Uint16));
-        currentPos += sizeof(Uint16);
+        buffer.writeUint16(x);
     }
 
     void writeUint32(Uint32 x) override
     {
-        ensureBufferSize(currentPos + sizeof(Uint32));
-        const Uint32 tmp = SDL_SwapLE32(x);
-        memcpy(buffer.data() + currentPos, &tmp, sizeof(Uint32));
-        currentPos += sizeof(Uint32);
+        buffer.writeUint32(x);
     }
 
     void writeUint64(Uint64 x) override
     {
-        ensureBufferSize(currentPos + sizeof(Uint64));
-        const Uint64 tmp = SDL_SwapLE64(x);
-        memcpy(buffer.data() + currentPos, &tmp, sizeof(Uint64));
-        currentPos += sizeof(Uint64);
+        buffer.writeUint64(x);
     }
 
     void writeBool(bool x) override
     {
-        writeUint8(x == true ? 1 : 0);
+        buffer.writeBool(x);
     }
 
     void writeFloat(float x) override
     {
-        Uint32 tmp;
-        memcpy(&tmp, &x, sizeof(Uint32)); // workaround for a strange optimization in gcc 4.1
-        writeUint32(tmp);
-    }
-
-    void ensureBufferSize(size_t minBufferSize) {
-        if(minBufferSize < buffer.size()) {
-            return;
-        }
-
-        size_t newBufferSize = ((buffer.size() * 3) / 2);
-        if(newBufferSize < minBufferSize) {
-            newBufferSize = minBufferSize;
-        }
-
-        buffer.resize(newBufferSize, 0);
+        buffer.writeFloat(x);
     }
 
     /**
         \return pointer to the written bytes (invalidated by further writes)
     */
-    const uint8_t* getData() const { return buffer.data(); }
+    const uint8_t* getData() const { return buffer.getData(); }
 
     /**
         \return number of bytes written so far
     */
-    size_t getDataLength() const { return currentPos; }
+    size_t getDataLength() const { return buffer.getDataLength(); }
 
     /**
         \return the written bytes as an owned copy
     */
-    std::vector<uint8_t> takeBytes() const { return std::vector<uint8_t>(buffer.begin(), buffer.begin() + currentPos); }
+    std::vector<uint8_t> takeBytes() const { return buffer.takeBytes(); }
 
 private:
-    size_t  currentPos;
-    std::vector<uint8_t> buffer;
+    p2pkit_wasm::PacketBuffer buffer;
 };
 
 #endif // NETWORKPACKETBUFFER_H

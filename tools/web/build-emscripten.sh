@@ -114,24 +114,25 @@ if [[ -f "${OUT_DIR}/dunecity.worker.js" ]]; then
     exit 1
 fi
 
-# Prepend the committed p2pkit IIFE bundle (part of the vendored p2pkit-wasm
-# SDK, fetched from QuixThe2nd/p2pkit-wasm by tools/web/fetch-p2pkit-wasm.mjs)
-# so globalThis.P2PKIT_IIFE exists before dunecity.js runs; the SDK glue
-# resolves it lazily at runtime. The bundle is committed, so this normally
-# needs neither npm nor network. If it is missing, fetch it (the fetch script
-# needs gh + network). Set P2PKIT_SKIP_BUILD=1 to fail instead of fetching
-# (offline sandboxes).
+# Prepend the committed p2pkit IIFE bundle so globalThis.P2PKIT_IIFE exists
+# before dunecity.js runs; the SDK glue resolves it lazily at runtime. The
+# bundle is the p2pkit dependency's own build output (its prepare script
+# builds dist/p2pkit.iife.js during npm install in platform/web), copied
+# verbatim into platform/web/dist/ by tools/web/build-p2pkit-iife.mjs and
+# committed so offline builds need neither npm nor network. If it is missing,
+# regenerate it with that script (needs the installed dependency). Set
+# P2PKIT_SKIP_BUILD=1 to fail instead of regenerating (offline sandboxes).
 P2PKIT_IIFE="${ROOT}/platform/web/dist/p2pkit.iife.js"
 if [[ ! -s "${P2PKIT_IIFE}" ]]; then
     if [[ -n "${P2PKIT_SKIP_BUILD:-}" ]]; then
         echo "ERROR: p2pkit IIFE bundle missing: ${P2PKIT_IIFE}" >&2
-        echo "       fetch it with: node tools/web/fetch-p2pkit-wasm.mjs --only-bundle" >&2
+        echo "       regenerate with: npm install (in platform/web) && node tools/web/build-p2pkit-iife.mjs" >&2
         exit 1
     fi
-    echo "==> p2pkit IIFE bundle missing; fetching it" >&2
+    echo "==> p2pkit IIFE bundle missing; regenerating it from the installed dependency" >&2
     node "${ROOT}/tools/web/build-p2pkit-iife.mjs" || exit 1
     if [[ ! -s "${P2PKIT_IIFE}" ]]; then
-        echo "ERROR: p2pkit IIFE bundle still missing after fetch: ${P2PKIT_IIFE}" >&2
+        echo "ERROR: p2pkit IIFE bundle still missing after regeneration: ${P2PKIT_IIFE}" >&2
         exit 1
     fi
 fi

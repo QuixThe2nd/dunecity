@@ -3,10 +3,11 @@
  * Post-build verification for dunecity.js WebRTC glue wiring.
  * Fails on DCE of createP2pkitWasmGlue or literal $-prefixed helper calls at runtime.
  *
- * The wiring now spans two --js-library files: the vendored p2pkit-wasm SDK
- * (platform/web/p2pkit-wasm-glue.js, $createP2pkitWasmGlue + $P2PKIT_WASM_*
- * constants) and the DuneCity adapter (platform/web/dunecity_webrtc_config.js,
- * $webrtcInit + the webrtc* C shims). Both are checked.
+ * The wiring spans two --js-library files: the installed p2pkit SDK
+ * (platform/web/node_modules/p2pkit/emscripten/js/p2pkit_webrtc_glue.cjs,
+ * $createP2pkitWasmGlue + $P2PKIT_WASM_* constants) and the DuneCity adapter
+ * (platform/web/dunecity_webrtc_config.js, $webrtcInit + the webrtc* C shims).
+ * Both are checked.
  *
  * Usage:
  *   node tools/web/verify-dunecity-js.mjs path/to/dunecity.js
@@ -14,7 +15,7 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const args = process.argv.slice(2);
 if (args.length !== 2 || !['--built', '--source'].includes(args[0])) {
@@ -25,7 +26,8 @@ if (args.length !== 2 || !['--built', '--source'].includes(args[0])) {
 const mode = args[0];
 const filePath = path.resolve(args[1]);
 const text = fs.readFileSync(filePath, 'utf8');
-const sdkGluePath = path.join(path.dirname(filePath), 'p2pkit-wasm-glue.js');
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
+const sdkGluePath = path.join(repoRoot, 'platform/web/node_modules/p2pkit/emscripten/js/p2pkit_webrtc_glue.cjs');
 
 function fail(msg) {
   console.error(`ERROR: ${msg}`);
@@ -45,16 +47,16 @@ if (mode === '--source') {
     fail('--source expects platform/web/dunecity_webrtc_config.js (the adapter that owns the C shims)');
   }
   if (!fs.existsSync(sdkGluePath)) {
-    fail('platform/web/p2pkit-wasm-glue.js (vendored SDK glue) not found next to the adapter; run tools/web/fetch-p2pkit-wasm.mjs');
+    fail(`p2pkit SDK glue not installed at ${sdkGluePath}; run: npm install  (in platform/web)`);
   }
   const sdkText = fs.readFileSync(sdkGluePath, 'utf8');
 
   // SDK glue: the factory must be a retained library symbol so it survives DCE.
   if (!sdkText.includes('$createP2pkitWasmGlue: createP2pkitWasmGlue')) {
-    fail('p2pkit-wasm-glue.js must export $createP2pkitWasmGlue to survive Emscripten DCE');
+    fail('the installed p2pkit SDK glue must export $createP2pkitWasmGlue to survive Emscripten DCE');
   }
   if (!sdkText.includes('$createP2pkitWasmGlue__deps')) {
-    fail('p2pkit-wasm-glue.js must declare $createP2pkitWasmGlue__deps (retains the $P2PKIT_WASM_* constants)');
+    fail('the installed p2pkit SDK glue must declare $createP2pkitWasmGlue__deps (retains the $P2PKIT_WASM_* constants)');
   }
 
   // Adapter: retain the SDK factory through __deps and emit unprefixed calls only.
@@ -145,9 +147,8 @@ globalThis.stringToUTF8 = () => {};
 globalThis.RTCPeerConnection = class {};
 globalThis.WebSocket = class { static OPEN = 1; };
 
-const repoRoot = path.resolve(process.cwd());
 const libFiles = [
-  path.join(repoRoot, 'platform/web/p2pkit-wasm-glue.js'),
+  sdkGluePath,
   path.join(repoRoot, 'platform/web/dunecity_webrtc_config.js'),
 ];
 for (const libFile of libFiles) {

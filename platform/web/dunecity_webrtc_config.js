@@ -1,19 +1,23 @@
 /*
- * DuneCity adapter for the vendored p2pkit-wasm SDK (platform/web/p2pkit-wasm-glue.js,
- * fetched from QuixThe2nd/p2pkit-wasm by tools/web/fetch-p2pkit-wasm.mjs).
+ * DuneCity adapter for the p2pkit Emscripten SDK (the "p2pkit" npm dependency
+ * pinned in platform/web/package.json; its glue is required here under Node
+ * and linked as a sibling --js-library in Emscripten builds).
  *
  * The SDK glue is game-neutral: it publishes $createP2pkitWasmGlue and the
  * $P2PKIT_WASM_* wire constants as Emscripten library symbols and knows
  * nothing about DuneCity. This file supplies everything DuneCity-specific:
  *
- *   - the game name riding the lobby "find" message ("dunecity"),
  *   - the page-provided DUNECITY_WEBRTC_CONFIG { signaling, iceServers },
- *   - the C export shims (webrtcFindMatch, webrtcSendTo, ...) that the
- *     header-only transport include/p2pkit-wasm/webrtc_transport.h declares,
- *     including the _webrtcOnEvent event pump into wasm memory.
+ *   - the C export shims (webrtcFindMatch, webrtcSendTo, ...) that the SDK's
+ *     header-only transport (emscripten/include/p2pkit-wasm/webrtc_transport.h,
+ *     aliased by include/Network/WebRtcTransport.h) declares, including the
+ *     _webrtcOnEvent event pump into wasm memory.
+ *   - the channel-spec bridge (dunecityBridgeP2pkit) that reconciles the
+ *     pinned SDK's glue/IIFE channel-spec shapes so the wire contract
+ *     (control ordered, commands unordered+lossy) survives the seam.
  *
  * It is linked next to the SDK glue:
- *   --js-library platform/web/p2pkit-wasm-glue.js
+ *   --js-library node_modules/p2pkit/emscripten/js/p2pkit_webrtc_glue.cjs
  *   --js-library platform/web/dunecity_webrtc_config.js
  * Cross-library $ deps work because Emscripten merges every --js-library into
  * one LibraryManager before linking.
@@ -23,12 +27,12 @@
  * p2pkit namespace from the committed IIFE bundle (platform/web/dist/).
  */
 
-// Under Node the SDK glue is a sibling module. Under Emscripten this file is
-// evaluated in the builder sandbox, where require does not exist; the wiring
-// block below then reaches the factory through the retained library symbol
-// instead.
+// Under Node the SDK glue is the installed p2pkit package's CommonJS export.
+// Under Emscripten this file is evaluated in the builder sandbox, where
+// require does not exist; the wiring block below then reaches the factory
+// through the retained library symbol instead.
 const sdkGlue = (typeof require === 'function' && typeof module !== 'undefined' && module.exports)
-    ? require('./p2pkit-wasm-glue.js')
+    ? require('p2pkit/emscripten/glue')
     : null;
 
 // DuneCity page-side WebRTC settings (web/shell.js may define
@@ -59,7 +63,22 @@ function loadP2pkitBundleForNode() {
     } catch (err) {
         return null;
     }
-    const sandbox = { console: console };
+    // The bundle expects the standard web-platform globals a browser page
+    // provides (RTCTransport schedules its connect deadline with setTimeout,
+    // randomId uses crypto, ...). Node keeps them on the host context, so
+    // hand them through; the vm context itself starts empty.
+    const sandbox = {
+        console: console,
+        setTimeout: setTimeout,
+        clearTimeout: clearTimeout,
+        setInterval: setInterval,
+        clearInterval: clearInterval,
+        queueMicrotask: queueMicrotask,
+        performance: (typeof performance !== 'undefined') ? performance : null,
+        TextEncoder: (typeof TextEncoder !== 'undefined') ? TextEncoder : undefined,
+        TextDecoder: (typeof TextDecoder !== 'undefined') ? TextDecoder : undefined,
+        crypto: (typeof crypto !== 'undefined') ? crypto : undefined,
+    };
     vm.createContext(sandbox);
     vm.runInContext(source, sandbox, { filename: bundlePath });
     return sandbox.P2PKIT_IIFE || (typeof globalThis !== 'undefined' ? globalThis.P2PKIT_IIFE : null) || null;
@@ -72,14 +91,45 @@ function resolveDunecityP2pkit(overrides) {
     return loadP2pkitBundleForNode();
 }
 
+// The pinned SDK's two halves disagree on the channel-spec shape: the glue
+// (p2pkit_webrtc_glue.cjs) builds specs as {label, options:{ordered,
+// maxRetransmits}, mode, ...} while its IIFE RTCTransport reads the fields
+// flat (createDataChannel(spec.label, {ordered: spec.ordered,
+// maxRetransmits: spec.maxRetransmits})). Unbridged, both channels get
+// browser defaults and the commands channel silently loses its
+// unordered/lossy contract. Dune cannot edit the pinned package, so the
+// adapter lifts options.* onto the flat fields before RTCTransport sees
+// them. Idempotent; keeps kit.DEFAULT_ICE_SERVERS and every other member.
+function dunecityBridgeP2pkit(kit) {
+    if (!kit || typeof kit.RTCTransport !== 'function') return kit;
+    const BridgedRTCTransport = class extends kit.RTCTransport {
+        constructor(options) {
+            super((options && Array.isArray(options.channels))
+                ? Object.assign({}, options, {
+                    channels: options.channels.map(function (spec) {
+                        if (!spec || !spec.options) return spec;
+                        return Object.assign({}, spec, {
+                            ordered: (spec.ordered !== undefined) ? spec.ordered : spec.options.ordered,
+                            maxRetransmits: (spec.maxRetransmits !== undefined) ? spec.maxRetransmits : spec.options.maxRetransmits,
+                        });
+                    }),
+                })
+                : options);
+        }
+    };
+    return Object.assign(Object.create(Object.getPrototypeOf(kit) || Object.prototype), kit, {
+        RTCTransport: BridgedRTCTransport,
+    });
+}
+
 // Node-facing factory used by platform/web/test/webrtc-glue.test.cjs: the SDK
 // factory with DuneCity defaults, overridable key by key (tests inject mock
-// RTCPeerConnection/WebSocket/p2pkit).
+// RTCPeerConnection/WebSocket/p2pkit). The p2pkit lobby is a single global
+// FIFO (no per-game name), so there is no gameName key to set.
 function createDunecityWebRtc(overrides) {
     if (!sdkGlue) throw new Error('dunecity_webrtc_config.js: SDK glue not loadable in this environment');
     const page = dunecityWebrtcConfig();
     const config = Object.assign({
-        gameName: 'dunecity',
         signaling: page.signaling,
         iceServers: page.iceServers,
         p2pkit: null, // resolved below, after overrides are merged
@@ -91,6 +141,7 @@ function createDunecityWebRtc(overrides) {
         },
     }, overrides || {});
     if (!config.p2pkit) config.p2pkit = resolveDunecityP2pkit(config);
+    config.p2pkit = dunecityBridgeP2pkit(config.p2pkit);
     return sdkGlue.createP2pkitWasmGlue(config);
 }
 
@@ -111,19 +162,34 @@ if (typeof module !== 'undefined' && module.exports) {
  */
 if (typeof mergeInto === 'function' && typeof LibraryManager !== 'undefined') {
     mergeInto(LibraryManager.library, {
-        // $createP2pkitWasmGlue lives in p2pkit-wasm-glue.js; naming it here
-        // retains it (and, through its own __deps, the whole $P2PKIT_WASM_*
-        // constant set) in the emitted runtime.
-        $webrtcInit__deps: ['$createP2pkitWasmGlue'],
+        // $createP2pkitWasmGlue lives in the installed p2pkit SDK's glue
+        // (emscripten/js/p2pkit_webrtc_glue.cjs); naming it here retains it
+        // (and, through its own __deps, the whole $P2PKIT_WASM_* constant
+        // set) in the emitted runtime. $dunecityBridgeP2pkit is this file's
+        // own channel-spec adapter (see its comment above).
+        $dunecityBridgeP2pkit: dunecityBridgeP2pkit,
+        $webrtcInit__deps: ['$createP2pkitWasmGlue', '$dunecityBridgeP2pkit'],
         $webrtcInit: function () {
             if (Module.__dunecityWebrtc) return;
             Module.__dunecityWebrtc = createP2pkitWasmGlue({
-                gameName: 'dunecity',
                 signaling: (typeof DUNECITY_WEBRTC_CONFIG !== 'undefined' && DUNECITY_WEBRTC_CONFIG && DUNECITY_WEBRTC_CONFIG.signaling) || undefined,
                 iceServers: (typeof DUNECITY_WEBRTC_CONFIG !== 'undefined' && DUNECITY_WEBRTC_CONFIG && DUNECITY_WEBRTC_CONFIG.iceServers) || undefined,
+                p2pkit: dunecityBridgeP2pkit((typeof globalThis !== 'undefined') ? globalThis.P2PKIT_IIFE : undefined),
                 RTCPeerConnection: (typeof RTCPeerConnection !== 'undefined') ? RTCPeerConnection : window.RTCPeerConnection,
                 WebSocket: WebSocket,
-                log: function (msg) { Module.print('[' + msg + ']'); },
+                // Emscripten only READS Module.print (runtime: "if(Module['print'])out=...")
+                // and never defines it, and web/shell.js does not either — so calling
+                // Module.print unconditionally threw TypeError on the glue's FIRST log
+                // line, which aborted ws.onopen before the matchmaking {"t":"find"} was
+                // sent: both peers ended up connected to the lobby (signalingState
+                // 'open', verified on the wire) yet never paired. Honor a page-provided
+                // Module.print (the runtime contract for capturing stdout) and fall
+                // back to console.log, like the Node factory in this file.
+                log: function (msg) {
+                    const emit = (typeof Module !== 'undefined' && typeof Module.print === 'function')
+                        ? Module.print : ((typeof console !== 'undefined' && console.log) || function () {});
+                    emit('[' + msg + ']');
+                },
                 onEvent: function (type, peer, channel, cause, bytes) {
                     if (type === 2 /* MESSAGE */ && bytes) {
                         const ptr = _malloc(bytes.length);
@@ -160,7 +226,11 @@ if (typeof mergeInto === 'function' && typeof LibraryManager !== 'undefined') {
         webrtcGetState: function () {
             if (!Module.__dunecityWebrtc) return 0; /* IDLE */
             const s = Module.__dunecityWebrtc.getStats();
-            if (s.peerConnectionState === 'connected' && s.channels.every(function (c) { return c.state === 'open'; })) return 2; /* CONNECTED */
+            // The SDK's stats table keeps channels[].state at 'new' (diagnostic
+            // only); RTCTransport's 'connect' event — "all data channels open" —
+            // is what flips peerConnectionState to 'connected', so that is the
+            // Connected (=2) authority the C++ State contract needs.
+            if (s.peerConnectionState === 'connected') return 2; /* CONNECTED */
             if (s.role) return 1; /* CONNECTING */
             return 0;
         },

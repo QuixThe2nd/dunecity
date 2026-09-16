@@ -20,103 +20,84 @@
 #include <misc/InputStream.h>
 #include <misc/exceptions.h>
 
+#include <p2pkit-wasm/packet_view.h>
+
 #include <cstdint>
-#include <cstring>
 #include <string>
 
 /**
+    Eof factory injected into the p2pkit SDK's PacketView so truncated reads
+    keep throwing the game's own exception type (InputStream::eof, built by the
+    THROW macro); existing catch sites are unchanged.
+*/
+struct NetworkPacketEofFactory
+{
+    [[noreturn]] static void raise(const char* what) {
+        THROW(InputStream::eof, "%s", what);
+    }
+};
+
+/**
     ENet-independent non-owning view over received packet bytes, used by the
-    browser (WebRTC) transport. Byte-for-byte compatible with ENetPacketIStream.
-    The view does not own the memory: the caller must keep the underlying buffer
-    alive while the view is used (the WebRTC transport queues owned copies and
-    hands each queue entry to handlePacket exactly once).
+    browser (WebRTC) transport. The read logic is owned by the p2pkit
+    Emscripten SDK (p2pkit_wasm::PacketView, installed from the p2pkit
+    dependency pinned in platform/web/package.json); this class is the thin
+    Dune-side adaptation to the game's InputStream interface and exception
+    contract. Byte-for-byte compatible with ENetPacketIStream. The view does
+    not own the memory: the caller must keep the underlying buffer alive while
+    the view is used (the WebRTC transport queues owned copies and hands each
+    queue entry to handlePacket exactly once).
 */
 class NetworkPacketView : public InputStream
 {
 public:
     NetworkPacketView(const uint8_t* pData, size_t dataLength)
-     : currentPos(0), pData(pData), dataLength(dataLength) {
+     : view(pData, dataLength) {
         ;
+    }
+
+    size_t getRemainingLength() const override
+    {
+        return view.getRemainingLength();
     }
 
     std::string readString() override
     {
-        const Uint32 length = readUint32();
-
-        if(static_cast<size_t>(currentPos) + length > dataLength) {
-            THROW(InputStream::eof, "NetworkPacketView::readString(): End-of-File reached!");
-        }
-
-        std::string resultString(reinterpret_cast<const char*>(pData + currentPos), length);
-        currentPos += length;
-        return resultString;
+        return view.readString();
     }
 
     Uint8 readUint8() override
     {
-        if(currentPos + sizeof(Uint8) > dataLength) {
-            THROW(InputStream::eof, "NetworkPacketView::readUint8(): End-of-File reached!");
-        }
-
-        Uint8 tmp;
-        memcpy(&tmp, pData + currentPos, sizeof(Uint8));
-        currentPos += sizeof(Uint8);
-        return tmp;
+        return view.readUint8();
     }
 
     Uint16 readUint16() override
     {
-        if(currentPos + sizeof(Uint16) > dataLength) {
-            THROW(InputStream::eof, "NetworkPacketView::readUint16(): End-of-File reached!");
-        }
-
-        Uint16 tmp;
-        memcpy(&tmp, pData + currentPos, sizeof(Uint16));
-        currentPos += sizeof(Uint16);
-        return SDL_SwapLE16(tmp);
+        return view.readUint16();
     }
 
     Uint32 readUint32() override
     {
-        if(currentPos + sizeof(Uint32) > dataLength) {
-            THROW(InputStream::eof, "NetworkPacketView::readUint32(): End-of-File reached!");
-        }
-
-        Uint32 tmp;
-        memcpy(&tmp, pData + currentPos, sizeof(Uint32));
-        currentPos += sizeof(Uint32);
-        return SDL_SwapLE32(tmp);
+        return view.readUint32();
     }
 
     Uint64 readUint64() override
     {
-        if(currentPos + sizeof(Uint64) > dataLength) {
-            THROW(InputStream::eof, "NetworkPacketView::readUint64(): End-of-File reached!");
-        }
-
-        Uint64 tmp;
-        memcpy(&tmp, pData + currentPos, sizeof(Uint64));
-        currentPos += sizeof(Uint64);
-        return SDL_SwapLE64(tmp);
+        return view.readUint64();
     }
 
     bool readBool() override
     {
-        return (readUint8() == 1 ? true : false);
+        return view.readBool();
     }
 
     float readFloat() override
     {
-        const Uint32 tmp = readUint32();
-        float tmp2;
-        memcpy(&tmp2, &tmp, sizeof(Uint32)); // workaround for a strange optimization in gcc 4.1
-        return tmp2;
+        return view.readFloat();
     }
 
 private:
-    size_t              currentPos;
-    const uint8_t*      pData;
-    size_t              dataLength;
+    p2pkit_wasm::PacketView<NetworkPacketEofFactory> view;
 };
 
 #endif // NETWORKPACKETVIEW_H
