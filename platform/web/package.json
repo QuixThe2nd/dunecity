@@ -11,7 +11,7 @@
     "node": ">=20"
   },
   "dependencies": {
-    "p2pkit": "github:QuixThe2nd/p2pkit#c9858937e33a8d946b12f0181579587df8783936"
+    "p2pkit": "github:QuixThe2nd/p2pkit#257f3c8eb0c0cf373298225e54c8d09d2f896a42"
   },
   "devDependencies": {
     "ws": "^8.18.0"

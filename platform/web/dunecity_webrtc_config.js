@@ -12,9 +12,6 @@
  *     header-only transport (emscripten/include/p2pkit-wasm/webrtc_transport.h,
  *     aliased by include/Network/WebRtcTransport.h) declares, including the
  *     _webrtcOnEvent event pump into wasm memory.
- *   - the channel-spec bridge (dunecityBridgeP2pkit) that reconciles the
- *     pinned SDK's glue/IIFE channel-spec shapes so the wire contract
- *     (control ordered, commands unordered+lossy) survives the seam.
  *
  * It is linked next to the SDK glue:
  *   --js-library node_modules/p2pkit/emscripten/js/p2pkit_webrtc_glue.cjs
@@ -91,37 +88,6 @@ function resolveDunecityP2pkit(overrides) {
     return loadP2pkitBundleForNode();
 }
 
-// The pinned SDK's two halves disagree on the channel-spec shape: the glue
-// (p2pkit_webrtc_glue.cjs) builds specs as {label, options:{ordered,
-// maxRetransmits}, mode, ...} while its IIFE RTCTransport reads the fields
-// flat (createDataChannel(spec.label, {ordered: spec.ordered,
-// maxRetransmits: spec.maxRetransmits})). Unbridged, both channels get
-// browser defaults and the commands channel silently loses its
-// unordered/lossy contract. Dune cannot edit the pinned package, so the
-// adapter lifts options.* onto the flat fields before RTCTransport sees
-// them. Idempotent; keeps kit.DEFAULT_ICE_SERVERS and every other member.
-function dunecityBridgeP2pkit(kit) {
-    if (!kit || typeof kit.RTCTransport !== 'function') return kit;
-    const BridgedRTCTransport = class extends kit.RTCTransport {
-        constructor(options) {
-            super((options && Array.isArray(options.channels))
-                ? Object.assign({}, options, {
-                    channels: options.channels.map(function (spec) {
-                        if (!spec || !spec.options) return spec;
-                        return Object.assign({}, spec, {
-                            ordered: (spec.ordered !== undefined) ? spec.ordered : spec.options.ordered,
-                            maxRetransmits: (spec.maxRetransmits !== undefined) ? spec.maxRetransmits : spec.options.maxRetransmits,
-                        });
-                    }),
-                })
-                : options);
-        }
-    };
-    return Object.assign(Object.create(Object.getPrototypeOf(kit) || Object.prototype), kit, {
-        RTCTransport: BridgedRTCTransport,
-    });
-}
-
 // Node-facing factory used by platform/web/test/webrtc-glue.test.cjs: the SDK
 // factory with DuneCity defaults, overridable key by key (tests inject mock
 // RTCPeerConnection/WebSocket/p2pkit). The p2pkit lobby is a single global
@@ -141,7 +107,6 @@ function createDunecityWebRtc(overrides) {
         },
     }, overrides || {});
     if (!config.p2pkit) config.p2pkit = resolveDunecityP2pkit(config);
-    config.p2pkit = dunecityBridgeP2pkit(config.p2pkit);
     return sdkGlue.createP2pkitWasmGlue(config);
 }
 
@@ -165,16 +130,14 @@ if (typeof mergeInto === 'function' && typeof LibraryManager !== 'undefined') {
         // $createP2pkitWasmGlue lives in the installed p2pkit SDK's glue
         // (emscripten/js/p2pkit_webrtc_glue.cjs); naming it here retains it
         // (and, through its own __deps, the whole $P2PKIT_WASM_* constant
-        // set) in the emitted runtime. $dunecityBridgeP2pkit is this file's
-        // own channel-spec adapter (see its comment above).
-        $dunecityBridgeP2pkit: dunecityBridgeP2pkit,
-        $webrtcInit__deps: ['$createP2pkitWasmGlue', '$dunecityBridgeP2pkit'],
+        // set) in the emitted runtime.
+        $webrtcInit__deps: ['$createP2pkitWasmGlue'],
         $webrtcInit: function () {
             if (Module.__dunecityWebrtc) return;
             Module.__dunecityWebrtc = createP2pkitWasmGlue({
                 signaling: (typeof DUNECITY_WEBRTC_CONFIG !== 'undefined' && DUNECITY_WEBRTC_CONFIG && DUNECITY_WEBRTC_CONFIG.signaling) || undefined,
                 iceServers: (typeof DUNECITY_WEBRTC_CONFIG !== 'undefined' && DUNECITY_WEBRTC_CONFIG && DUNECITY_WEBRTC_CONFIG.iceServers) || undefined,
-                p2pkit: dunecityBridgeP2pkit((typeof globalThis !== 'undefined') ? globalThis.P2PKIT_IIFE : undefined),
+                p2pkit: (typeof globalThis !== 'undefined') ? globalThis.P2PKIT_IIFE : undefined,
                 RTCPeerConnection: (typeof RTCPeerConnection !== 'undefined') ? RTCPeerConnection : window.RTCPeerConnection,
                 WebSocket: WebSocket,
                 // Emscripten only READS Module.print (runtime: "if(Module['print'])out=...")

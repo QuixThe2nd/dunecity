@@ -28,9 +28,12 @@ const EXPECTED_KEYS = [
   'RTC_SEND_QUEUE_FLUSH_THRESHOLD',
   'capsFor',
   'chooseTransport',
+  'directIceServers',
   'extractIP',
   'isInitiator',
   'randomId',
+  'validateDirectCandidate',
+  'validateDirectDescription',
 ];
 
 function loadBundleInFreshContext() {

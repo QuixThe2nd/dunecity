@@ -100,6 +100,13 @@ public:
     */
     std::vector<uint8_t> takeBytes() const { return buffer.takeBytes(); }
 
+    /**
+        Grows the backing storage to at least minBufferSize bytes. Forwards to
+        the SDK's public PacketBuffer::ensureBufferSize; exposed so callers
+        that pre-reserve (as the ENet stream did) keep a public seam.
+    */
+    void ensureBufferSize(size_t minBufferSize) { buffer.ensureBufferSize(minBufferSize); }
+
 private:
     p2pkit_wasm::PacketBuffer buffer;
 };

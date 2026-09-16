@@ -32,7 +32,8 @@ test('installed SDK glue retains createP2pkitWasmGlue', () => {
 
 test('adapter wires $webrtcInit deps over the SDK glue', () => {
   const text = fs.readFileSync(ADAPTER, 'utf8');
-  assert.match(text, /\$webrtcInit__deps:\s*\[\s*'\$createP2pkitWasmGlue'\s*,\s*'\$dunecityBridgeP2pkit'\s*\]/);
+  assert.match(text, /\$webrtcInit__deps:\s*\[\s*'\$createP2pkitWasmGlue'\s*\]/);
+  assert.doesNotMatch(text, /dunecityBridgeP2pkit/);
   assert.match(text, /webrtcFindMatch__deps:\s*\[\s*'\$webrtcInit'\s*\]/);
   assert.match(text, /webrtcCancelMatch__deps:\s*\[\s*'\$webrtcInit'/);
   assert.match(text, /\bwebrtcInit\s*\(/);
