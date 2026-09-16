@@ -1,4 +1,4 @@
-# QuantBot shared spending — 1.0.701
+# QuantBot shared spending — 1.0.702
 
 A deterministic, four-simulated-minute forecast compares the next economy,
 combat-unit and additional-production investments. It is a bounded scoring
@@ -26,6 +26,7 @@ an explicit exception; custom allies and opponents use normal shared spending.
 | Investment | Forecast and priority |
 | --- | --- |
 | Harvester | Additional receipts after production/delivery, accounting for the existing fleet, unloading capacity, travel and remaining spice. Must recover its purchase cost within the horizon. |
+| First carryall | One Starport transport for an operating spice fleet, including when workers are sold out. Explicit bootstrap priority (5,500), above full-fleet worker savings; not an invented routing-return estimate. |
 | Refinery | Additional unloading capacity and the included worker; excludes existing income. Actual loaded-worker queues can justify a bay even as unharvested spice declines. |
 | Dune City R/C/I | Demand/site-supported growth after construction and growth delay, net of power upkeep, with allocated generation/foundation cost. Existing unfinished plots reduce confidence. No fixed tax-to-spice ratio gate. |
 | Combat unit | Military value per purchase credit, weighted by the fraction of the army target still missing. Active attacks on the base/workers raise defence priority. Existing composition and difficulty limits remain. |
@@ -45,6 +46,13 @@ reduces the value of extra harvesters as the existing fleet can exhaust the
 remaining fields. The travel estimate is a bounded local sample, not a new
 pathfinding pass, and does not explicitly model carryall routing. Forecasts
 remain estimates; use delivered-spice and tax telemetry to assess their error.
+
+The first carryall uses the displayed Starport price, includes paid/in-flight
+cargo in its committed count, and is purchased before optional repair-yard
+construction. If cash is short, cheaper troops cannot consume its savings.
+Unavailable stock/technology and air limits do not reserve funds. Once a
+carryall is committed, ordinary worker, transport-capacity and military rules
+resume. This applies in both mods and to campaign helpers and custom bots.
 
 Dune City includes R/C/I, tax and municipal/power expenses. Vanilla has no zone
 candidates or tax forecast. Its configured power rules still apply. First
@@ -104,5 +112,7 @@ python3 tests/ai/run-campaign-balance.py --build-dir build-692 \
 ```
 
 Repeat with `--mod vanilla`; use `--starport-probe` for imports. The runner also
-accepts `--custom-map PATH` for two-house custom simulations. A time-limited
+accepts `--custom-map PATH` for all occupied custom-map slots, preserving named
+house teams; `--free-for-all` gives each house its own team. Diagnostic capture
+defaults to 1 GiB without changing the shipped game's limit. A time-limited
 simulation is behavioural evidence, not proof of balance across all maps.

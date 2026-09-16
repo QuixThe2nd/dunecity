@@ -4417,6 +4417,30 @@ void QuantBot::build(int militaryValue) {
             }
             capitalCandidates.push_back(worker);
         }
+        if (port) {
+            // Establish transport for the working spice fleet before optional
+            // buildings or filling every remaining worker slot. This is a
+            // single bootstrap purchase, not a forecast of carryall routing.
+            // itemCount includes queued/paid imports, including those in flight.
+            CapitalCandidate transport;
+            transport.builder=builder->getObjectID();transport.item=Unit_Carryall;
+            transport.kind="transport";
+            transport.price=purchasePrice(builder,Unit_Carryall);transport.cost=transport.price;
+            transport.delay=MILLI2CYCLES(30000);
+            if (itemCount[Unit_Carryall]>0) transport.reason="transport_committed";
+            else if (getHouse()->getNumItems(Unit_Harvester)==0 || getHouse()->getNumItems(Structure_Refinery)==0)
+                transport.reason="no_working_spice_fleet";
+            else if (lastCalculatedSpice<=0) transport.reason="spice_depleted";
+            else if (!ready) transport.reason="producer_busy";
+            else if (!builder->isAvailableToBuild(Unit_Carryall) || transport.price<=0) transport.reason="tech_unavailable";
+            else if (getHouse()->getChoam().getNumAvailable(Unit_Carryall)<=0) transport.reason="sold_out";
+            else if (getHouse()->isAirUnitLimitReached()) transport.reason="unit_limit";
+            else {
+                transport.score=5500; // Ahead of the helper's full-fleet savings.
+                transport.reason="first_transport_productivity";
+            }
+            capitalCandidates.push_back(transport);
+        }
         if (ready && building==Structure_HeavyFactory && builder->isAvailableToBuild(Unit_MCV)
             && !getHouse()->isGroundUnitLimitReached() && itemCount[Unit_MCV]==0
             && gameMode==GameMode::Custom && !openingWorkersNeeded()) {
@@ -4525,6 +4549,7 @@ void QuantBot::build(int militaryValue) {
             .set("existing_military_capacity",existingMilitaryCapacity).set("military_value",militaryValue)
             .set("military_target",militaryValueLimit).set("queued_military_value",queuedMilitaryValue)
             .set("workers",itemCount[Unit_Harvester]).set("worker_target",desiredWorkers)
+            .set("carryalls",getHouse()->getNumItems(Unit_Carryall)).set("carryalls_committed",itemCount[Unit_Carryall])
             .set("spice_share",spiceShare).set("worker_income",workerAnnualIncome()).set("bay_income",bayAnnualIncome)
             .set("trip_cycles",refineryTripCycles).set("field_risk",refineryFieldRisk)
             .set("ready_yards",readyYards).set("power_required",getHouse()->getPowerRequirement())
@@ -4549,6 +4574,9 @@ void QuantBot::build(int militaryValue) {
                 if (structure->getItemID()==Structure_StarPort) priority=6;
                 else if (structure->getItemID()==Structure_HeavyFactory) priority=5;
             }
+            if (capitalChoice>=0 && capitalCandidates[capitalChoice].item==Unit_Carryall
+                && capitalCandidates[capitalChoice].builder==structure->getObjectID()
+                && getHouse()->hasPower()) priority=7;
             planningOrder.emplace_back(priority,structure->getObjectID());
         }
     std::stable_sort(planningOrder.begin(), planningOrder.end(),
@@ -4763,6 +4791,7 @@ void QuantBot::build(int militaryValue) {
                 // yard before optional expansion, including its missing prerequisites.
                 // Count queued structures and preserve normal costs/placement rules.
                 if (isCampaignGameType(currentGame->gameType)
+                    && !(capitalPending() && capitalCandidates[capitalChoice].item==Unit_Carryall)
                     && (difficulty==Difficulty::Hard || difficulty==Difficulty::Brutal
                         || (difficulty==Difficulty::Medium && initialItemCount[Structure_RepairYard]>0))
                     && data[Structure_RepairYard][houseID].enabled
@@ -4830,15 +4859,25 @@ void QuantBot::build(int militaryValue) {
                     protectedCash = std::max(protectedCash,harvesterInvestmentReserve());
                 const bool capitalSupplier=capitalPending() && capitalCandidates[capitalChoice].builder==pBuilder->getObjectID();
                 if (capitalSupplier && (defendingEconomy || harvesterInvestmentReserve()==0
-                    || capitalCandidates[capitalChoice].item==Unit_Harvester)) protectedCash=0;
+                    || capitalCandidates[capitalChoice].item==Unit_Harvester
+                    || capitalCandidates[capitalChoice].item==Unit_Carryall)) protectedCash=0;
                 protectedCash=std::max(protectedCash,capitalReserve(pBuilder->getObjectID()));
                 reserve.reserved = money - QuantBotBuildPolicy::spendableCredits(money,protectedCash);
 				money -= reserve.reserved;
 
+                if (capitalSupplier && capitalPending() && capitalCandidates[capitalChoice].item==Unit_Carryall
+                    && money<capitalCandidates[capitalChoice].price) {
+                    traceDecision("capital_order_blocked",AITelemetry::Record().set("plan",capitalDecision)
+                        .set("builder",pBuilder->getObjectID()).set("item",Unit_Carryall)
+                        .set("price",capitalCandidates[capitalChoice].price).set("spendable",money)
+                        .set("reason","saving_first_transport"));
+                    continue;
+                }
                 const CapitalCandidate* localUnitChoice=nullptr;
                 if (!transportProducer && !expansionProducer)
                     for (const auto& candidate:capitalCandidates)
                         if (candidate.builder==pBuilder->getObjectID() && isUnit(candidate.item)
+                            && (candidate.item!=Unit_Carryall || itemCount[Unit_Carryall]==0)
                             && candidate.score>0 && candidate.price<=money
                             && (!localUnitChoice || candidate.score>localUnitChoice->score)) localUnitChoice=&candidate;
                 if (localUnitChoice && pBuilder->getProductionQueueSize()==0

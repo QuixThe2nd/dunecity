@@ -9,6 +9,7 @@ and structured AI decision logs remain in --output-dir. This is a simulation
 comparison, not a substitute for the browser playtest or human playtesting.
 """
 import argparse
+import configparser
 import json
 import os
 from pathlib import Path
@@ -19,7 +20,10 @@ root = Path(__file__).resolve().parents[2]
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('--build-dir', type=Path, default=root / 'build')
 parser.add_argument('--output-dir', type=Path, required=True)
-parser.add_argument('--custom-map', type=Path, help='Run a two-slot custom map instead of the campaign')
+parser.add_argument('--custom-map', type=Path, help='Run all occupied slots of a custom map instead of the campaign')
+parser.add_argument('--free-for-all', action='store_true', help='Give each custom-map house its own team')
+parser.add_argument('--capture-mib', type=int, default=1024, help='Diagnostic capture allowance; shipped default is unchanged')
+parser.add_argument('--wall-timeout', type=int, default=1800, help='Maximum wall seconds for the simulation')
 parser.add_argument('--level', type=int, choices=range(1,10), default=4)
 parser.add_argument('--mod', choices=('vanilla','dunecity'), default='vanilla')
 parser.add_argument('--house', choices=('harkonnen','atreides','ordos'), default='harkonnen')
@@ -44,6 +48,42 @@ parser.add_argument('--attack-percent', type=int, choices=range(101), default=25
 args = parser.parse_args()
 if not 1 <= args.minutes <= 60 or not 0 <= args.seed <= 0xffffffff:
     parser.error('Use 1–60 minutes and a 32-bit unsigned seed.')
+if not 256 <= args.capture_mib <= 4096 or args.wall_timeout < 1:
+    parser.error('Use 256–4096 MiB of capture space and a positive wall timeout.')
+if args.free_for_all and not args.custom_map:
+    parser.error('--free-for-all requires --custom-map.')
+roster = []
+if args.custom_map:
+    scenario = configparser.ConfigParser(strict=False, interpolation=None)
+    with args.custom_map.open() as source_file:
+        scenario.read_file(source_file)
+    sections = {s.lower(): s for s in scenario.sections()}
+    names = ('harkonnen', 'atreides', 'ordos', 'fremen', 'sardaukar', 'mercenary')
+    assigned = set()
+    for name in names:
+        if name in sections:
+            brain = scenario[sections[name]].get('brain', 'Team2').lower()
+            team = int(brain[4:]) if brain.startswith('team') else (1 if name == args.house else 2)
+            roster.append((names.index(name), team))
+            assigned.add(name)
+    # Generic slots use the chosen player house first, then distinct opponents.
+    # The engine still chooses their spawn slots using the supplied match seed.
+    candidates = [args.house] + [n for n in ('harkonnen', 'atreides', 'ordos', 'sardaukar', 'fremen', 'mercenary') if n != args.house]
+    for slot in range(1, 7):
+        section = sections.get(f'player{slot}')
+        if not section:
+            continue
+        name = next((n for n in candidates if n not in assigned), None)
+        if name is None:
+            parser.error('Map has more occupied slots than supported houses.')
+        brain = scenario[section].get('brain', f'Team{slot}').lower()
+        team = int(brain[4:]) if brain.startswith('team') else slot
+        roster.append((names.index(name), team))
+        assigned.add(name)
+    if args.house not in assigned:
+        parser.error('Chosen player house has no slot on this map.')
+    if args.free_for_all:
+        roster = [(house, i + 1) for i, (house, _) in enumerate(roster)]
 build, out = args.build_dir.resolve(), args.output_dir.resolve()
 out.mkdir(parents=True, exist_ok=False)
 subprocess.run(['python3',str(root/'scripts/check-build-deps.py'),str(build)],check=True,cwd=root)
@@ -85,7 +125,11 @@ env = dict(os.environ,DUNECITY_USERDIR=str(out/'profile'),SDL_VIDEODRIVER='dummy
            BALANCE_MOD=args.mod,BALANCE_LEVEL=str(args.level),BALANCE_PARTNER=args.partner_difficulty,BALANCE_SEED=str(args.seed),BALANCE_MINUTES=str(args.minutes),
            BALANCE_ATTACK_PERCENT=str(args.attack_percent),BALANCE_ENEMY=args.enemy_difficulty,
            BALANCE_HOUSE=str(('harkonnen','atreides','ordos').index(args.house)),BALANCE_HARVESTER_LIMIT=str(args.harvester_limit))
-if args.custom_map: env['BALANCE_CUSTOM_MAP'] = str(args.custom_map.resolve())
+env['BALANCE_CAPTURE_MIB'] = str(args.capture_mib)
+if args.custom_map:
+    env['BALANCE_CUSTOM_MAP'] = str(args.custom_map.resolve())
+    env['BALANCE_ROSTER'] = ','.join(f'{house}:{team}' for house, team in roster)
+(out/'setup.json').write_text(json.dumps({**vars(args), 'resolved_roster': roster}, default=str, indent=2)+'\n')
 if args.shared_spending_probe: env['BALANCE_SHARED_SPENDING_PROBE'] = '1'
 if args.nuclear_probe: env['BALANCE_NUCLEAR_PROBE'] = '1'
 if args.radar_probe: env['BALANCE_RADAR_PROBE'] = '1'
@@ -100,12 +144,16 @@ if args.pacing_probe: env['BALANCE_PACING_PROBE'] = '1'
 if args.repair_probe: env['BALANCE_REPAIR_PROBE'] = '1'
 with (out/'run.log').open('w') as log:
     subprocess.run([str(binary),'--window','--showlog'],cwd=out,env=env,
-                   stdout=log,stderr=subprocess.STDOUT,check=True,timeout=600)
+                   stdout=log,stderr=subprocess.STDOUT,check=True,timeout=args.wall_timeout)
 results = [line for line in (out/'run.log').read_text().splitlines() if 'CAMPAIGN_BALANCE_RESULT:' in line]
 if len(results) != 1: raise RuntimeError('Missing campaign result.')
 events = next((out/'profile').rglob('events.jsonl'))
-rows = [json.loads(line) for line in events.read_text().splitlines()]
-for row in rows:
+metadata, attacks, final = None, [], []
+for line in events.open():
+    row = json.loads(line)
+    if row['event'] == 'session_start': metadata = row['data']
+    if row['event'] == 'ground_hunt': attacks.append(row)
+    if row['event'] == 'game_summary': final.append(row)
     # The pressure fixture switches difficulty in-engine and checks each tier
     # itself; its Hard/Brutal waves must not inherit the CLI's default Easy cap.
     if not args.pressure_probe and row['event']=='ground_hunt' and row['data'].get('campaign_limited') and args.enemy_difficulty in ('easy','medium','hard'):
@@ -120,8 +168,7 @@ for row in rows:
             raise RuntimeError('Automatic campaign force exceeded its wave budget')
 summary = {'result':results[0],'sourceCommit':subprocess.check_output(['git','rev-parse','HEAD'],cwd=root,text=True).strip(),
            'workingTreeModified':bool(subprocess.check_output(['git','status','--porcelain'],cwd=root,text=True).strip()),
-           'metadata':rows[0]['data'],'attacks':[r for r in rows if r['event']=='ground_hunt'],
-           'final':[r for r in rows if r['event']=='game_summary']}
+           'metadata':metadata,'attacks':attacks,'final':final,'resolved_roster':roster}
 (out/'summary.json').write_text(json.dumps(summary,indent=2)+'\n')
 print(results[0])
 print('Telemetry:',events)

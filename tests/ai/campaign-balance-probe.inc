@@ -9,6 +9,7 @@
 #include <cstdlib>
 #include <fstream>
 #include <iterator>
+#include <sstream>
 
 #include "starport-economy-probe.inc"
 #include "shared-spending-probe.inc"
@@ -54,10 +55,22 @@ int runCampaignBalanceProbe() {
     }
     init.randomSeed = seed; // Test-only access, provided by -fno-access-control.
     init.setMultiplePlayersPerHouse(true);
-    for (int h=0; h<NUM_HOUSES; ++h) {
-        if (!isHouseAvailable(static_cast<HOUSETYPE>(h))) continue;
-        if(customMap && h!=humanHouse && h!=(humanHouse==HOUSE_HARKONNEN ? HOUSE_ATREIDES : HOUSE_HARKONNEN))continue;
-        GameInitSettings::HouseInfo info(static_cast<HOUSETYPE>(h), h==humanHouse ? 1 : 2);
+    std::vector<std::pair<int,int>> roster;
+    if(customMap) {
+        std::istringstream input(std::getenv("BALANCE_ROSTER") ? std::getenv("BALANCE_ROSTER") : "");
+        std::string slot;
+        while(std::getline(input,slot,',')) {
+            const auto colon=slot.find(':');
+            if(colon==std::string::npos) throw std::runtime_error("Invalid test roster");
+            roster.emplace_back(std::stoi(slot.substr(0,colon)),std::stoi(slot.substr(colon+1)));
+        }
+        if(roster.empty()) throw std::runtime_error("Custom test requires a roster");
+    } else {
+        for(int h=0;h<NUM_HOUSES;++h)
+            if(isHouseAvailable(static_cast<HOUSETYPE>(h))) roster.emplace_back(h,h==humanHouse ? 1 : 2);
+    }
+    for (const auto& [h,team] : roster) {
+        GameInitSettings::HouseInfo info(static_cast<HOUSETYPE>(h), team);
         if (h==humanHouse) info.addPlayerInfo({settings.general.playerName,"HumanPlayer"});
         info.addPlayerInfo({getHouseNameByNumber(static_cast<HOUSETYPE>(h)),h==humanHouse ? partnerClass : enemyClass});
         init.addHouseInfo(info);
@@ -68,6 +81,10 @@ int runCampaignBalanceProbe() {
     // Restore ordinary AI/command execution before advancing any game cycles.
     game->bReplay = true;
     game->initGame(init);
+    // This diagnostic can retain a full hour of every house's decisions.
+    // The normal game capture limit is deliberately unchanged.
+    if(std::getenv("BALANCE_CAPTURE_MIB"))
+        AITelemetry::log().limit=std::stoull(std::getenv("BALANCE_CAPTURE_MIB"))*1024*1024;
     game->bReplay = false;
     game->initializeGameLoop();
     if (std::getenv("BALANCE_SHARED_SPENDING_PROBE")) {
