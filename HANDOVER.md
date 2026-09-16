@@ -45,6 +45,12 @@ seed118157932. Fremen orders61 lots +89 combat units in minutes30–35; native70
 ordered0 lots +109 combat units then. It still loses at38.78min in this all-Brutal
 FFA: proof of continued growth, not proof of optimal combat balance or a guaranteed
 win. Three completed match captures pass the spending/link/overspend audit.
+Follow-up budget/utilisation check: those61 lots cost6,100 versus31,450 in combat
+orders (plus6,250 turrets/police and1,600 Carryalls). Original Fremen yards were
+99.5% idle in minutes30–35; final704 has88.1% busy/11.1% idle/0.8% upgrading,
+weighted by planning samples. Original failure was allocation, not insufficient
+yard count. The lot count alone does not prove balanced spending; no additional
+income-based yard-target change was implemented after this review.
 Full evidence: docs/quantbot-704-growth-review.md. Native build:
 build-692/bin/dunecity.app. No replacement of a running app or public deployment.
 

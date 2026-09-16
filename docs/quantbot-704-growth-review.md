@@ -90,6 +90,24 @@ It loses at38.78min after its base is destroyed. All four bots use the new polic
 so this verifies ongoing construction alongside army production; it is not a
 claim that Fremen now wins the FFA or that combat balance is optimal.
 
+### Spending and yard utilisation correction
+
+Counting orders alone does **not** establish a balanced credit allocation.
+The same704 Fremen30–35min window commits6,100 credits to R/C/I against31,450
+to combat units, plus3,750 to rocket turrets,2,500 to police and1,600 to Carryalls.
+Direct R/C/I is only13.4% of those production commitments. These are quoted,
+accepted order costs, not measured cash deductions in precisely the same window.
+
+Time-weighted planning samples show the original703 yards were99.5% idle:
+all four were idle for roughly294 of the300 seconds. This establishes the
+original cause as resource misallocation, not a shortage of yards. In704, the
+same four-yard capacity is about88.1% busy,11.1% idle and0.8% upgrading, with
+no sample interval where all four are idle. Across20 available yard-minutes,
+R/C/I occupies roughly597 seconds and turrets/police461 seconds. Adding yards
+would not have fixed703's original failure. Further704 tuning should measure
+income, cash allocation and services' share of construction time before changing
+yard targets. No further yard-target change was made in this patch.
+
 All three final match captures finish without truncation and pass
 `tests/ai/report-spending.py --check`: no missing order links, accounting mismatch,
 ordinary overspend or city orders in vanilla. Full reports sit beside each run.
