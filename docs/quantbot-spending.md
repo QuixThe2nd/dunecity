@@ -1,4 +1,4 @@
-# QuantBot shared spending — 1.0.704
+# QuantBot shared spending — 1.0.705
 
 A deterministic, four-simulated-minute forecast compares the next economy,
 combat-unit and additional-production investments. It is a bounded scoring
@@ -21,12 +21,27 @@ permit. Saving for a worthwhile worker does not reserve the cost of an entire
 hypothetical future fleet. Existing human-allied campaign full-fleet rules are
 an explicit exception; custom allies and opponents use normal shared spending.
 
-An available, demanded R/C/I lot takes precedence over saving for another
-military unit. Reserve only that lot and its foundation, then let factories spend
-the remainder. This prevents permanently idle yards when a cheap plot has a lower
-four-minute return than the next launcher. Power recovery, crime prevention,
-transport and genuine unloading bottlenecks retain their existing priorities.
-This is continued long-term growth, not a requirement to fill the army first.
+In Dune City, once multiple construction yards exist, the oldest usable yard
+is dedicated to demanded R/C/I. Its current job finishes normally; its next plot
+gets an explicit construction assignment and its purchase budget is protected.
+Other yards still handle police, defence, power, factories and refineries, and
+may also build zones. Incidental zoning by another yard does not divert the
+dedicated yard into services. Recompute the assignment from real builders every
+pass; no random preference, timer or new save field is involved. If that yard
+has no legal plot, another usable yard can take over.
+
+Every otherwise idle city yard can build an affordable, demanded plot, including
+when a dearer project is waiting for credits, another yard claimed its order, or
+its chosen structure has no legal site. Choose R/C/I directly from demand and
+committed balance, without letting a refinery or a four-minute return comparison
+replace this fallback. Check the actual offer price (a 100-credit plot needs 100,
+not an arbitrary 200-credit balance), legal placement and at least 24 spare power.
+Existing commitments remain reserved; no forecast income is spent as cash.
+
+The single opening yard retains its essential infrastructure progression, but
+also gets this idle fallback. The existing protection against military savings
+now binds the actual yard selection as well as reserving credits. A blackout,
+absent demand, insufficient cash or unavailable land still prevents zoning.
 
 Falling cash alone is not a shortage. The four-minute runway comparison is:
 
@@ -140,7 +155,7 @@ ordinary purchases cannot. Running repair bills are not reserved in full.
 
 ## Decision capture and SQLite
 
-Telemetry version 14, policy `funded-growth-opening-v70`, records:
+Telemetry version 15, policy `dedicated-city-growth-v71`, records:
 
 - `capital_plan`: cash/commitments, horizon, resource and income estimates,
   military target/current value, producer queues, all common spending
@@ -148,6 +163,10 @@ Telemetry version 14, policy `funded-growth-opening-v70`, records:
   Plan policy version 2 also includes cash runway, active/sustained burn,
   projected cash, construction/unit operating costs, funded army target,
   transport/repair/refinery targets and queues, and property crime counts.
+  City allocation adds `city_growth_dedicated_yard`, `city_growth_yards_busy`
+  and `city_growth_builder`; accepted orders distinguish `dedicated_city_growth`
+  from `idle_city_growth`. The dedicated candidate score 1 represents an explicit
+  allocation, not a forecast return. These fields are available in SQLite too.
   Cash-funded vanilla passes are captured too, with reason `funded_parallel_production`.
   Version 14 adds usable Starport market, funded first-factory capital/operating
   costs, protected city growth, unbooked refinery bays, blocked field returners,
@@ -192,7 +211,7 @@ yard unlocks and additional transport. The Starport probe also covers stale mark
 campaign/custom bulk-import rules. Tests run against an isolated profile.
 
 ```sh
-python3 tests/ai/run-campaign-balance.py --build-dir build-692 \
+python3 tests/ai/run-campaign-balance.py --build-dir build-705 \
   --output-dir /tmp/new-spending-test --level 9 --mod dunecity \
   --house harkonnen --partner-difficulty brutal --enemy-difficulty hard \
   --seed 701 --minutes 1 --shared-spending-probe

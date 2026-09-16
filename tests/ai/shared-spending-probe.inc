@@ -111,6 +111,73 @@ void runSharedSpendingProbe(Game& game) {
                 require(zone,"Funded second construction yard failed to grow R/I/C in parallel");
             }
             require(count(heavy,Unit_Harvester)==1,"Parallel yards consumed the worker reserve");
+
+            const int firstGrowthUpgrade=yard->curUpgradeLev, secondGrowthUpgrade=secondYard->curUpgradeLev;
+            for(auto* builder:{yard,secondYard}) {
+                builder->curUpgradeLev=builder->getMaxUpgradeLevel();builder->updateBuildList();
+            }
+            // Reproduce services taking every yard despite affordable demanded
+            // lots. One real queue must keep zoning; the other still serves crime.
+            auto& crimeMap=game.getCitySimulation()->crimeRateMap_;
+            auto setCrime=[&](int value) {
+                for(int y=0;y<currentGameMap->getSizeY();++y)
+                    for(int x=0;x<currentGameMap->getSizeX();++x) {
+                        crimeMap.set(x/crimeMap.getBlockSize(),y/crimeMap.getBlockSize(),value);
+                        auto& baseCrime=game.getCitySimulation()->crimeBeforePoliceMap_;
+                        baseCrime.set(x/baseCrime.getBlockSize(),y/baseCrime.getBlockSize(),value);
+                    }
+            };
+            auto hasZone=[&](BuilderBase* builder) {
+                return std::any_of(builder->currentProductionQueue.begin(),builder->currentProductionQueue.end(),
+                    [](const auto& order){return DuneCity::isCityZoneStructure(order.itemID);});
+            };
+            std::vector<std::pair<StructureBase*,uint8_t>> occupancy;
+            for(auto* structure:{static_cast<StructureBase*>(yard),static_cast<StructureBase*>(secondYard),refinery}) {
+                occupancy.push_back({structure,structure->getCityOccupancy()});
+                structure->setCityOccupancy(1);
+            }
+            setCrime(250);
+            reset(2000,0);structureList.push_back(secondYard);
+            bot->build(10000);
+            require(hasZone(yard),"Services stole the dedicated city growth queue");
+            require(count(secondYard,Structure_PoliceStation)>0 || count(secondYard,Structure_RocketTurret)>0,
+                "Dedicated city growth stopped independent crime protection");
+
+            reset(2000,0);structureList.push_back(secondYard);
+            secondYard->doProduceItem(Structure_ZoneCommercial);
+            bot->build(10000);
+            require(hasZone(yard),"Another yard's zoning diverted the dedicated queue into services");
+
+            // One lot is already underway. The remaining yard cannot afford a
+            // service, but its last 100 credits can buy another plot immediately.
+            reset(200,0);structureList.push_back(secondYard);
+            yard->doProduceItem(Structure_ZoneResidential);
+            bot->build(10000);
+            require(hasZone(secondYard),"Idle yard saved for services instead of spending 100 on demanded R/I/C");
+
+            // Actual shortages and invalid demand still prevent zoning.
+            reset(99,0);structureList.push_back(secondYard);bot->build(10000);
+            require(!hasZone(yard) && !hasZone(secondYard),"City growth overspent its cash");
+            auto& hs=game.getCitySimulation()->houseState_[HOUSE_HARKONNEN];
+            hs.resValve=hs.comValve=hs.indValve=-1000;
+            reset(2000,0);structureList.push_back(secondYard);bot->build(10000);
+            require(!hasZone(yard) && !hasZone(secondYard),"City growth ignored negative demand");
+            hs.resValve=2000;hs.comValve=hs.indValve=1500;
+            reset(2000,0);structureList.push_back(secondYard);house->producedPower=0;bot->build(10000);
+            require(!hasZone(yard) && !hasZone(secondYard),"City growth bypassed blackout recovery");
+            std::vector<std::pair<Tile*,int>> terrain;
+            for(int y=0;y<currentGameMap->getSizeY();++y)for(int x=0;x<currentGameMap->getSizeX();++x) {
+                auto* tile=currentGameMap->getTile(x,y);
+                if (!tile->hasAGroundObject()) {terrain.push_back({tile,tile->getType()});tile->setType(Terrain_Mountain);}
+            }
+            reset(2000,0);structureList.push_back(secondYard);bot->build(10000);
+            const bool invalidZone=hasZone(yard) || hasZone(secondYard);
+            for(const auto& tile:terrain)tile.first->setType(tile.second);
+            require(!invalidZone,"City growth queued a zone without a legal building site");
+            setCrime(0);
+            for(const auto& entry:occupancy)entry.first->setCityOccupancy(entry.second);
+            yard->curUpgradeLev=firstGrowthUpgrade;yard->updateBuildList();
+            secondYard->curUpgradeLev=secondGrowthUpgrade;secondYard->updateBuildList();
         }
         reset(3000,0);bot->build(10000);
         require(count(heavy,Unit_Harvester)==0 && count(yard,Structure_Refinery)==0,"Depleted spice still attracts economy spending");

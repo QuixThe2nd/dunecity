@@ -4386,6 +4386,24 @@ void QuantBot::build(int militaryValue) {
     std::sort(capitalBuilders.begin(),capitalBuilders.end(),[](const auto* a,const auto* b) {
         return a->getObjectID()<b->getObjectID();
     });
+    // One construction slot keeps growing the tax base. Recompute it from real
+    // queues, so losing a yard or loading a save cannot strand the assignment.
+    int cityYards=0, cityGrowthYardsBusy=0;
+    if (citySimEnabled) for (const auto* builder:capitalBuilders) {
+        if (builder->getItemID()!=Structure_ConstructionYard) continue;
+        ++cityYards;
+        const auto reserved=reservedStructures.find(builder->getObjectID());
+        if (!builder->isOnHold() && !builder->isUpgrading() && builder->getProductionQueueSize()>0
+            && (DuneCity::isCityZoneStructure(builder->getCurrentProducedItem())
+                || (reserved!=reservedStructures.end() && DuneCity::isCityZoneStructure(reserved->second.item))))
+            ++cityGrowthYardsBusy;
+    }
+    auto affordableCityZone = [&](const BuilderBase* builder, int budget) {
+        if (!citySimEnabled || getHouse()->getProducedPower()-getHouse()->getPowerRequirement()<24)
+            return Uint32(NONE_ID);
+        const Uint32 zone=chooseCityZone(builder,false);
+        return zone!=NONE_ID && purchasePrice(builder,zone)<=budget ? zone : Uint32(NONE_ID);
+    };
     auto buildingCapitalCost = [&](Uint32 item) {
         const Coord size=getStructureSize(item);
         const int power=citySimEnabled || powerRules ? std::max(0,data[item][houseID].power) : 0;
@@ -4702,7 +4720,39 @@ void QuantBot::build(int militaryValue) {
     // from idle yards, despite positive demand and legal space. Reserve one lot,
     // release it on acceptance, and let independent factories use the remainder.
     bool cityGrowthProtected=false;
-    if (citySimEnabled && capitalChoice>=0 && capitalCandidates[capitalChoice].kind==std::string("military")) {
+    // With multiple yards, assign one to a demanded lot even when services,
+    // refineries or factory expansion win the investment comparison. The other
+    // yards still handle those needs. A lone opening yard retains its tech path.
+    Uint32 dedicatedCityYard=NONE_ID;
+    if (sharedSpending && citySimEnabled && cityYards>1) {
+        for (const auto* builder:capitalBuilders) {
+            if (builder->getItemID()!=Structure_ConstructionYard || builder->isUpgrading()
+                || builder->isOnHold()) continue;
+            // Prefer the same oldest usable yard on every pass, including
+            // while its existing job finishes. Other yards' incidental zoning
+            // must not divert this dedicated queue back into service spending.
+            if (builder->getProductionQueueSize()>0) {
+                dedicatedCityYard=builder->getObjectID();
+                break;
+            }
+            planningBuilder=builder->getObjectID();clearPlacementCache(false);
+            const Uint32 zone=affordableCityZone(builder,money);
+            if (zone==NONE_ID) continue;
+            dedicatedCityYard=builder->getObjectID();
+            CapitalCandidate growth;
+            growth.builder=builder->getObjectID();growth.item=zone;
+            growth.price=purchasePrice(builder,zone);growth.cost=buildingCapitalCost(zone);
+            growth.kind="city_growth";growth.reason="dedicated_city_growth";
+            growth.score=1; // A construction allocation, not a fabricated return forecast.
+            capitalChoice=int(capitalCandidates.size());capitalCandidates.push_back(growth);
+            cityGrowthProtected=true;
+            break;
+        }
+        planningBuilder=NONE_ID;clearPlacementCache(false);
+    }
+    if (!cityGrowthProtected && citySimEnabled
+        && getHouse()->getProducedPower()-getHouse()->getPowerRequirement()>=24
+        && capitalChoice>=0 && capitalCandidates[capitalChoice].kind==std::string("military")) {
         int growth=-1;
         for (size_t i=0;i<capitalCandidates.size();++i)
             if (DuneCity::isCityZoneStructure(capitalCandidates[i].item) && capitalCandidates[i].score>0
@@ -4748,6 +4798,9 @@ void QuantBot::build(int militaryValue) {
             .set("funds_parallel_production",cashFlow.fundsParallelProduction).set("shared_priority",sharedSpending)
             .set("starport_market_available",starportMarketAvailable).set("funded_factory_opening",fundedFactoryOpening)
             .set("city_growth_protected",cityGrowthProtected)
+            .set("city_growth_yards_busy",cityGrowthYardsBusy)
+            .set("city_growth_dedicated_yard",dedicatedCityYard)
+            .set("city_growth_builder",cityGrowthProtected ? capitalCandidates[capitalChoice].builder : NONE_ID)
             .set("first_factory_capital",firstFactoryCapital).set("first_factory_production_cost",firstFactoryProduction)
             .set("existing_military_capacity",existingMilitaryCapacity).set("military_value",militaryValue)
             .set("military_target",militaryValueLimit).set("queued_military_value",queuedMilitaryValue)
@@ -4952,7 +5005,9 @@ void QuantBot::build(int militaryValue) {
                         if (AITelemetry::log().enabled()) capitalOrders.set(std::to_string(pBuilder->getObjectID())+":"+std::to_string(before),
                             AITelemetry::Record().set("item",itemID).set("price",quotedPrice).set("rule",rule));
                     }
-                    if (accepted && capitalPending() && itemID==capitalCandidates[capitalChoice].item)
+                    if (accepted && capitalPending() && (itemID==capitalCandidates[capitalChoice].item
+                        || (cityGrowthProtected && capitalCandidates[capitalChoice].builder==pBuilder->getObjectID()
+                            && DuneCity::isCityZoneStructure(itemID))))
                         capitalConsumed=true;
                     if (accepted && nuclearSite.isValid()) {
                         reservedStructures[planningBuilder]={itemID,nuclearSite};
@@ -5007,6 +5062,7 @@ void QuantBot::build(int militaryValue) {
                 // yard before optional expansion, including its missing prerequisites.
                 // Count queued structures and preserve normal costs/placement rules.
                 if (isCampaignGameType(currentGame->gameType)
+                    && !(cityGrowthProtected && capitalCandidates[capitalChoice].builder==pBuilder->getObjectID())
                     && !(capitalPending() && capitalCandidates[capitalChoice].item==Unit_Carryall)
                     && (difficulty==Difficulty::Hard || difficulty==Difficulty::Brutal
                         || (difficulty==Difficulty::Medium && initialItemCount[Structure_RepairYard]>0))
@@ -5074,7 +5130,7 @@ void QuantBot::build(int militaryValue) {
                 if (pBuilder->getItemID() != Structure_ConstructionYard && !expansionProducer && !transportProducer)
                     protectedCash = std::max(protectedCash,harvesterInvestmentReserve());
                 const bool capitalSupplier=capitalPending() && capitalCandidates[capitalChoice].builder==pBuilder->getObjectID();
-                if (capitalSupplier && (defendingEconomy || harvesterInvestmentReserve()==0
+                if (capitalSupplier && (cityGrowthProtected || defendingEconomy || harvesterInvestmentReserve()==0
                     || capitalCandidates[capitalChoice].item==Unit_Harvester
                     || capitalCandidates[capitalChoice].item==Unit_Carryall)) protectedCash=0;
                 protectedCash=std::max(protectedCash,capitalReserve(pBuilder->getObjectID()));
@@ -5666,7 +5722,7 @@ void QuantBot::build(int militaryValue) {
 						taxIncome, getHouse()->getProducedPower(), getHouse()->getPowerRequirement());
 				}
 
-					if (!pBuilder->isUpgrading() && getHouse()->getCredits() > 100 && (pBuilder->getProductionQueueSize() < 1) && pBuilder->getBuildListSize()) {
+					if (!pBuilder->isUpgrading() && getHouse()->getCredits() >= 100 && (pBuilder->getProductionQueueSize() < 1) && pBuilder->getBuildListSize()) {
 
 						// Campaign Build order, iterate through the buildings, if the number that exist
 						// is less than the number that should exist, then build the one that is missing
@@ -5769,6 +5825,15 @@ void QuantBot::build(int militaryValue) {
                 const char* structureRule = "no_eligible_structure";
                 Coord crimeServiceSite = Coord::Invalid();
 								bool skipRemainingStructureLogic = false;
+
+                // Honour the growth allocation in the actual yard decision,
+                // not just the shared cash reserve. Previously this yard could
+                // immediately spend the protected plot's budget on a service.
+                if (cityGrowthProtected && capitalPending()
+                    && capitalCandidates[capitalChoice].builder==pBuilder->getObjectID()) {
+                    itemID=affordableCityZone(pBuilder,money);
+                    if (itemID!=NONE_ID) structureRule="dedicated_city_growth";
+                }
 
 				// Skip build order if something is already queued
 								if (pBuilder->getProductionQueueSize() > 0) {
@@ -6796,12 +6861,6 @@ void QuantBot::build(int militaryValue) {
                     .set("rule", structureRule).set("reason", "no_site"));
 				itemID = NONE_ID;
 			}
-			if (itemID == NONE_ID && !skipRemainingStructureLogic && isCitySim && money > 200
-				&& getHouse()->getProducedPower() - getHouse()->getPowerRequirement() >= 24
-				&& itemCount[Structure_WindTrap] > 0) {
-				itemID = chooseCityEconomy(pBuilder, false); structureRule = "city_economy_fallback";
-			}
-
             if (isCitySim && itemID != NONE_ID
                 && (structureRule == std::string("city_economy") || structureRule == std::string("city_economy_fallback"))
                 && money < data[itemID][houseID].price) {
@@ -6828,6 +6887,14 @@ void QuantBot::build(int militaryValue) {
                     .set("rule",structureRule).set("reason","pending_worker_capacity"));
                 itemID=NONE_ID;
             }
+            if (isCitySim && DuneCity::isCityZoneStructure(itemID)
+                && getHouse()->getProducedPower()-getHouse()->getPowerRequirement()<24) {
+                traceDecision("construction_rejected",AITelemetry::Record()
+                    .set("builder",pBuilder->getObjectID()).set("item",itemID)
+                    .set("rule",structureRule).set("reason","city_growth_power_headroom"));
+                itemID=NONE_ID;
+                skipRemainingStructureLogic=true;
+            }
 			if (emitStatsLog) logDebug("BUILD-CHOICE: CY=%u item=%u credits=%d skip=%d",
 				pBuilder->getObjectID(), itemID, money, skipRemainingStructureLogic);
             // A later power/tech override cannot reuse a service's 1x1 site.
@@ -6844,6 +6911,24 @@ void QuantBot::build(int militaryValue) {
                 } else selectedPlaceLocation = (itemID == Structure_RocketTurret || itemID == Structure_GunTurret)
                     ? findEffectiveTurretPlaceLocation(itemID) : findPlaceLocation(itemID);
 			}
+
+            // An idle yard does not wait for a dearer project while it can
+            // afford a demanded plot. This also covers deduplication, failed
+            // placement and saving rules that set skipRemainingStructureLogic.
+            int selectedCost=itemID!=NONE_ID ? purchasePrice(pBuilder,itemID) : 0;
+            if (selectedPlaceLocation.isValid())
+                for (const auto& foundation:foundationOrders(pBuilder,itemID,selectedPlaceLocation))
+                    selectedCost+=purchasePrice(pBuilder,foundation.first);
+            if (isCitySim && !pBuilder->isUpgrading() && !pBuilder->isOnHold()
+                && pBuilder->getProductionQueueSize()==0
+                && (!selectedPlaceLocation.isValid() || money<selectedCost)) {
+                const Uint32 zone=affordableCityZone(pBuilder,money);
+                if (zone!=NONE_ID) {
+                    itemID=zone;selectedPlaceLocation=findPlaceLocation(zone);
+                    crimeServiceSite=Coord::Invalid();structureRule="idle_city_growth";
+                    skipRemainingStructureLogic=false;
+                }
+            }
 
             if (AITelemetry::log().enabled() && (itemID != NONE_ID || emitStatsLog)) {
                 AITelemetry::Record site;

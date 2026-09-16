@@ -1,3 +1,32 @@
+## 2026-09-16 — Dedicate a construction yard to R/I/C, 1.0.705
+
+Native 704 session `1789562162651301-0` was growing, but services took much of
+the construction capacity. Harkonnen had about 1,439 free base-rock tiles and
+18,424 spendable credits at 33.77 minutes. The preceding five minutes of planning
+samples show roughly 41% of yard time zoning, 48% other construction and 10% idle.
+704's protected plot budget did not bind the actual yard choice: it could spend
+that allocation on police or a turret instead.
+
+With multiple yards, 705 assigns the oldest usable yard to demanded R/I/C,
+including its actual construction choice. Other yards handle services and
+production. Idle yards also try an affordable legal plot when their selected
+project cannot be afforded or placed, including at exactly 100 remaining credits.
+Keep actual commitments, demand, placement and power checks. No new save state,
+random personalities, difficulty settings or yard-count targets.
+
+Validation: 7/7 CTest groups, city and vanilla real-engine spending fixtures,
+dependency checks, version agreement and app signature pass. City fixtures cover
+parallel crime protection, another yard already zoning, exact plot cash, negative
+demand, blackout and no available site, plus existing military/MCV/transport tests.
+Two completed same-seed 30-minute DuneCity matches pass the spending audit:
+Harkonnen orders 150 -> 165 plots, and 52 -> 62 in minutes 25-30. This validates
+increased construction, not general combat superiority. Telemetry 15 / policy
+`dedicated-city-growth-v71` exposes assigned yard and accepted growth rules;
+the SQLite view imports them. Full evidence: `docs/quantbot-705-growth-review.md`.
+
+Local build: `build-705/bin/dunecity.app`. The user's running 704 app in `build-692`
+was not replaced or stopped. No remote push or public deployment for this patch.
+
 ## 2026-09-16 — Fund continuous city growth and rich openings, 1.0.704
 
 Native703 All against Atreides session1789556870788357-0, seed1293696382,

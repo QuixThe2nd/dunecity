@@ -87,6 +87,9 @@ CREATE VIEW IF NOT EXISTS capital_plans AS
  json_extract(data,'$.starport_market_available') AS starport_market_available,
  json_extract(data,'$.funded_factory_opening') AS funded_factory_opening,
  json_extract(data,'$.city_growth_protected') AS city_growth_protected,
+ json_extract(data,'$.city_growth_yards_busy') AS city_growth_yards_busy,
+ json_extract(data,'$.city_growth_dedicated_yard') AS city_growth_dedicated_yard,
+ json_extract(data,'$.city_growth_builder') AS city_growth_builder,
  json_extract(data,'$.selected') AS selected,json_extract(data,'$.reason') AS reason
  FROM events WHERE event='capital_plan';
 CREATE VIEW IF NOT EXISTS capital_candidates AS
