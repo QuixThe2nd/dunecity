@@ -32,8 +32,10 @@ int runCampaignBalanceProbe() {
     const std::string partnerClass = partner == "hard" ? "qBotHard" : partner == "medium" ? "qBotMedium"
         : partner == "brutal" ? "qBotBrutal" : "qBotEasy";
     const std::string enemy = std::getenv("BALANCE_ENEMY") ? std::getenv("BALANCE_ENEMY") : "easy";
-    const std::string enemyClass = enemy == "hard" ? "qBotHard" : enemy == "medium" ? "qBotMedium"
+    std::string enemyClass = enemy == "hard" ? "qBotHard" : enemy == "medium" ? "qBotMedium"
         : enemy == "brutal" ? "qBotBrutal" : "qBotEasy";
+    if(std::getenv("BALANCE_ENEMY_AI") && std::string(std::getenv("BALANCE_ENEMY_AI")) == "ai-player")
+        enemyClass = enemy == "hard" ? "AIPlayerHard" : enemy == "medium" ? "AIPlayerMedium" : "AIPlayerEasy";
     const int percent = std::atoi(std::getenv("BALANCE_ATTACK_PERCENT"));
     const auto humanHouse=static_cast<HOUSETYPE>(std::getenv("BALANCE_HOUSE") ? std::atoi(std::getenv("BALANCE_HOUSE")) : HOUSE_HARKONNEN);
     ModManager::instance().setActiveMod(std::getenv("BALANCE_MOD") ? std::getenv("BALANCE_MOD") : "vanilla");

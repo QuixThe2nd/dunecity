@@ -170,20 +170,14 @@ TEST_CASE("QuantBot converts the observed city cash surplus into troop capacity"
     REQUIRE(desiredHeavyFactories(true, 0, -100) == 1);
 }
 
-TEST_CASE("QuantBot repair expansion follows load and heavy production capacity", "[quantbot][production]") {
-    // Current-game regressions: four/six yards with just two factories.
-    REQUIRE_FALSE(needsExtraRepairYard(3, 3, 2, 19520));
-    REQUIRE_FALSE(needsExtraRepairYard(5, 5, 2, 30200));
-    REQUIRE_FALSE(needsExtraRepairYard(1, 1, 2, 19520));
-    // Productive army with a busy repair yard can add a second.
-    REQUIRE(needsExtraRepairYard(1, 1, 3, 19520));
-    REQUIRE(needsExtraRepairYard(1, 0, 3, 19520)); // Fleet already warrants a second bay.
-    // One busy yard plus another queued must not trigger a third order.
-    REQUIRE_FALSE(needsExtraRepairYard(2, 1, 6, 12000));
-    REQUIRE(needsExtraRepairYard(2, 2, 6, 30000));
-    REQUIRE_FALSE(needsExtraRepairYard(2, 2, 6, 12000));
-    REQUIRE_FALSE(needsExtraRepairYard(0, 0, 0, 30000));
-    REQUIRE_FALSE(needsExtraRepairYard(4, 4, 20, 80000));
+TEST_CASE("QuantBot support queues expand occupied services without duplicating pending capacity", "[quantbot][production]") {
+    CHECK(supportQueueTarget(2,2,2,2,3)==3); // Busy with three unserved jobs.
+    CHECK(supportQueueTarget(2,2,3,2,3)==2); // Third supplier already coming.
+    CHECK(supportQueueTarget(2,2,2,1,3)==2); // An existing supplier is idle.
+    CHECK(supportQueueTarget(2,2,2,2,1)==2); // A single waiting job is normal.
+    CHECK(supportQueueTarget(4,2,2,0,0)==4); // Ratio anticipates a growing fleet.
+    CHECK(supportQueueTarget(1,4,4,0,8)==1); // Completed repairs awaiting transport are not busy repair bays.
+    CHECK(supportQueueTarget(0,0,0,0,3)==0); // No useful fleet/service to bootstrap.
 }
 
 TEST_CASE("QuantBot prioritizes the live jobs demand seen in the current game", "[quantbot][city]") {
@@ -1210,16 +1204,12 @@ TEST_CASE("Spice fleet targets retain runway without retiring workers too early"
 }
 
 TEST_CASE("QuantBot establishes repair support before expanding the opening vehicle fleet", "[quantbot][repair]") {
-    REQUIRE(baselineRepairYards(0, 5100) == 0);
-    REQUIRE(baselineRepairYards(1, 6100) == 1); // Latest game 3:04: no yard yet.
-    REQUIRE(baselineRepairYards(4, 8050) == 2); // Latest game 5:06: still zero yards.
-    REQUIRE(baselineRepairYards(9, 10300) == 2);
-    REQUIRE(baselineRepairYards(15, 29050) == 4);
-    REQUIRE(baselineRepairYards(30, 80000) == 4);
-    REQUIRE(baselineRepairYards(1, 80000) == 1);
-    REQUIRE(needsExtraRepairYard(0, 0, 1, 6100));
-    REQUIRE(needsExtraRepairYard(1, 0, 4, 8050));
-    REQUIRE_FALSE(needsExtraRepairYard(2, 0, 4, 8050)); // Both built/queued slots covered.
+    CHECK(baselineRepairYards(0,0)==0);
+    CHECK(baselineRepairYards(0,10)==1); // Working spice fleet needs a first repair bay.
+    CHECK(baselineRepairYards(25,10)==1);
+    CHECK(baselineRepairYards(26,10)==2);
+    CHECK(baselineRepairYards(100,10)==4);
+    CHECK(baselineRepairYards(175,10)==7); // Imported armies are not capped by heavy-factory count.
 }
 
 TEST_CASE("Opening transport precedes repeated heavy factories and saves for the first carryall", "[quantbot][production][air]") {
@@ -1228,9 +1218,11 @@ TEST_CASE("Opening transport precedes repeated heavy factories and saves for the
     CHECK_FALSE(firstTransportNeeded(true,0,3,0));
     CHECK_FALSE(firstTransportNeeded(true,1,0,0));
     CHECK_FALSE(firstTransportNeeded(true,1,3,1)); // Existing or queued carryall releases expansion.
-    CHECK(carryallTarget(0,1)==1); // Old formula rounded early transport to zero.
-    CHECK(carryallTarget(0,0)==0);
-    CHECK(carryallTarget(30000,30)==15);
+    CHECK(carryallTarget(1,0,0)==1);
+    CHECK(carryallTarget(0,0,0)==0);
+    CHECK(carryallTarget(30,60,0)==6); // No repair yards: only harvest transport.
+    CHECK(carryallTarget(30,60,1)==8); // Two repair flights per bay bound the repair allowance.
+    CHECK(carryallTarget(30,60,3)==9);
     for (bool city : {false,true}) {
         CHECK(productionPlanningPriority(city,Structure_HighTechFactory,false,true)
             > productionPlanningPriority(city,Structure_ConstructionYard,true,true));
@@ -1298,6 +1290,23 @@ TEST_CASE("Additional factories require funded work beyond existing capacity", "
     CHECK(additionalProduction(10000,4000,2000,10000,600)==2000);
     CHECK(productionScore(0,600,2000,10000)==0);
     CHECK(productionScore(2000,600,2000,10000)>productionScore(2000,600,9000,10000));
+}
+
+TEST_CASE("Cash runway covers both unit lines and the economy pipeline", "[quantbot][economy]") {
+    using namespace QuantBotSpendingPolicy;
+    const auto opening=cashFlow(100000,95000,0,15000,20000,2000);
+    CHECK(opening.fundsParallelProduction);
+    CHECK(opening.projectedCash==80000); // Existing 5,000 queue is not charged twice.
+    const auto crowded=cashFlow(20000,18000,4000,22000,24000,2000);
+    CHECK_FALSE(crowded.fundsParallelProduction);
+    CHECK(crowded.projectedCash==0);
+    CHECK(crowded.netBurnPerMinute==5000);
+    CHECK(crowded.runwaySeconds==216);
+    const auto growing=cashFlow(20000,18000,28000,22000,24000,2000);
+    CHECK(growing.fundsParallelProduction);
+    CHECK(growing.runwaySeconds==-1);
+    CHECK(growing.netBurnPerMinute==-1000);
+    CHECK_FALSE(cashFlow(300,100,28000,22000,24000,2000).fundsParallelProduction);
 }
 
 TEST_CASE("Refineries catch up to profitable fleet queues even while tax hedge is short", "[quantbot][city][economy]") {

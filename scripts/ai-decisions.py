@@ -68,6 +68,18 @@ CREATE VIEW IF NOT EXISTS capital_plans AS
  json_extract(data,'$.workers') AS workers,json_extract(data,'$.worker_target') AS worker_target,
  json_extract(data,'$.spice_share') AS spice_share,json_extract(data,'$.defending') AS defending,
  json_extract(data,'$.existing_military_capacity') AS existing_capacity,
+ json_extract(data,'$.construction_capacity_cost') AS construction_capacity,
+ json_extract(data,'$.active_production_burn_per_minute') AS active_production_burn,
+ json_extract(data,'$.net_burn_per_minute') AS net_burn,
+ json_extract(data,'$.cash_runway_seconds') AS runway_seconds,
+ json_extract(data,'$.projected_cash') AS projected_cash,
+ json_extract(data,'$.funds_parallel_production') AS funds_parallel_production,
+ json_extract(data,'$.carryall_target') AS carryall_target,
+ json_extract(data,'$.pickup_waiting') AS pickup_waiting,
+ json_extract(data,'$.repair_target') AS repair_target,
+ json_extract(data,'$.repair_waiting') AS repair_waiting,
+ json_extract(data,'$.refinery_capacity_target') AS refinery_target,
+ json_extract(data,'$.refinery_waiting') AS refinery_waiting,
  json_extract(data,'$.selected') AS selected,json_extract(data,'$.reason') AS reason
  FROM events WHERE event='capital_plan';
 CREATE VIEW IF NOT EXISTS capital_candidates AS

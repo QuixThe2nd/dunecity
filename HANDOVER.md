@@ -1,3 +1,69 @@
+## 2026-09-16 — Restore city growth and use support queues/runway, 1.0.703
+
+Reported native 702 session `1789545923897200-0`, DuneCity seed1105042893,
+Fremen/team1 with three other Brutal houses, worker override100. At15.25min:
+1CY,2R/0C/0I,4Light/2Heavy,25workers,4refineries,1Carryall,0police,1rocket;
+tax22. Heavy/light factories never upgraded and no MCV was ordered. Compared
+with700/37e5772 and701/c54a344: the new immediate military shortcut bypassed
+upgrades, full-ceiling deficits exaggerated light demand, extra factories beat
+zoning, MCV funding/idle-yard gates blocked construction throughput, and service
+spending depended on leftovers. This was a real regression, not a screenshot
+interpretation or evidence that trikes were unusually effective.
+
+703 restores factory upgrades/MCV unlocking and funded composition before
+ordinary military allocation; extra lights need a real deficit. City R/C/I can
+use independent yards; demand plus usable rock and forecast working capital
+justify saving one MCV price. Services reserve their price, and one yard upgrades
+for defence while other yards continue building. Removed the extra half-cash
+Starport worker cap; actual quotes, stock, useful workers and shared reserves
+still constrain orders. First Carryall precedes bargain campaign workers too.
+
+Cash runway includes available unit lines and demanded construction throughput.
+Only delivered workers/refineries plus current tax supply forecast income;
+spice is finite. Deduct already-reserved queues once. High cash can fund parallel
+vanilla expansion despite falling cash: no fixed20k wealth switch. Exclude MCVs
+from continuous military burn; treating every heavy factory as a permanent MCV
+line falsely choked the100k All against Atreides opening in an intermediate test.
+
+Support baselines: ceil(workers/5)+min(ceil(combatVehicles/20),2*repairYards)
+Carryalls; max(workerFleet?1:0,ceil(combatVehicles/25)) repair yards; refineries
+use delivery/unload throughput and the existing ten-second loaded-worker queue.
+Two unserved jobs with all suppliers busy add one supplier, with pending capacity
+preventing duplicates. Finished repairs and empty refinery workers awaiting a
+return flight are transport pressure, not another repair/unload bay. No cap from
+heavy-factory count. Medium vanilla's no-new-repair restriction remains; all city
+difficulties can add them. Unmet transport demand also funds a legal first High
+Tech Factory when imports are sold out/absent; an engine fixture covers this last
+supplier gap discovered in the city simulation.
+
+Telemetry13/city-capacity-recovery-v69, capital plan schema2, adds active burn,
+sustained construction/unit cost, projected cash/runway, support queues/targets,
+funded army basis and crime. SQLite capital_plans exposes these. All non-support
+vanilla passes are logged, including cash-funded parallel mode. No save changes.
+
+Built/signed local703: build-692/bin/dunecity.app. Seven CTest groups pass, Ninja
+pre/post dependency checks and version metadata pass. Shared-spending/Starport
+real-engine probes pass in both mods, including real queue prices and no duplicate
+commitments. Full-match comparison on the runway/ratio implementation: All against
+Atreides with100worker cap beats legacy AI Player Hard at31.21min (700:32.67;
+702:lost20.72); city FFA vs AI Player Hard wins33.76min; vanilla campaign9 Atreides
+Brutal helper vs Medium enemies wins20.55min. Four-Brutal reproduction loses48.88min
+but has4CY/21zones/6Carryalls at15.25min and111zones at29.95min. Full matches precede
+the last sold-out-transport factory fix. Final20min checks in
+/tmp/dunecity-703-balanced-{city,current,shared} pass: reported Fremen has4CY,
+29R/10C/4I,44workers,7refineries,12Carryalls (target12),5police,3rockets;
+tax4018 versus original73. Atreides city test has4CY,11R/4C/0I and12Carryalls
+(target12): transport is supplied but zoning is slower than the intermediate
+under-supplied-transport run. City MCV priority5000 exceeds additional transport
+4500; first Carryall5500 still wins. This is tested, not a claim of optimal tuning.
+Completed captures have no accounting/link/overspend/truncation audit violations.
+
+Test runner now supports legacy AI Player opponents and explicit house/team
+rosters; it records those plus source revision at launch. Evidence and exact
+comparison matrix: docs/quantbot-703-regression-review.md. Policy and telemetry:
+docs/quantbot-spending.md. No install over /Applications, push, or public deployment
+in this task. Existing gameplay remains separate from isolated test profiles.
+
 ## 2026-09-16 — Shared QuantBot spending and audit trail, 1.0.701
 
 Implemented Stefan's common credit-allocation request across economy, units and

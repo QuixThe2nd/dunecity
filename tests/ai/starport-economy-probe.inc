@@ -185,7 +185,8 @@ void runStarportEconomyProbe(Game& game) {
     for(const auto& queued:mixedPort->currentProductionQueue) {
         customWorkers+=queued.itemID==Unit_Harvester;customTanks+=queued.itemID==Unit_Tank;
     }
-    if(customWorkers<1 || customWorkers*180>900 || customTanks<1)
+    if(customWorkers<1 || customTanks<1 || house->getCredits()<0
+        || house->getCredits()!=1800-customWorkers*180-customTanks*100)
         throw std::runtime_error("Custom Starport failed to mix worker and army investment");
     SDL_Log("CUSTOM_MIXED_IMPORTS_PASS: workers=%d tanks=%d, campaign fleet reserve absent",customWorkers,customTanks);
     // Market prices can refresh before this port's build list does. The real

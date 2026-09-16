@@ -8,6 +8,25 @@
 // random tie breaking, or assumption that forecast income is spendable today.
 namespace QuantBotSpendingPolicy {
 constexpr int horizonMinutes = 4;
+struct CashFlow {
+    int projectedCash = 0;
+    int netBurnPerMinute = 0;
+    int runwaySeconds = -1; // -1 means income covers sustained production.
+    bool fundsParallelProduction = false;
+};
+// Unpaid orders have already been removed from spendable cash. Subtract only
+// the next orders needed to keep those lines running, not their queues again.
+inline CashFlow cashFlow(int cash, int spendable, int income, int continuedProductionCost,
+                        int sustainedProductionCost, int reserve) {
+    CashFlow result;
+    result.projectedCash = spendable + income - continuedProductionCost;
+    result.netBurnPerMinute = (sustainedProductionCost - income) / horizonMinutes;
+    if (sustainedProductionCost > income)
+        result.runwaySeconds = int(int64_t(std::max(0,cash-reserve))*horizonMinutes*60
+            / (sustainedProductionCost-income));
+    result.fundsParallelProduction = spendable >= reserve && result.projectedCash >= reserve;
+    return result;
+}
 inline int receipts(int rate, int cycles, int year) {
     return int(int64_t(std::max(0,rate))*std::max(0,cycles)/std::max(1,year));
 }

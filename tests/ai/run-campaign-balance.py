@@ -17,6 +17,7 @@ import shlex
 import subprocess
 
 root = Path(__file__).resolve().parents[2]
+house_names = ('harkonnen','atreides','ordos','fremen','sardaukar','mercenary','neutral','rebels','custom','wildspade','kleshmersh','tharpique')
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('--build-dir', type=Path, default=root / 'build')
 parser.add_argument('--output-dir', type=Path, required=True)
@@ -26,9 +27,11 @@ parser.add_argument('--capture-mib', type=int, default=1024, help='Diagnostic ca
 parser.add_argument('--wall-timeout', type=int, default=1800, help='Maximum wall seconds for the simulation')
 parser.add_argument('--level', type=int, choices=range(1,10), default=4)
 parser.add_argument('--mod', choices=('vanilla','dunecity'), default='vanilla')
-parser.add_argument('--house', choices=('harkonnen','atreides','ordos'), default='harkonnen')
+parser.add_argument('--house', choices=tuple(h for h in house_names if h!='neutral'), default='harkonnen')
+parser.add_argument('--roster', help='Explicit custom-map house:team slots in lobby order, comma-separated')
 parser.add_argument('--harvester-limit', type=int, choices=range(-1,101), default=-1)
 parser.add_argument('--partner-difficulty', choices=('easy','medium','hard','brutal'), default='easy')
+parser.add_argument('--enemy-ai', choices=('quantbot','ai-player'), default='quantbot', help='Enemy controller family; AI Player has Easy/Medium/Hard')
 parser.add_argument('--enemy-difficulty', choices=('easy','medium','hard','brutal'), default='easy')
 parser.add_argument('--shared-spending-probe', action='store_true')
 parser.add_argument('--starport-probe', action='store_true', help='Exercise reserved cash with above-normal Starport prices')
@@ -52,13 +55,17 @@ if not 256 <= args.capture_mib <= 4096 or args.wall_timeout < 1:
     parser.error('Use 256–4096 MiB of capture space and a positive wall timeout.')
 if args.free_for_all and not args.custom_map:
     parser.error('--free-for-all requires --custom-map.')
+if args.enemy_ai == 'ai-player' and args.enemy_difficulty == 'brutal':
+    parser.error('AI Player has no Brutal controller.')
+if not args.custom_map and (args.roster or args.house not in house_names[:3]):
+    parser.error('Explicit rosters and additional houses require --custom-map.')
 roster = []
 if args.custom_map:
     scenario = configparser.ConfigParser(strict=False, interpolation=None)
     with args.custom_map.open() as source_file:
         scenario.read_file(source_file)
     sections = {s.lower(): s for s in scenario.sections()}
-    names = ('harkonnen', 'atreides', 'ordos', 'fremen', 'sardaukar', 'mercenary')
+    names = house_names
     assigned = set()
     for name in names:
         if name in sections:
@@ -82,9 +89,22 @@ if args.custom_map:
         assigned.add(name)
     if args.house not in assigned:
         parser.error('Chosen player house has no slot on this map.')
+    if args.roster:
+        try:
+            requested = [(names.index(name), int(team)) for name,team in
+                         (slot.split(':') for slot in args.roster.lower().split(','))]
+        except ValueError:
+            parser.error('Roster must contain known house:team entries.')
+        if (len(requested)!=len(roster) or len({h for h,_ in requested})!=len(requested)
+                or any(h==6 or t<1 for h,t in requested)
+                or names.index(args.house) not in {h for h,_ in requested}):
+            parser.error('Roster must match map slot count, use distinct playable houses and include --house.')
+        roster=requested
     if args.free_for_all:
         roster = [(house, i + 1) for i, (house, _) in enumerate(roster)]
 build, out = args.build_dir.resolve(), args.output_dir.resolve()
+source_commit = subprocess.check_output(['git','rev-parse','HEAD'],cwd=root,text=True).strip()
+source_modified = bool(subprocess.check_output(['git','status','--porcelain'],cwd=root,text=True).strip())
 out.mkdir(parents=True, exist_ok=False)
 subprocess.run(['python3',str(root/'scripts/check-build-deps.py'),str(build)],check=True,cwd=root)
 target = 'bin/dunecity.app/Contents/MacOS/dunecity'
@@ -123,8 +143,8 @@ with (out/'build.log').open('w') as log:
     subprocess.run(link,cwd=build,stdout=log,stderr=subprocess.STDOUT,check=True)
 env = dict(os.environ,DUNECITY_USERDIR=str(out/'profile'),SDL_VIDEODRIVER='dummy',SDL_AUDIODRIVER='dummy',
            BALANCE_MOD=args.mod,BALANCE_LEVEL=str(args.level),BALANCE_PARTNER=args.partner_difficulty,BALANCE_SEED=str(args.seed),BALANCE_MINUTES=str(args.minutes),
-           BALANCE_ATTACK_PERCENT=str(args.attack_percent),BALANCE_ENEMY=args.enemy_difficulty,
-           BALANCE_HOUSE=str(('harkonnen','atreides','ordos').index(args.house)),BALANCE_HARVESTER_LIMIT=str(args.harvester_limit))
+           BALANCE_ATTACK_PERCENT=str(args.attack_percent),BALANCE_ENEMY=args.enemy_difficulty,BALANCE_ENEMY_AI=args.enemy_ai,
+           BALANCE_HOUSE=str(house_names.index(args.house)),BALANCE_HARVESTER_LIMIT=str(args.harvester_limit))
 env['BALANCE_CAPTURE_MIB'] = str(args.capture_mib)
 if args.custom_map:
     env['BALANCE_CUSTOM_MAP'] = str(args.custom_map.resolve())
@@ -166,9 +186,9 @@ for line in events.open():
                 or d['alliance_value']>d['alliance_value_cap']
                 or d['alliance_value']>d['attack_budget']):
             raise RuntimeError('Automatic campaign force exceeded its wave budget')
-summary = {'result':results[0],'sourceCommit':subprocess.check_output(['git','rev-parse','HEAD'],cwd=root,text=True).strip(),
-           'workingTreeModified':bool(subprocess.check_output(['git','status','--porcelain'],cwd=root,text=True).strip()),
-           'metadata':metadata,'attacks':attacks,'final':final,'resolved_roster':roster}
+summary = {'result':results[0],'sourceCommit':source_commit,
+           'workingTreeModified':source_modified,
+           'metadata':metadata,'attacks':attacks,'final':final,'resolved_roster':roster,'enemy_controller':args.enemy_ai,'harvester_limit':args.harvester_limit}
 (out/'summary.json').write_text(json.dumps(summary,indent=2)+'\n')
 print(results[0])
 print('Telemetry:',events)

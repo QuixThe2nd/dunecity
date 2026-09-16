@@ -1,4 +1,4 @@
-# QuantBot shared spending — 1.0.702
+# QuantBot shared spending — 1.0.703
 
 A deterministic, four-simulated-minute forecast compares the next economy,
 combat-unit and additional-production investments. It is a bounded scoring
@@ -21,17 +21,40 @@ permit. Saving for a worthwhile worker does not reserve the cost of an entire
 hypothetical future fleet. Existing human-allied campaign full-fleet rules are
 an explicit exception; custom allies and opponents use normal shared spending.
 
+Falling cash alone is not a shortage. The four-minute runway comparison is:
+
+`projected cash = cash − unpaid orders + forecast net income − continued production cost`
+
+Continued production cost covers available unit factories **and** demanded
+construction/economy work. Each line deducts its already-reserved queue from its
+four-minute operating cost, avoiding a second charge. Build prices, city build
+times, health and speed limits determine its rate. The log separates the current
+production burn from the sustained rate if available lines keep running. Income
+uses delivered workers/bays and current tax, capped by remaining spice; unbuilt
+workers and undeveloped zones are not immediate income. Paid cargo still counts
+towards fleet targets. Future repair bills remain an unmodelled variable.
+
+If current uncommitted cash and projected cash both cover working capital,
+vanilla uses its established parallel MCV/factory/economy opening. There is no
+fixed 20,000-credit wealth switch: All against Atreides' 100,000-credit grant
+provides runway even with falling cash, while a larger base can exhaust the same
+grant faster. Otherwise marginal priorities protect the next investment. Dune
+City retains city/service candidates; factory expansion must leave funding for
+existing construction throughput as well as unit lines.
+
 ## Comparison
 
 | Investment | Forecast and priority |
 | --- | --- |
 | Harvester | Additional receipts after production/delivery, accounting for the existing fleet, unloading capacity, travel and remaining spice. Must recover its purchase cost within the horizon. |
-| First carryall | One Starport transport for an operating spice fleet, including when workers are sold out. Explicit bootstrap priority (5,500), above full-fleet worker savings; not an invented routing-return estimate. |
+| Carryalls | First transport priority 5,500; scale with worker/repair ratios and unserved pickups. Below half target scores 4,500, other shortages 2,000. Real Starport stock or High Tech production is required. |
 | Refinery | Additional unloading capacity and the included worker; excludes existing income. Actual loaded-worker queues can justify a bay even as unharvested spice declines. |
 | Dune City R/C/I | Demand/site-supported growth after construction and growth delay, net of power upkeep, with allocated generation/foundation cost. Existing unfinished plots reduce confidence. No fixed tax-to-spice ratio gate. |
 | Combat unit | Military value per purchase credit, weighted by the fraction of the army target still missing. Active attacks on the base/workers raise defence priority. Existing composition and difficulty limits remain. |
-| Extra factory | Only if existing lines are busy and forecast funding/army shortfall exceed their production capacity plus the new building's cost. Idle factories do not justify more factories. |
-| Extra construction capacity | Existing rock/map/yard rules, busy construction or rock shortage, and enough forecast funding while preserving working cash. |
+| Extra factory | Existing lines must be busy and forecast funding/army shortfall must cover extra production. Light expansion also needs a funded light-unit deficit. In Dune City, demanded city growth gets construction capacity before duplicate factories. |
+| Extra construction capacity | Dune City demand plus usable rock or an expansion site, below its yard target, with enough forecast funding for the MCV and working capital. City score 5,000 (vanilla 4,500) protects its purchase price even before cash reaches it. A currently idle yard is not proof that one yard can meet sustained demand. |
+| Police and rocket turrets | Actual uncovered buildings or crime justify services through the existing placement/coverage calculation. Moderate crime scores 2,500, dangerous crime 6,000, uncovered air defence 2,000. These can save their price instead of depending on leftover cash. |
+| Repair capacity | Fleet baseline plus damaged-vehicle queues. Extra bays score 1,800 for fleet growth or 3,500 for a backlog. Existing difficulty/technology restrictions remain. |
 
 Economy score is forecast net receipts divided by total capital cost (scaled
 by 1,000, capped at 4,000). Normal military score is value/price multiplied by
@@ -50,9 +73,35 @@ remain estimates; use delivered-spice and tax telemetry to assess their error.
 The first carryall uses the displayed Starport price, includes paid/in-flight
 cargo in its committed count, and is purchased before optional repair-yard
 construction. If cash is short, cheaper troops cannot consume its savings.
-Unavailable stock/technology and air limits do not reserve funds. Once a
-carryall is committed, ordinary worker, transport-capacity and military rules
-resume. This applies in both mods and to campaign helpers and custom bots.
+Unavailable stock/technology and air limits do not reserve funds. There is no second
+fixed half-cash restriction on economic imports; the shared reservation and actual
+prices still protect competing purchases and prevent overspending. This applies in both mods and to campaign helpers and custom bots.
+
+### Support ratios and queues
+
+These are initial tuning baselines, not measured optimal ratios:
+
+- Carryalls: `ceil(workers/5) + min(ceil(combat vehicles/20), 2*operating repair yards)`.
+  Include committed workers, exclude infantry and aircraft from repair traffic.
+- Repair yards: `max(workers>0 ? 1 : 0, ceil(combat vehicles/25))`. A Starport army
+  needs support independently of its number of heavy factories. The previous
+  four-yard/factory-count cap is removed.
+- Refinery forecast: `ceil(committed workers * worker receipts per minute / bay receipts per minute)`.
+  With short trips this is typically around one bay per 4–6 workers. Travel,
+  remaining spice and actual unloading queues refine it; vanilla's existing
+  opening refinery priorities remain. A persistent ten-second queue of at least
+  two full workers can justify an extra bay without waiting for the estimate.
+
+If Carryalls are below target and the Starport is sold out (or absent), a legal
+first High Tech Factory receives transport priority. An existing or pending
+factory prevents duplicate supplier orders. This keeps a ratio from becoming
+a permanent unmet target when imports alone cannot supply the fleet.
+
+Two or more unserved jobs with all suppliers busy raise the Carryall/repair
+target by one, provided no replacement/expansion is already queued or paid for.
+Idle suppliers prevent this queue override. A finished repair or empty harvester
+waiting for a return flight is transport pressure, not another busy repair or
+unloading job. This prevents solving a Carryall shortage with extra buildings.
 
 Dune City includes R/C/I, tax and municipal/power expenses. Vanilla has no zone
 candidates or tax forecast. Its configured power rules still apply. First
@@ -63,11 +112,15 @@ ordinary purchases cannot. Running repair bills are not reserved in full.
 
 ## Decision capture and SQLite
 
-Telemetry version 12, policy `shared-capital-spending-v68`, records:
+Telemetry version 13, policy `city-capacity-recovery-v69`, records:
 
 - `capital_plan`: cash/commitments, horizon, resource and income estimates,
   military target/current value, producer queues, all common spending
   candidates, unit-mix deficits, prices, scores, eligibility and chosen option.
+  Plan policy version 2 also includes cash runway, active/sustained burn,
+  projected cash, construction/unit operating costs, funded army target,
+  transport/repair/refinery targets and queues, and property crime counts.
+  Cash-funded vanilla passes are captured too, with reason `funded_parallel_production`.
 - `city_economy_comparison` and `zone_evaluation`: detailed tax/refinery
   forecasts, demand, growth confidence and placement rejection reasons.
 - `production_order`: accepted/rejected queue order, actual quote, rule,
@@ -81,6 +134,7 @@ SQLite by the existing importer. Join references with both session and sequence.
 New views: `capital_plans`, `capital_candidates`, `capital_orders`,
 `capital_outcomes`. `capital_orders` includes successful production, upgrades and
 road batches. Detailed rejection/state payloads remain in `events.data`.
+`capital_plans` exposes runway, net burn, projected cash and support targets/queues.
 
 ```sh
 python3 scripts/ai-decisions.py --db /tmp/game.sqlite import /path/events.jsonl
@@ -101,7 +155,8 @@ now emits an explicit marker while retaining room for terminal summaries.
 
 The engine probe exercises exact worker savings, simultaneous construction,
 depleted spice, cash-starved factories and funded production expansion in both
-mods. The Starport probe also covers stale market/display quotes and legacy
+mods. It also checks factory upgrades, MCV savings, multiple yards, defensive
+yard unlocks and additional transport. The Starport probe also covers stale market/display quotes and legacy
 campaign/custom bulk-import rules. Tests run against an isolated profile.
 
 ```sh
@@ -113,6 +168,34 @@ python3 tests/ai/run-campaign-balance.py --build-dir build-692 \
 
 Repeat with `--mod vanilla`; use `--starport-probe` for imports. The runner also
 accepts `--custom-map PATH` for all occupied custom-map slots, preserving named
-house teams; `--free-for-all` gives each house its own team. Diagnostic capture
+house teams; `--free-for-all` gives each house its own team. `--enemy-ai ai-player`
+selects the legacy AI Player controller (default is QuantBot); `--roster` accepts
+explicit `house:team` slots for reproducing a reported lobby. Diagnostic capture
 defaults to 1 GiB without changing the shipped game's limit. A time-limited
 simulation is behavioural evidence, not proof of balance across all maps.
+
+## Regression comparison with 1.0.700
+
+The 1.0.701 common purchasing shortcut ran before the existing factory upgrade
+and MCV branches. Repeated orders therefore suppressed technology progression.
+It also computed light-unit deficits against the full military ceiling instead
+of the funded army plan, and permitted factory expansion without checking light
+composition. A busy factory is not by itself evidence that more light units
+are useful.
+
+1.0.703 lets normal factory upgrades and composition allocation run before
+ordinary military orders. Worker shortcuts also yield to a funded vanilla MCV
+unlock. Dune City unlocks one defensive yard before repeat zoning; other yards
+keep constructing. The existing power, technology and difficulty prerequisites still
+apply. No saved state or random tie-breaking was added.
+
+| Decision | 1.0.700 | Regression in 1.0.701–702 | 1.0.703 correction |
+| --- | --- | --- | --- |
+| Military production | Upgrade, then funded composition | Immediate orders bypassed upgrades; deficits used ceiling | Restore upgrade path and funded deficits |
+| City growth | Separate economy slot; cash-funded MCVs | Factories outbid R/C/I; idle-yard and military-capacity gates blocked MCVs | Parallel R/C/I; reserve one useful MCV; gate duplicate factories on demand |
+| Transport | Existing fleet/repair ratio, often late | Only the first carryall received priority in 702 | First plus scalable shortage candidates for both suppliers |
+| Crime/defence | Service search needed spare funds | Other spending repeatedly consumed service price; zoning bypassed defence unlock | Reserve affordable service plans and unlock one defensive yard |
+
+The model is still a bounded estimate. Do not call it a full optimizer or assume
+that one won match proves balance. Compare actual economy, production and combat
+telemetry, not just which candidate had the largest score.
