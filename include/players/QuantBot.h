@@ -233,6 +233,9 @@ private:
     std::map<Uint32, std::list<Coord>> builderPlaceLocations;
     struct PlannedStructure { Uint32 item; Coord location; };
     std::map<Uint32, PlannedStructure> reservedStructures;
+    // Recomputed every planning pass; zoning leaves two usable production plots.
+    std::vector<PlannedStructure> cityProductionPlots;
+    bool planningCityProductionPlots = false;
     struct RecentStructureLoss { Coord location; Coord size; Uint32 cycle; Uint32 item; };
     std::vector<int> tacticalDanger, harvesterDanger, lossDanger, factoryEnemyClearance;
     std::vector<Coord> visibleEnemyBases;

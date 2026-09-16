@@ -1,4 +1,4 @@
-# QuantBot shared spending — 1.0.705
+# QuantBot shared spending — 1.0.706
 
 A deterministic, four-simulated-minute forecast compares the next economy,
 combat-unit and additional-production investments. It is a bounded scoring
@@ -72,6 +72,20 @@ Poorer openings retain their income-first progression. Both Starport constructio
 paths require an enabled unit in the map's CHOAM catalogue: zero stock can restock,
 but an absent entry cannot. Owning a heavy factory does not waive this check.
 
+Funded Dune City custom games use the established parallel factory/repair build
+order when current cash and projected cash cover another heavy factory, four
+minutes of its operation and the working buffer. The city-yard target is never
+a prerequisite for factories. In this funded case, the opening worker target
+also does not block an affordable MCV. Factories use their normal upgrade,
+MCV, worker and military paths instead of repeatedly taking the scored worker
+shortcut. The one dedicated R/C/I yard remains active alongside production.
+When the forecast no longer covers parallel expansion, shared spending resumes.
+
+Before zoning, reserve two currently legal sites: one heavy-factory footprint
+and one repair-yard footprint, each with a one-tile access margin. R/C/I cannot
+consume those sites. Recompute from the real map each build pass; military and
+infrastructure construction may use the plots. No save-format change is needed.
+
 The default/zero harvester option means no engine ceiling. A positive Game Options
 override is enforced. Old serialized map-size defaults no longer restrict a
 loaded house. QuantBot still chooses economic targets from remaining spice and
@@ -87,7 +101,7 @@ own fleet; those decisions no longer impose an engine cap on a shared human hous
 | Refinery | Additional unloading capacity and the included worker; excludes existing income. Actual loaded-worker queues can justify a bay even as unharvested spice declines. |
 | Dune City R/C/I | Demand/site-supported growth after construction and growth delay, net of power upkeep, with allocated generation/foundation cost. Existing unfinished plots reduce confidence. No fixed tax-to-spice ratio gate. |
 | Combat unit | Military value per purchase credit, weighted by the fraction of the army target still missing. Active attacks on the base/workers raise defence priority. Existing composition and difficulty limits remain. |
-| Extra factory | Existing lines must be busy and forecast funding/army shortfall must cover extra production. Light expansion also needs a funded light-unit deficit. In Dune City, demanded city growth gets construction capacity before duplicate factories. |
+| Extra factory | Constrained spending requires busy existing lines and forecast funding/army shortfall for added production. Funded city expansion uses the established cash/income factory target without waiting for the construction-yard target. Light expansion still needs a light-unit deficit. |
 | Extra construction capacity | Dune City demand plus usable rock or an expansion site, below its yard target, with enough forecast funding for the MCV and working capital. City score 5,000 (vanilla 4,500) protects its purchase price even before cash reaches it. A currently idle yard is not proof that one yard can meet sustained demand. |
 | Police and rocket turrets | Actual uncovered buildings or crime justify services through the existing placement/coverage calculation. Moderate crime scores 2,500, dangerous crime 6,000, uncovered air defence 2,000. These can save their price instead of depending on leftover cash. |
 | Repair capacity | Fleet baseline plus damaged-vehicle queues. Extra bays score 1,800 for fleet growth or 3,500 for a backlog. Existing difficulty/technology restrictions remain. |
@@ -172,6 +186,9 @@ Telemetry version 15, policy `dedicated-city-growth-v71`, records:
   costs, protected city growth, unbooked refinery bays, blocked field returners,
   and walking versus transport-adjusted trip estimates. SQLite exposes these
   decisions; protected growth uses reason `protect_demanded_city_growth`.
+  Version 16 adds `funded_city_production` and `next_heavy_runway`, also in SQLite.
+- `city_production_plots`: the reserved factory/repair sites; placement quality
+  records `production_plot_rejections` when zoning would consume them.
 - `city_economy_comparison` and `zone_evaluation`: detailed tax/refinery
   forecasts, demand, growth confidence and placement rejection reasons.
 - `production_order`: accepted/rejected queue order, actual quote, rule,

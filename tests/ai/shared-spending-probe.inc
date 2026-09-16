@@ -1,3 +1,5 @@
+#include <players/CityPlacementPolicy.h>
+
 // Real queues, market, placement, power and household accounting in both mods.
 void runSharedSpendingProbe(Game& game) {
     auto require=[](bool ok,const char* why){if(!ok){SDL_Log("SHARED_SPENDING_FAIL: %s",why);throw std::runtime_error(why);}};
@@ -136,6 +138,37 @@ void runSharedSpendingProbe(Game& game) {
                 occupancy.push_back({structure,structure->getCityOccupancy()});
                 structure->setCityOccupancy(1);
             }
+            // The reported 100k opening must grow production before reaching
+            // its six-yard target, while its dedicated yard still zones.
+            reset(100000,0);structureList.push_back(secondYard);
+            bot->militaryValueLimit=80000;
+            heavy->doProduceItem(Unit_Tank);
+            bot->build(1000);
+            require(hasZone(yard),"Rich production displaced the dedicated R/I/C yard");
+            require(count(secondYard,Structure_HeavyFactory)>0,
+                "Cash-funded factory expansion waited for the construction-yard target");
+            require(bot->cityProductionPlots.size()==2,"Did not preserve factory and repair plots on open rock");
+            for(const auto& entry:bot->reservedStructures) {
+                if (!DuneCity::isCityZoneStructure(entry.second.item)) continue;
+                const auto p=entry.second.location, size=getStructureSize(entry.second.item);
+                for(const auto& plot:bot->cityProductionPlots) {
+                    const auto extent=getStructureSize(plot.item);
+                    require(!CityPlacementPolicy::overlaps(p.x,p.y,size.x,size.y,
+                        plot.location.x-1,plot.location.y-1,extent.x+2,extent.y+2),
+                        "Zoning consumed a future production footprint or access");
+                }
+            }
+            // With only two workers, ample runway must still unlock the MCV
+            // that supplies parallel city construction; neither target waits
+            // for the other to finish.
+            reset(100000,1000000);structureList.push_back(secondYard);
+            const int heavyUpgrade=heavy->curUpgradeLev;
+            heavy->curUpgradeLev=heavy->getMaxUpgradeLevel();heavy->updateBuildList();
+            bot->build(1000);
+            require(count(heavy,Unit_MCV)>0,
+                "Funded city expansion waited for the opening harvester target");
+            heavy->curUpgradeLev=heavyUpgrade;heavy->updateBuildList();
+            bot->militaryValueLimit=20000;
             setCrime(250);
             reset(2000,0);structureList.push_back(secondYard);
             bot->build(10000);

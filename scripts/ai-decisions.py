@@ -86,6 +86,8 @@ CREATE VIEW IF NOT EXISTS capital_plans AS
  json_extract(data,'$.trip_cycles') AS trip_cycles,
  json_extract(data,'$.starport_market_available') AS starport_market_available,
  json_extract(data,'$.funded_factory_opening') AS funded_factory_opening,
+ json_extract(data,'$.funded_city_production') AS funded_city_production,
+ json_extract(data,'$.next_heavy_runway') AS next_heavy_runway,
  json_extract(data,'$.city_growth_protected') AS city_growth_protected,
  json_extract(data,'$.city_growth_yards_busy') AS city_growth_yards_busy,
  json_extract(data,'$.city_growth_dedicated_yard') AS city_growth_dedicated_yard,

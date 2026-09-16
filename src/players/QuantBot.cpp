@@ -1727,6 +1727,7 @@ Coord QuantBot::findPlaceLocation(Uint32 itemID) {
     AITelemetry::PerformanceScope perfScope("ai.findPlaceLocation", getGameCycleCount(), getHouse()->getHouseID(), itemID);
     refreshTacticalDanger();
     int accessRejected = 0, pollutionRejected = 0, reservedRejected = 0, roadRejected = 0, neighbourRejected = 0;
+    int productionPlotRejected = 0;
     int searchPassUsed = 0;
 	// Check per-build-cycle cache first
 	auto cacheIt = placementCache.find(itemID);
@@ -1832,6 +1833,13 @@ Coord QuantBot::findPlaceLocation(Uint32 itemID) {
 
                 ++candidates;
                 if (overlapsReservedStructure(placeLocationX, placeLocationY, newSizeX, newSizeY)) { ++reservedRejected; continue; }
+                if ((cityZonePlacement || planningCityProductionPlots)
+                    && std::any_of(cityProductionPlots.begin(),cityProductionPlots.end(),[&](const auto& plot) {
+                        const auto size=getStructureSize(plot.item);
+                        // Leave access around the future factory/repair footprint.
+                        return CityPlacementPolicy::overlaps(placeLocationX,placeLocationY,newSizeX,newSizeY,
+                            plot.location.x-1,plot.location.y-1,size.x+2,size.y+2);
+                    })) { ++productionPlotRejected; continue; }
                 // Use the same origin sample and role-specific gate as zone growth.
                 // Industry tolerates pollution; R/C must not become vacant dead lots.
                 if (citySim && cityZonePlacement && DuneCity::isPollutionBlockingGrowth(
@@ -2340,6 +2348,7 @@ Coord QuantBot::findPlaceLocation(Uint32 itemID) {
     bestQuality.set("legal_candidates",candidates).set("threat_rejections",threatRejected)
         .set("blast_rejections",blastRejected).set("recent_loss_rejections",lossRejected)
         .set("search_pass",searchPassUsed).set("search_center_x",baseCenter.x).set("search_center_y",baseCenter.y)
+        .set("production_plot_rejections",productionPlotRejected)
         .set("reserved_rejections",reservedRejected).set("road_rejections",roadRejected).set("neighbour_rejections",neighbourRejected)
         .set("ground_access_rejections",accessRejected).set("pollution_rejections",pollutionRejected);
     placementScoreDetails[itemID] = bestQuality;
@@ -3091,6 +3100,7 @@ void QuantBot::build(int militaryValue) {
     planningBuilder = NONE_ID;
     recentStructureLosses.erase(std::remove_if(recentStructureLosses.begin(), recentStructureLosses.end(),
         [&](const auto& loss) { return getGameCycleCount() - loss.cycle >= MILLI2CYCLES(900000); }), recentStructureLosses.end());
+    cityProductionPlots.clear();planningCityProductionPlots=false;
     clearPlacementCache();
     for (auto it = roadRedirectRetryCycle.begin(); it != roadRedirectRetryCycle.end();) {
         if (getGameCycleCount() >= it->second) it = roadRedirectRetryCycle.erase(it);
@@ -3199,6 +3209,22 @@ void QuantBot::build(int militaryValue) {
 	int money = getHouse()->getCredits();
     militaryValue += queuedMilitaryValue;
 	const bool citySimEnabled = currentGame && currentGame->isCitySimEnabled();
+    if (citySimEnabled && itemCount[Structure_ConstructionYard]>0) {
+        planningCityProductionPlots=true;
+        for (Uint32 item:{Structure_HeavyFactory,Structure_RepairYard}) {
+            if (!data[item][houseID].enabled || data[item][houseID].techLevel>currentGame->techLevel) continue;
+            clearPlacementCache(false);
+            const Coord site=findPlaceLocation(item);
+            if (site.isValid()) cityProductionPlots.push_back({item,site});
+        }
+        planningCityProductionPlots=false;clearPlacementCache(false);
+        if (AITelemetry::log().enabled()) {
+            AITelemetry::Record plots;
+            for (const auto& plot:cityProductionPlots) plots.set(std::to_string(plot.item),
+                AITelemetry::Record().set("x",plot.location.x).set("y",plot.location.y));
+            traceDecision("city_production_plots",AITelemetry::Record().set("plots",plots));
+        }
+    }
     // INVALID is an absent/disabled market entry; zero is merely sold out and
     // will restock. Check the catalogue, not whether a factory already exists.
     const bool starportMarketAvailable = [&] {
@@ -4438,6 +4464,14 @@ void QuantBot::build(int militaryValue) {
         && firstFactoryLegal && firstFactoryProduction>0 && militaryValue<militaryValueLimit
         && money>=firstFactoryCapital+cashBuffer
         && cashFlow.projectedCash>=firstFactoryCapital+firstFactoryProduction+cashBuffer;
+    // When cash covers another line AND four minutes of its operation, use
+    // the established parallel factory/repair build order. City demand is not
+    // a prerequisite for production: factories also supply the city's MCVs.
+    const int nextHeavyRunway=buildingCapitalCost(Structure_HeavyFactory)
+        + std::max(firstFactoryProduction,laneCapacity[Structure_HeavyFactory])+cashBuffer;
+    const bool fundedCityProduction=citySimEnabled && gameMode==GameMode::Custom
+        && cashFlow.fundsParallelProduction && money>=nextHeavyRunway
+        && cashFlow.projectedCash>=nextHeavyRunway && militaryValue<militaryValueLimit;
     const int desiredWorkers=citySimEnabled ? fundedHarvesterTarget : spiceHarvesterTarget;
     const int transportBaseline=QuantBotBuildPolicy::carryallTarget(itemCount[Unit_Harvester],combatVehicles,
         getHouse()->getNumItems(Structure_RepairYard));
@@ -4567,8 +4601,6 @@ void QuantBot::build(int militaryValue) {
                 capacity.capacity=QuantBotSpendingPolicy::additionalProduction(militaryFunding,existingMilitaryCapacity,
                     added,std::max(0,militaryValueLimit-militaryValue),capacity.cost);
                 if (actual==0) capacity.reason="bootstrap_managed_separately";
-                else if (citySimEnabled && economy.item!=NONE_ID && economy.score>0
-                    && cityConstructionCapacity<cityYardTarget) capacity.reason="city_growth_has_priority";
                 else if (factory==Structure_LightFactory && int64_t(lightVehicleValue)*10000
                     >= int64_t(vehiclePlanValue)*lightVehicleBps) capacity.reason="light_mix_satisfied";
                 else if (itemCount[factory]>actual) capacity.reason="factory_pending";
@@ -4797,6 +4829,7 @@ void QuantBot::build(int militaryValue) {
             .set("net_burn_per_minute",cashFlow.netBurnPerMinute).set("cash_runway_seconds",cashFlow.runwaySeconds)
             .set("funds_parallel_production",cashFlow.fundsParallelProduction).set("shared_priority",sharedSpending)
             .set("starport_market_available",starportMarketAvailable).set("funded_factory_opening",fundedFactoryOpening)
+            .set("funded_city_production",fundedCityProduction).set("next_heavy_runway",nextHeavyRunway)
             .set("city_growth_protected",cityGrowthProtected)
             .set("city_growth_yards_busy",cityGrowthYardsBusy)
             .set("city_growth_dedicated_yard",dedicatedCityYard)
@@ -5154,7 +5187,9 @@ void QuantBot::build(int militaryValue) {
                     && pBuilder->getCurrentUpgradeLevel()<pBuilder->getMaxUpgradeLevel()
                     && DuneCity::prioritizeVanillaMcv(money,getHouse()->getNumItems(Unit_Harvester),
                         itemCount[Structure_ConstructionYard],itemCount[Unit_MCV],data[Unit_MCV][houseID].price);
-                if (!transportProducer && !expansionProducer && !unlockingVanillaMcv)
+                const bool parallelHeavyProduction=fundedCityProduction
+                    && pBuilder->getItemID()==Structure_HeavyFactory;
+                if (!transportProducer && !expansionProducer && !unlockingVanillaMcv && !parallelHeavyProduction)
                     for (const auto& candidate:capitalCandidates)
                         if (candidate.builder==pBuilder->getObjectID() && isUnit(candidate.item)
                             && (candidate.item!=Unit_Carryall || itemCount[Unit_Carryall]<transportTarget)
@@ -5175,7 +5210,7 @@ void QuantBot::build(int militaryValue) {
                 } else if (capitalSupplier && isUnit(capitalCandidates[capitalChoice].item)
                     && !QuantBotBuildPolicy::militaryItem(capitalCandidates[capitalChoice].item)
                     && pBuilder->getItemID()!=Structure_StarPort && !transportProducer && !expansionProducer
-                    && !unlockingVanillaMcv) continue;
+                    && !unlockingVanillaMcv && !parallelHeavyProduction) continue;
 
 				if (pBuilder->getItemID() != Structure_StarPort && !transportProducer && !workerProducer && !expansionProducer && !pBuilder->isUpgrading() && pBuilder->getProductionQueueSize() < 1
 					&& money > 1500) {
@@ -5350,7 +5385,8 @@ void QuantBot::build(int militaryValue) {
                     if(expansionProducer && !pBuilder->isUpgrading() && pBuilder->getProductionQueueSize()==0
                         && money < (pBuilder->isAvailableToBuild(Unit_MCV)
                             ? data[Unit_MCV][houseID].price : pBuilder->getUpgradeCost())) break;
-                    const bool prioritizeCityMcv = citySimEnabled && gameMode == GameMode::Custom && (!openingWorkersNeeded()||rockExpansionNeeded)
+                    const bool prioritizeCityMcv = citySimEnabled && gameMode == GameMode::Custom
+                        && (fundedCityProduction || !openingWorkersNeeded() || rockExpansionNeeded)
                         && !getHouse()->isGroundUnitLimitReached()
                         && (expansionProducer || QuantBotBuildPolicy::canFundCityYard(cityMcvCash, data[Unit_MCV][houseID].price,
                             itemCount[Structure_ConstructionYard] + itemCount[Unit_MCV], cityYardTarget, cityWorkingReserve));
@@ -6221,9 +6257,9 @@ void QuantBot::build(int militaryValue) {
                 const bool firstHighTechSite = firstTransport && itemCount[Structure_HighTechFactory] == 0
                     && pBuilder->isAvailableToBuild(Structure_HighTechFactory)
                     && findPlaceLocation(Structure_HighTechFactory).isValid();
-                const bool holdExtraHeavy = openingWorkersNeeded() || (firstTransport
+                const bool holdExtraHeavy = !fundedCityProduction && (openingWorkersNeeded() || (firstTransport
                     && (firstHighTechSite || carryallBuildAvailable || itemCount[Structure_HighTechFactory]
-                        > getHouse()->getNumItems(Structure_HighTechFactory)));
+                        > getHouse()->getNumItems(Structure_HighTechFactory))));
                 if (itemID == NONE_ID && !skipRemainingStructureLogic && firstHighTechSite) {
                     skipRemainingStructureLogic = true;
                     structureRule = "save_first_transport_factory";
@@ -6387,7 +6423,7 @@ void QuantBot::build(int militaryValue) {
                             .set("reason","unlock_base_defence"));
                     }
                 }
-                if (itemID==NONE_ID && !skipRemainingStructureLogic && sharedSpending) {
+                if (itemID==NONE_ID && !skipRemainingStructureLogic && sharedSpending && !fundedCityProduction) {
                     const CapitalCandidate* choice=nullptr;
                     for (const auto& candidate:capitalCandidates)
                         if (candidate.builder==pBuilder->getObjectID() && candidate.score>0
@@ -6406,6 +6442,14 @@ void QuantBot::build(int militaryValue) {
                             skipRemainingStructureLogic=true;
                         }
                     }
+                }
+                if (itemID==NONE_ID && !skipRemainingStructureLogic && fundedCityProduction
+                    && itemCount[Structure_RepairYard]<repairTarget
+                    && canAddRepairYard(itemCount[Structure_RepairYard])
+                    && pBuilder->isAvailableToBuild(Structure_RepairYard)
+                    && money>=buildingCapitalCost(Structure_RepairYard)+cashBuffer
+                    && findPlaceLocation(Structure_RepairYard).isValid()) {
+                    itemID=Structure_RepairYard;structureRule="funded_repair_capacity";
                 }
                 // Fund combat-air capacity before optional ground-factory expansion.
                 // Pending factories prevent duplicate lanes across parallel yards.
@@ -6815,7 +6859,8 @@ void QuantBot::build(int militaryValue) {
                 itemID=Structure_WindTrap; structureRule="campaign_planned_power";
                 crimeServiceSite=Coord::Invalid();
             }
-            if (sharedSpending && (itemID==Structure_LightFactory || itemID==Structure_HeavyFactory || itemID==Structure_HighTechFactory)
+            if (sharedSpending && !fundedCityProduction
+                && (itemID==Structure_LightFactory || itemID==Structure_HeavyFactory || itemID==Structure_HighTechFactory)
                 && getHouse()->getNumItems(itemID)>0) {
                 const bool fundedLane=std::any_of(capitalCandidates.begin(),capitalCandidates.end(),[&](const auto& c) {
                     return c.builder==pBuilder->getObjectID() && c.item==itemID && c.score>0;

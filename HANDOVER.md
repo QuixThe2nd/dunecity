@@ -1,3 +1,26 @@
+## 2026-09-17 — Restore funded city production, 1.0.706
+
+Native 705 All against Atreides was still holding 84,862 credits at 6 minutes with
+one heavy factory and one repair yard. Shared spending gated duplicate factories
+on the city-yard target, displaced the old funded production order and could
+cancel factories again after selection. Its worker shortcut also delayed normal
+factory upgrades/MCVs. Rich city openings now use the established production
+path when current cash and four-minute runway cover another line. Affordable
+MCVs need not wait for opening workers in that case. Keep the dedicated R/I/C
+yard; leave a legal factory and repair plot with access space clear of zoning.
+
+Matched Dune City / seed 906213928 / Atreides Brutal versus legacy AI Player Hard:
+700 survived 30 minutes with 65,600 army value at 15:14; 705 had 29,150 and lost 19:07;
+706 had 79,570, 20 delivered heavy factories, 8 repair yards and 111 R/I/C plots,
+then won 21:41. Army figures include queued units; fielded 706 value was 74,870.
+This fixes the reported regression, not a claim about every map/seed.
+
+7/7 CTest groups, city/vanilla engine fixtures, rich/poor opening fixture,
+30-minute normal Dune City FFA, spending audits, SQLite import, dependency and
+signature checks passed. Telemetry 16 / policy `funded-parallel-city-production-v72`.
+Evidence/options/limits: `docs/quantbot-706-production-review.md`.
+Local app: `build-706/bin/dunecity.app`; running 705 left untouched. No push/deploy.
+
 ## 2026-09-16 — Dedicate a construction yard to R/I/C, 1.0.705
 
 Native 704 session `1789562162651301-0` was growing, but services took much of
