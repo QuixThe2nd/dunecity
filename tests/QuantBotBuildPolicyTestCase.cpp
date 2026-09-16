@@ -8,6 +8,7 @@
 #include <players/AirStrikePolicy.h>
 #include <players/QuantBotBuildPolicy.h>
 #include <players/CityEconomyInvestmentPolicy.h>
+#include <players/QuantBotSpendingPolicy.h>
 #include <set>
 
 using namespace QuantBotBuildPolicy;
@@ -1254,7 +1255,6 @@ TEST_CASE("Busy military factories must not create one refinery per harvester", 
     // 638 Ordos at 20 minutes: 32 refineries/workers, one R and 47 tax/min.
     CHECK_FALSE(processingCapacityNeeded(32,32,246,1757));
     CHECK_FALSE(considerRefinery(false,true,true)); // Busy still means capable of supply.
-    CHECK(taxHedgeNeeded(47,0,32*246));
     CHECK_FALSE(preferRefinery(Investment{521,246,3,11861,1000,689},
         Investment{130,23,0,4350,1000},considerRefinery(false,true,true),false));
     CHECK(considerRefinery(false,true,true,true)); // Recover a workforce below two.
@@ -1265,14 +1265,39 @@ TEST_CASE("Busy military factories must not create one refinery per harvester", 
     CHECK(factoryHarvesterTarget(0,120)==0);
 }
 
-TEST_CASE("City income hedge grows with the spice economy and credits pending development", "[quantbot][city][economy]") {
-    using namespace CityEconomyInvestmentPolicy;
-    CHECK(taxHedgeNeeded(30,0,3*320));
-    CHECK(taxHedgeNeeded(300,0,3*320));
-    CHECK_FALSE(taxHedgeNeeded(320,0,3*320));
-    CHECK_FALSE(taxHedgeNeeded(300,20,3*320));
-    CHECK(taxHedgeNeeded(320,20,6*320));
-    CHECK_FALSE(taxHedgeNeeded(30,0,0)); // Depleted fields cannot justify new bays.
+TEST_CASE("Finite spice investment only credits income beyond the existing fleet", "[quantbot][economy]") {
+    using namespace QuantBotSpendingPolicy;
+    // Four minutes, one-minute delivery delay; ample, partly exhausted, exhausted.
+    CHECK(marginalSpice(20000,600,900,3750,15000,3750)==900);
+    CHECK(marginalSpice(3000,600,900,3750,15000,3750)==600);
+    CHECK(marginalSpice(2000,600,900,3750,15000,3750)==0);
+    CHECK(marginalSpice(0,0,900,0,15000,3750)==0);
+    CHECK(marginalSpice(20000,900,900,3750,15000,3750)==0); // Existing bays full.
+    CHECK(marginalSpice(20000,600,900,15000,15000,3750)==0); // Delivery too late.
+}
+
+TEST_CASE("Shared capital compares readiness with return and protects only the next purchase", "[quantbot][economy]") {
+    using namespace QuantBotSpendingPolicy;
+    CHECK(economyScore(900,300)>militaryScore(300,300,2000,10000,false));
+    CHECK(militaryScore(300,300,2000,10000,true)>economyScore(900,300));
+    CHECK(militaryScore(150,300,2000,10000,false)>militaryScore(300,300,2000,10000,false));
+    CHECK(militaryScore(300,300,10000,10000,true)==0);
+    CHECK(economyScore(100,130)>0); // Permanent zoning can grow below four-minute payback.
+    CHECK(reserveForOther(400,300,false,false,false)==300); // Remaining100 buys a plot.
+    CHECK(reserveForOther(200,300,false,false,false)==200); // Save; don't repeatedly spend it.
+    CHECK(reserveForOther(400,300,true,false,false)==0);
+    CHECK(reserveForOther(400,300,false,true,false)==0);
+    CHECK(reserveForOther(400,300,false,false,true)==0); // Emergency recovery may spend it.
+}
+
+TEST_CASE("Additional factories require funded work beyond existing capacity", "[quantbot][economy]") {
+    using namespace QuantBotSpendingPolicy;
+    CHECK(additionalProduction(3000,4000,2000,10000,600)==0); // Money is the bottleneck.
+    CHECK(additionalProduction(10000,4000,2000,3000,600)==0); // Enough production already.
+    CHECK(additionalProduction(6000,4000,2000,10000,600)==1400);
+    CHECK(additionalProduction(10000,4000,2000,10000,600)==2000);
+    CHECK(productionScore(0,600,2000,10000)==0);
+    CHECK(productionScore(2000,600,2000,10000)>productionScore(2000,600,9000,10000));
 }
 
 TEST_CASE("Refineries catch up to profitable fleet queues even while tax hedge is short", "[quantbot][city][economy]") {

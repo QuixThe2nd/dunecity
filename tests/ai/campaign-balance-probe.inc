@@ -7,8 +7,11 @@
 #include <players/QuantBotConfig.h>
 #include <memory>
 #include <cstdlib>
+#include <fstream>
+#include <iterator>
 
 #include "starport-economy-probe.inc"
+#include "shared-spending-probe.inc"
 #include "army-movement-probe.inc"
 #include "factory-recovery-probe.inc"
 #include "radar-power-probe.inc"
@@ -42,10 +45,18 @@ int runCampaignBalanceProbe() {
         settings.gameOptions.maximumNumberOfHarvestersOverride=std::atoi(std::getenv("BALANCE_HARVESTER_LIMIT"));
     if (std::getenv("BALANCE_PACING_PROBE")) settings.gameOptions.maximumNumberOfHarvestersOverride=100;
     GameInitSettings init(humanHouse, settings.gameOptions, level);
+    const char* customMap=std::getenv("BALANCE_CUSTOM_MAP");
+    if(customMap) {
+        std::ifstream file(customMap);
+        if(!file)throw std::runtime_error("Cannot read custom map");
+        const std::string contents((std::istreambuf_iterator<char>(file)),std::istreambuf_iterator<char>());
+        init=GameInitSettings(customMap,contents,true,settings.gameOptions);
+    }
     init.randomSeed = seed; // Test-only access, provided by -fno-access-control.
     init.setMultiplePlayersPerHouse(true);
     for (int h=0; h<NUM_HOUSES; ++h) {
         if (!isHouseAvailable(static_cast<HOUSETYPE>(h))) continue;
+        if(customMap && h!=humanHouse && h!=(humanHouse==HOUSE_HARKONNEN ? HOUSE_ATREIDES : HOUSE_HARKONNEN))continue;
         GameInitSettings::HouseInfo info(static_cast<HOUSETYPE>(h), h==humanHouse ? 1 : 2);
         if (h==humanHouse) info.addPlayerInfo({settings.general.playerName,"HumanPlayer"});
         info.addPlayerInfo({getHouseNameByNumber(static_cast<HOUSETYPE>(h)),h==humanHouse ? partnerClass : enemyClass});
@@ -59,6 +70,10 @@ int runCampaignBalanceProbe() {
     game->initGame(init);
     game->bReplay = false;
     game->initializeGameLoop();
+    if (std::getenv("BALANCE_SHARED_SPENDING_PROBE")) {
+        runSharedSpendingProbe(*game);game.reset();currentGame=nullptr;pLocalPlayer=nullptr;
+        return MENU_QUIT_DEFAULT;
+    }
     if (std::getenv("BALANCE_ARMY_PROBE")) {
         runArmyMovementProbe(*game);game.reset();currentGame=nullptr;pLocalPlayer=nullptr;
         return MENU_QUIT_DEFAULT;

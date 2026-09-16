@@ -75,6 +75,8 @@ TEST_CASE("Telemetry thins repeated growth observations without dropping actual 
     writer.stop();
     std::ifstream input(path); std::stringstream contents; contents<<input.rdbuf();
     REQUIRE(contents.str().find("\"event\":\"game_summary\"")!=std::string::npos);
+    REQUIRE(contents.str().find("\"event\":\"capture_limit\"")!=std::string::npos);
+    REQUIRE(contents.str().find("\"terminal_events_retained\":1")!=std::string::npos);
     REQUIRE(contents.str().find("\"event\":\"session_end\"")!=std::string::npos);
     std::filesystem::remove_all(root);
 }

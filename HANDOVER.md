@@ -1,3 +1,52 @@
+## 2026-09-16 — Shared QuantBot spending and audit trail, 1.0.701
+
+Implemented Stefan's common credit-allocation request across economy, units and
+production expansion. Four-minute integer forecast ranks marginal spice/tax
+receipts, military readiness/value per credit and funded capacity beyond existing
+busy factories. Protect only the chosen next order; let independent queues spend
+the remainder. Removed the fixed tax/spice hedge and alternating investment-window
+gates. Finite-spice forecasts credit only receipts beyond the existing fleet;
+Dune City includes demand/site-supported R/C/I and power/upkeep, vanilla excludes
+tax/zones. Existing recovery, prerequisite, campaign helper/enemy and difficulty
+rules remain. Extra construction retains rock/map/working-capital checks.
+
+Central acceptance now charges all production/foundations/upgrades once against
+uncommitted cash; roads report their aggregate charge. Paid imports are not
+reserved again. A seeded campaign audit exposed Starport planning using a newer
+CHOAM quote while the actual port queue charged its older displayed price
+(plan4127:1880 charged against1782 spendable). Use the actual build-list offer
+throughout comparison, affordability, bulk purchases and logging. Engine regression
+with market80/displayed120 verifies350 buys two tanks with110 left.
+
+Telemetry12/shared-capital-spending-v68 logs capital_plan inputs/options/reasons,
+linked orders and capital_outcome, upgrades/roads/blocked orders, plus detailed
+city comparisons. Capture-limit marker is explicit even when reserving terminal
+summary space. New SQLite views and tests: capital_plans/candidates/orders/outcomes.
+Report/audit: tests/ai/report-spending.py <events.jsonl> --output <report> --check.
+Documentation: docs/quantbot-spending.md. No save-format changes.
+
+Validation: native1.0.701 in build-692/bin/dunecity.app, pre/post Ninja checks,
+version metadata consistency and7/7 CTests. Six real-engine probes pass across
+vanilla/DuneCity: shared spending, Starport imports and lost-factory recovery.
+The recovery fixture supplies prepared foundations so its exact600-credit test
+continues to isolate building priority; foundation costs are now actually budgeted.
+Focused results /tmp/dunecity-701-{final,verified}-<probe>-<mod>.
+Additional multi-yard probe verifies two simultaneous city zone orders plus a
+protected factory harvester (/tmp/dunecity-701-multi-yard).
+
+Two15-minute seed701 simulations: vanilla campaign8/helperBrutal/enemyHard and
+DuneCity two-house Twin Cities custom/Brutal-v-Hard. Logs and reports under
+/tmp/dunecity-701-validated-match-{vanilla,dunecity}.3936 capital plans imported
+into /tmp/dunecity-701-validation.sqlite; no ordinary overspend, missing links,
+charge reconciliation errors or capture truncation. City houses added45/46 zones
+(21R/9C/15I and20R/11C/15I) alongside armies and workers, continuing after spice
+reached zero. Vanilla produced no zones. These are bounded simulation windows,
+not a claim of final balance across all maps. Build/test logs /tmp/build-701-verified.log and
+/tmp/ctest-701-verified.log.
+
+Not installed, pushed or published in this task. Installed app and public browser
+remain1.0.699; local source previous HEAD was700. Use this build for next playtest.
+
 ## 2026-09-16 — Restore heavy production before extra light factories, 1.0.700
 
 Browser session1789523730176999-0 (vanilla SCENH022, seed158928782,

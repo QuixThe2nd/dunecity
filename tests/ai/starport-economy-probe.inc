@@ -184,5 +184,25 @@ void runStarportEconomyProbe(Game& game) {
     if(customWorkers<1 || customWorkers*180>900 || customTanks<1)
         throw std::runtime_error("Custom Starport failed to mix worker and army investment");
     SDL_Log("CUSTOM_MIXED_IMPORTS_PASS: workers=%d tanks=%d, campaign fleet reserve absent",customWorkers,customTanks);
+    // Market prices can refresh before this port's build list does. The real
+    // queue charges the displayed offer: never budget the newer market quote.
+    auto* quotedPort=dynamic_cast<StarPort*>(place(Structure_StarPort));
+    for (auto& offer:market.availableItems) {
+        offer.num=offer.itemID==Unit_Tank ? 20 : 0;
+        offer.price=120;
+    }
+    quotedPort->updateBuildList();
+    for (auto& offer:market.availableItems) offer.price=80;
+    bot->lastCalculatedSpice=0;
+    house->takeCredits(house->getCredits());house->addCredits(350);
+    savedStructures=structureList;structureList.clear();structureList.push_back(quotedPort);
+    try {bot->build(4000);}catch(...){structureList=savedStructures;throw;}
+    structureList=savedStructures;
+    if (quotedPort->currentProductionQueue.size()!=2 || house->getCredits()!=110)
+        throw std::runtime_error("Shared budget did not use Starport's actual quoted price");
+    for (const auto& order:quotedPort->currentProductionQueue)
+        if (order.itemID!=Unit_Tank || order.price!=120)
+            throw std::runtime_error("Starport quote fixture ordered unexpected cargo");
+    SDL_Log("STARPORT_QUOTED_PRICE_PASS: market 80, displayed/charged 120; 350 funds two tanks with 110 remaining");
     SDL_Log("CAMPAIGN_BALANCE_RESULT: probe=starport outcome=passed");
 }

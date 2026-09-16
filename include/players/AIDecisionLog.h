@@ -63,6 +63,7 @@ private:
     std::string session, filename;
     uint64_t sequence = 0, bytes = 0, limit = 0;
     uint32_t lastCycle = 0;
+    bool captureLimited = false;
     std::map<std::string, uint64_t> observationCounts;
     std::map<int, std::map<std::string, int64_t>> economy;
     std::chrono::steady_clock::time_point lastFlush;

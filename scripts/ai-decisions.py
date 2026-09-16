@@ -59,6 +59,51 @@ CREATE VIEW IF NOT EXISTS production AS
  json_extract(data,'$.state_id') AS state_id,
  json_extract(data,'$.zone_decision') AS zone_decision
  FROM events WHERE event='production_order';
+CREATE VIEW IF NOT EXISTS capital_plans AS
+ SELECT session,seq AS plan,cycle,house,player,
+ json_extract(data,'$.mode') AS mode,json_extract(data,'$.campaign') AS campaign,
+ json_extract(data,'$.spendable') AS spendable,json_extract(data,'$.committed_cost') AS committed_cost,
+ json_extract(data,'$.forecast_net_income') AS forecast_income,json_extract(data,'$.forecast_funding') AS forecast_funding,
+ json_extract(data,'$.military_value') AS military_value,json_extract(data,'$.military_target') AS military_target,
+ json_extract(data,'$.workers') AS workers,json_extract(data,'$.worker_target') AS worker_target,
+ json_extract(data,'$.spice_share') AS spice_share,json_extract(data,'$.defending') AS defending,
+ json_extract(data,'$.existing_military_capacity') AS existing_capacity,
+ json_extract(data,'$.selected') AS selected,json_extract(data,'$.reason') AS reason
+ FROM events WHERE event='capital_plan';
+CREATE VIEW IF NOT EXISTS capital_candidates AS
+ SELECT e.session,e.seq AS plan,e.cycle,e.house,CAST(c.key AS INTEGER) AS candidate,
+ CAST(c.key AS INTEGER)=json_extract(e.data,'$.selected') AS selected,
+ json_extract(c.value,'$.builder') AS builder,json_extract(c.value,'$.item') AS item,
+ json_extract(c.value,'$.kind') AS kind,json_extract(c.value,'$.price') AS price,
+ json_extract(c.value,'$.foundation_cost') AS foundation_cost,
+ json_extract(c.value,'$.total_cost_with_power') AS total_cost,
+ json_extract(c.value,'$.proceeds_or_military_value') AS proceeds_or_value,
+ json_extract(c.value,'$.additional_funded_capacity') AS added_capacity,
+ json_extract(c.value,'$.score') AS score,json_extract(c.value,'$.affordable') AS affordable,
+ json_extract(c.value,'$.delay_cycles') AS delay_cycles,json_extract(c.value,'$.reason') AS reason
+ FROM events e,json_each(e.data,'$.candidates') c WHERE e.event='capital_plan';
+CREATE VIEW IF NOT EXISTS capital_orders AS
+ SELECT session,seq,cycle,house,json_extract(data,'$.capital_plan') AS plan,
+ json_extract(data,'$.builder') AS builder,json_extract(data,'$.item') AS item,
+ json_extract(data,'$.item_name') AS item_name,json_extract(data,'$.quoted_price') AS cost,
+ json_extract(data,'$.rule') AS rule,'production' AS kind
+ FROM events WHERE event='production_order' AND json_extract(data,'$.accepted')=1
+ AND json_extract(data,'$.capital_plan')>0
+ UNION ALL
+ SELECT session,seq,cycle,house,json_extract(data,'$.capital_plan'),json_extract(data,'$.builder'),
+ NULL,'Upgrade',json_extract(data,'$.price'),json_extract(data,'$.reason'),'upgrade'
+ FROM events WHERE event='capital_upgrade' AND json_extract(data,'$.accepted')=1
+ UNION ALL
+ SELECT session,seq,cycle,house,json_extract(data,'$.capital_plan'),json_extract(data,'$.builder'),
+ 23,'Road batch',json_extract(data,'$.cost'),'road_maintenance','roads'
+ FROM events WHERE event='capital_road_batch';
+CREATE VIEW IF NOT EXISTS capital_outcomes AS
+ SELECT session,seq,cycle,house,json_extract(data,'$.plan') AS plan,
+ json_extract(data,'$.priority_ordered') AS priority_ordered,
+ json_extract(data,'$.priority_pending') AS priority_pending,
+ json_extract(data,'$.ordered_cost') AS ordered_cost,
+ json_extract(data,'$.remaining_planning_cash') AS remaining_cash
+ FROM events WHERE event='capital_outcome';
 CREATE VIEW IF NOT EXISTS zone_candidates AS
  SELECT e.session,e.seq,e.cycle,e.house,e.player,c.key AS item,
  json_extract(c.value,'$.rank') AS rank,
@@ -221,7 +266,9 @@ def connect(path):
                      "DROP VIEW IF EXISTS combat_reward_final; DROP VIEW IF EXISTS combat_reward_samples; "
                      "DROP VIEW IF EXISTS unit_allocation; DROP VIEW IF EXISTS heavy_allocation_candidates; "
                      "DROP VIEW IF EXISTS raid_samples; DROP VIEW IF EXISTS raid_outcomes; "
-                     "DROP VIEW IF EXISTS raid_members; DROP VIEW IF EXISTS raid_member_results;")
+                     "DROP VIEW IF EXISTS raid_members; DROP VIEW IF EXISTS raid_member_results; "
+                     "DROP VIEW IF EXISTS capital_plans; DROP VIEW IF EXISTS capital_candidates; "
+                     "DROP VIEW IF EXISTS capital_orders; DROP VIEW IF EXISTS capital_outcomes;")
     db.executescript(SCHEMA)
     if 'record' not in {row[1] for row in db.execute('PRAGMA table_info(events)')}:
         db.execute('ALTER TABLE events ADD COLUMN record TEXT')

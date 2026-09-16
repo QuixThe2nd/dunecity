@@ -28,7 +28,7 @@ Record& Record::set(const std::string& key, const Record& value) { add(key, valu
 
 bool DecisionLog::start(const std::string& directory, const Record& metadata, uint64_t byteLimit) {
     stop();
-    sequence = bytes = 0;
+    sequence = bytes = 0; captureLimited = false;
     lastCycle = 0; economy.clear(); observationCounts.clear();
     performanceMetrics.clear(); worstFrameUs = -1; worstFrame = Record();
     performanceCycle = 0; performanceDropped = 0;
@@ -65,15 +65,22 @@ uint64_t DecisionLog::write(uint32_t cycle, int house, int player,
     lastCycle = std::max(lastCycle, cycle);
     const bool routine=event=="city_growth_sample" || event=="harvest_rally_move_order";
     if (routine && (++observationCounts[event]-1)%8!=0) return 0;
-    const bool terminal=event=="game_summary" || event=="session_end" || event=="simulation_exception";
-    if (limit>=1024*1024 && !terminal && bytes>=limit-limit/16) return 0;
+    const bool terminal=event=="game_summary" || event=="session_end" || event=="simulation_exception" || event=="capture_limit";
+    if (limit>=1024*1024 && !terminal && bytes>=limit-limit/16) {
+        if (!captureLimited) {
+            captureLimited=true;
+            write(cycle,-1,-1,"capture_limit",Record().set("byte_limit",limit)
+                .set("captured_bytes",bytes).set("terminal_events_retained",1));
+        }
+        return 0;
+    }
     const uint64_t id = ++sequence;
-    const auto row = Record().set("schema_version", 1).set("telemetry_version", 11).set("policy_version", "nearby-safe-rock-expansion-v67")
+    const auto row = Record().set("schema_version", 1).set("telemetry_version", 12).set("policy_version", "shared-capital-spending-v68")
         .set("session", session).set("seq", id).set("cycle", cycle)
         .set("house", house).set("player", player).set("event", event).set("data", details).json() + '\n';
     if (bytes + row.size() > limit) {
         // Explicit terminal marker; a few hundred bytes beyond the configured cap.
-        stream << Record().set("schema_version", 1).set("telemetry_version", 11).set("policy_version", "nearby-safe-rock-expansion-v67").set("session", session).set("seq", id)
+        stream << Record().set("schema_version", 1).set("telemetry_version", 12).set("policy_version", "shared-capital-spending-v68").set("session", session).set("seq", id)
             .set("cycle", cycle).set("house", -1).set("player", -1)
             .set("event", "capture_limit").set("data", Record().set("byte_limit", limit)).json() << '\n';
         stream.close();

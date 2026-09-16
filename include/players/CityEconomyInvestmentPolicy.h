@@ -74,13 +74,6 @@ inline bool considerRefinery(bool processingNeeded, bool wantedIncludedWorker,
     // because that factory is busy this pass. Recover a collapsed fleet first.
     return processingNeeded || (wantedIncludedWorker && (!factoryCanSupply || workerRecovery));
 }
-// Grow a permanent tax base alongside spice, rather than planting one token R.
-// Count developing/queued lots conservatively so multiple yards do not duplicate
-// the hedge. Aim for tax >= one third of spice (25% of combined income).
-inline bool taxHedgeNeeded(int taxIncome, int developingIncome, int spiceIncome) {
-    return int64_t(std::max(0,taxIncome) + std::max(0,developingIncome)) * 3
-        < std::max(0,spiceIncome);
-}
 inline bool preferRefinery(const Investment& refinery, const Investment& zone,
                            bool refineryUseful, bool residentialHedge, bool processingNeeded = false) {
     if (!refineryUseful || refinery.cost <= 0 || refinery.proceeds() <= refinery.cost) return false;

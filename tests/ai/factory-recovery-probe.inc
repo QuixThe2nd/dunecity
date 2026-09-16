@@ -8,8 +8,9 @@ void runFactoryRecoveryProbe(Game& game) {
     game.gameType=GameType::CustomGame;
     bot->gameMode=QuantBot::GameMode::Custom;bot->difficulty=QuantBot::Difficulty::Brutal;
     bot->militaryValueLimit=40000;bot->harvesterLimit=6;bot->lastCalculatedSpice=100000;
+    // Prepared sites isolate replacement priority from separately budgeted concrete.
     for(int y=0;y<currentGameMap->getSizeY();++y)for(int x=0;x<currentGameMap->getSizeX();++x)
-        if(!currentGameMap->getTile(x,y)->hasAStructure())currentGameMap->getTile(x,y)->setType(Terrain_Rock);
+        if(!currentGameMap->getTile(x,y)->hasAStructure())currentGameMap->getTile(x,y)->setType(Terrain_Slab);
     auto place=[&](Uint32 item)->StructureBase* {
         const Coord size=getStructureSize(item);
         for(int y=2;y+size.y<currentGameMap->getSizeY();++y)for(int x=2;x+size.x<currentGameMap->getSizeX();++x) {

@@ -19,12 +19,14 @@ root = Path(__file__).resolve().parents[2]
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('--build-dir', type=Path, default=root / 'build')
 parser.add_argument('--output-dir', type=Path, required=True)
+parser.add_argument('--custom-map', type=Path, help='Run a two-slot custom map instead of the campaign')
 parser.add_argument('--level', type=int, choices=range(1,10), default=4)
 parser.add_argument('--mod', choices=('vanilla','dunecity'), default='vanilla')
 parser.add_argument('--house', choices=('harkonnen','atreides','ordos'), default='harkonnen')
 parser.add_argument('--harvester-limit', type=int, choices=range(-1,101), default=-1)
 parser.add_argument('--partner-difficulty', choices=('easy','medium','hard','brutal'), default='easy')
 parser.add_argument('--enemy-difficulty', choices=('easy','medium','hard','brutal'), default='easy')
+parser.add_argument('--shared-spending-probe', action='store_true')
 parser.add_argument('--starport-probe', action='store_true', help='Exercise reserved cash with above-normal Starport prices')
 parser.add_argument('--helper-economy-probe', action='store_true', help='Verify advanced campaign helper worker investment and paid imports')
 parser.add_argument('--stats-probe', action='store_true', help='Verify campaign results with a shared human/AI house')
@@ -83,6 +85,8 @@ env = dict(os.environ,DUNECITY_USERDIR=str(out/'profile'),SDL_VIDEODRIVER='dummy
            BALANCE_MOD=args.mod,BALANCE_LEVEL=str(args.level),BALANCE_PARTNER=args.partner_difficulty,BALANCE_SEED=str(args.seed),BALANCE_MINUTES=str(args.minutes),
            BALANCE_ATTACK_PERCENT=str(args.attack_percent),BALANCE_ENEMY=args.enemy_difficulty,
            BALANCE_HOUSE=str(('harkonnen','atreides','ordos').index(args.house)),BALANCE_HARVESTER_LIMIT=str(args.harvester_limit))
+if args.custom_map: env['BALANCE_CUSTOM_MAP'] = str(args.custom_map.resolve())
+if args.shared_spending_probe: env['BALANCE_SHARED_SPENDING_PROBE'] = '1'
 if args.nuclear_probe: env['BALANCE_NUCLEAR_PROBE'] = '1'
 if args.radar_probe: env['BALANCE_RADAR_PROBE'] = '1'
 if args.army_probe: env['BALANCE_ARMY_PROBE'] = '1'
