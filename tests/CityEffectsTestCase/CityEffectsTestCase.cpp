@@ -529,6 +529,33 @@ TEST_CASE("computeDemandValves: empty C and I demand cannot drain into a bootstr
     }
 }
 
+TEST_CASE("Commercial demand starts before the first shop opens",
+          "[city-effects][valves][regression]") {
+    ValveInputs in;
+    // An empty map stays neutral, but its first residential block creates
+    // a market even while commercial population remains zero.
+    CHECK(computeDemandValves(in).comValve == 0);
+    // Harkonnen's captured opening had ten industrial residents and no
+    // commercial residents, yet C remained zero on every scan.
+    in.indPop = in.prevIndPop = 10;
+    CHECK(computeDemandValves(in).comValve > 0);
+    in = ValveInputs{};
+    in.resPop = in.prevResPop = 40;
+    const auto first = computeDemandValves(in);
+    REQUIRE(first.comValve > 0);
+    in.comValve = first.comValve;
+    CHECK(computeDemandValves(in).comValve > first.comValve);
+
+    // Current opening: residents plus industrial jobs, no shops yet.
+    in.indPop = in.prevIndPop = 5;
+    in.comValve = 0;
+    CHECK(computeDemandValves(in).comValve > 0);
+
+    // The normal tax penalty still applies to the startup market.
+    in.taxRate = 20;
+    CHECK(computeDemandValves(in).comValve <= 0);
+}
+
 TEST_CASE("computeDemandValves: jobs-only loaded history does not collapse labor demand",
           "[city-effects][valves][regression]") {
     ValveInputs vi;
