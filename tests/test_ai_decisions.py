@@ -10,6 +10,29 @@ spec.loader.exec_module(ai)
 
 
 class ImportTest(unittest.TestCase):
+    def test_shared_capital_views_link_all_charges_without_rejected_orders(self):
+        with ai.connect(':memory:') as db:
+            def add(session, seq, kind, data):
+                ai.insert(db,dict(schema_version=1,session=session,seq=seq,cycle=100,
+                                 house=0,player=2,event=kind,data=data),'fixture')
+            for session in ('city', 'vanilla'):
+                add(session,1,'capital_plan',dict(mode=session,spendable=1000,selected=0,candidates={
+                    '0':dict(builder=10,item=31,kind='economy',price=300,foundation_cost=0,
+                             total_cost_with_power=300,score=2000,reason='marginal_income',affordable=1),
+                    '1':dict(builder=11,item=33,kind='military',price=450,score=800,reason='military_shortfall')}))
+                add(session,2,'production_order',dict(capital_plan=1,builder=10,item=31,item_name='Harvester',
+                    quoted_price=300,accepted=1,rule='shared_capital_priority'))
+                add(session,3,'production_order',dict(capital_plan=1,builder=11,item=33,item_name='Launcher',
+                    quoted_price=450,accepted=0,rule='unit_mix'))
+                add(session,4,'capital_upgrade',dict(capital_plan=1,builder=11,price=200,accepted=1,reason='technology_unlock'))
+                add(session,5,'capital_road_batch',dict(capital_plan=1,builder=12,cost=20,count=2,price=10))
+                add(session,6,'capital_outcome',dict(plan=1,ordered_cost=520,remaining_planning_cash=480))
+            self.assertEqual(db.execute('select count(*) from capital_candidates where selected=1').fetchone(),(2,))
+            self.assertEqual(db.execute('select session,sum(cost) from capital_orders group by session').fetchall(),
+                             [('city',520),('vanilla',520)])
+            self.assertEqual(db.execute('select count(*) from capital_plans p join capital_outcomes o '
+                                        'using(session,plan) where p.spendable=o.ordered_cost+o.remaining_cash').fetchone(),(2,))
+
     def test_combat_rewards_and_allocation_are_queryable_without_summing_snapshots(self):
         reward = dict(item_name='Tank',damage_value_milli=40000,kill_bonus_milli=120000,
                       conversion_value_milli=0,reward_milli=160000,hits=1,unit_killing_blows=1,

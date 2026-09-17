@@ -1,4 +1,8 @@
-# City tax and spice economics (1.0.638, 2026-09-11)
+# City tax and spice economics (tax basis 1.0.638)
+
+Current AI spending rules are documented in [QuantBot shared spending](quantbot-spending.md)
+for 1.0.701. Historical AI sections below describe the earlier implementation.
+The fixed tax/spice hedge gate and alternating investment windows are removed.
 
 ## Active tax formula
 

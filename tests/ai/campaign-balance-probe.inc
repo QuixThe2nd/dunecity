@@ -7,9 +7,15 @@
 #include <players/QuantBotConfig.h>
 #include <memory>
 #include <cstdlib>
+#include <fstream>
+#include <iterator>
+#include <sstream>
 
 #include "starport-economy-probe.inc"
+#include "shared-spending-probe.inc"
+#include "opening-economy-probe.inc"
 #include "army-movement-probe.inc"
+#include "factory-recovery-probe.inc"
 #include "radar-power-probe.inc"
 #include "campaign-stats-probe.inc"
 #include "campaign-pressure-probe.inc"
@@ -27,8 +33,10 @@ int runCampaignBalanceProbe() {
     const std::string partnerClass = partner == "hard" ? "qBotHard" : partner == "medium" ? "qBotMedium"
         : partner == "brutal" ? "qBotBrutal" : "qBotEasy";
     const std::string enemy = std::getenv("BALANCE_ENEMY") ? std::getenv("BALANCE_ENEMY") : "easy";
-    const std::string enemyClass = enemy == "hard" ? "qBotHard" : enemy == "medium" ? "qBotMedium"
+    std::string enemyClass = enemy == "hard" ? "qBotHard" : enemy == "medium" ? "qBotMedium"
         : enemy == "brutal" ? "qBotBrutal" : "qBotEasy";
+    if(std::getenv("BALANCE_ENEMY_AI") && std::string(std::getenv("BALANCE_ENEMY_AI")) == "ai-player")
+        enemyClass = enemy == "hard" ? "AIPlayerHard" : enemy == "medium" ? "AIPlayerMedium" : "AIPlayerEasy";
     const int percent = std::atoi(std::getenv("BALANCE_ATTACK_PERCENT"));
     const auto humanHouse=static_cast<HOUSETYPE>(std::getenv("BALANCE_HOUSE") ? std::atoi(std::getenv("BALANCE_HOUSE")) : HOUSE_HARKONNEN);
     ModManager::instance().setActiveMod(std::getenv("BALANCE_MOD") ? std::getenv("BALANCE_MOD") : "vanilla");
@@ -37,15 +45,37 @@ int runCampaignBalanceProbe() {
     settings.network.metaServer = "http://127.0.0.1:1/";
     settings.gameOptions.fogOfWar = false;
     settings.gameOptions.immortalHumanPlayer = false;
+    if (std::getenv("BALANCE_DEGRADE_ON_CONCRETE"))
+        settings.gameOptions.structuresDegradeOnConcrete=std::atoi(std::getenv("BALANCE_DEGRADE_ON_CONCRETE"))!=0;
     if (std::getenv("BALANCE_HARVESTER_LIMIT"))
         settings.gameOptions.maximumNumberOfHarvestersOverride=std::atoi(std::getenv("BALANCE_HARVESTER_LIMIT"));
     if (std::getenv("BALANCE_PACING_PROBE")) settings.gameOptions.maximumNumberOfHarvestersOverride=100;
     GameInitSettings init(humanHouse, settings.gameOptions, level);
+    const char* customMap=std::getenv("BALANCE_CUSTOM_MAP");
+    if(customMap) {
+        std::ifstream file(customMap);
+        if(!file)throw std::runtime_error("Cannot read custom map");
+        const std::string contents((std::istreambuf_iterator<char>(file)),std::istreambuf_iterator<char>());
+        init=GameInitSettings(customMap,contents,true,settings.gameOptions);
+    }
     init.randomSeed = seed; // Test-only access, provided by -fno-access-control.
     init.setMultiplePlayersPerHouse(true);
-    for (int h=0; h<NUM_HOUSES; ++h) {
-        if (!isHouseAvailable(static_cast<HOUSETYPE>(h))) continue;
-        GameInitSettings::HouseInfo info(static_cast<HOUSETYPE>(h), h==humanHouse ? 1 : 2);
+    std::vector<std::pair<int,int>> roster;
+    if(customMap) {
+        std::istringstream input(std::getenv("BALANCE_ROSTER") ? std::getenv("BALANCE_ROSTER") : "");
+        std::string slot;
+        while(std::getline(input,slot,',')) {
+            const auto colon=slot.find(':');
+            if(colon==std::string::npos) throw std::runtime_error("Invalid test roster");
+            roster.emplace_back(std::stoi(slot.substr(0,colon)),std::stoi(slot.substr(colon+1)));
+        }
+        if(roster.empty()) throw std::runtime_error("Custom test requires a roster");
+    } else {
+        for(int h=0;h<NUM_HOUSES;++h)
+            if(isHouseAvailable(static_cast<HOUSETYPE>(h))) roster.emplace_back(h,h==humanHouse ? 1 : 2);
+    }
+    for (const auto& [h,team] : roster) {
+        GameInitSettings::HouseInfo info(static_cast<HOUSETYPE>(h), team);
         if (h==humanHouse) info.addPlayerInfo({settings.general.playerName,"HumanPlayer"});
         info.addPlayerInfo({getHouseNameByNumber(static_cast<HOUSETYPE>(h)),h==humanHouse ? partnerClass : enemyClass});
         init.addHouseInfo(info);
@@ -56,8 +86,20 @@ int runCampaignBalanceProbe() {
     // Restore ordinary AI/command execution before advancing any game cycles.
     game->bReplay = true;
     game->initGame(init);
+    // This diagnostic can retain a full hour of every house's decisions.
+    // The normal game capture limit is deliberately unchanged.
+    if(std::getenv("BALANCE_CAPTURE_MIB"))
+        AITelemetry::log().limit=std::stoull(std::getenv("BALANCE_CAPTURE_MIB"))*1024*1024;
     game->bReplay = false;
     game->initializeGameLoop();
+    if (std::getenv("BALANCE_OPENING_ECONOMY_PROBE")) {
+        runOpeningEconomyProbe(*game);game.reset();currentGame=nullptr;pLocalPlayer=nullptr;
+        return MENU_QUIT_DEFAULT;
+    }
+    if (std::getenv("BALANCE_SHARED_SPENDING_PROBE")) {
+        runSharedSpendingProbe(*game);game.reset();currentGame=nullptr;pLocalPlayer=nullptr;
+        return MENU_QUIT_DEFAULT;
+    }
     if (std::getenv("BALANCE_ARMY_PROBE")) {
         runArmyMovementProbe(*game);game.reset();currentGame=nullptr;pLocalPlayer=nullptr;
         return MENU_QUIT_DEFAULT;
@@ -98,6 +140,11 @@ int runCampaignBalanceProbe() {
     if (std::getenv("BALANCE_HELPER_ECONOMY_PROBE")) {
         runCampaignHelperEconomyProbe(*game);
         game.reset();currentGame=nullptr;pLocalPlayer=nullptr;
+        return MENU_QUIT_DEFAULT;
+    }
+    if (std::getenv("BALANCE_FACTORY_RECOVERY_PROBE")) {
+        runFactoryRecoveryProbe(*game);
+        game.reset(); currentGame = nullptr; pLocalPlayer = nullptr;
         return MENU_QUIT_DEFAULT;
     }
     if (std::getenv("BALANCE_STARPORT_PROBE")) {

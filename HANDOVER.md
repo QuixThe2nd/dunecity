@@ -1,3 +1,259 @@
+## 2026-09-17 — Restore funded city production, 1.0.706
+
+Native 705 All against Atreides was still holding 84,862 credits at 6 minutes with
+one heavy factory and one repair yard. Shared spending gated duplicate factories
+on the city-yard target, displaced the old funded production order and could
+cancel factories again after selection. Its worker shortcut also delayed normal
+factory upgrades/MCVs. Rich city openings now use the established production
+path when current cash and four-minute runway cover another line. Affordable
+MCVs need not wait for opening workers in that case. Keep the dedicated R/I/C
+yard; leave a legal factory and repair plot with access space clear of zoning.
+
+Matched Dune City / seed 906213928 / Atreides Brutal versus legacy AI Player Hard:
+700 survived 30 minutes with 65,600 army value at 15:14; 705 had 29,150 and lost 19:07;
+706 had 79,570, 20 delivered heavy factories, 8 repair yards and 111 R/I/C plots,
+then won 21:41. Army figures include queued units; fielded 706 value was 74,870.
+This fixes the reported regression, not a claim about every map/seed.
+
+7/7 CTest groups, city/vanilla engine fixtures, rich/poor opening fixture,
+30-minute normal Dune City FFA, spending audits, SQLite import, dependency and
+signature checks passed. Telemetry 16 / policy `funded-parallel-city-production-v72`.
+Evidence/options/limits: `docs/quantbot-706-production-review.md`.
+Local app: `build-706/bin/dunecity.app`; running 705 left untouched. No push/deploy.
+
+## 2026-09-16 — Dedicate a construction yard to R/I/C, 1.0.705
+
+Native 704 session `1789562162651301-0` was growing, but services took much of
+the construction capacity. Harkonnen had about 1,439 free base-rock tiles and
+18,424 spendable credits at 33.77 minutes. The preceding five minutes of planning
+samples show roughly 41% of yard time zoning, 48% other construction and 10% idle.
+704's protected plot budget did not bind the actual yard choice: it could spend
+that allocation on police or a turret instead.
+
+With multiple yards, 705 assigns the oldest usable yard to demanded R/I/C,
+including its actual construction choice. Other yards handle services and
+production. Idle yards also try an affordable legal plot when their selected
+project cannot be afforded or placed, including at exactly 100 remaining credits.
+Keep actual commitments, demand, placement and power checks. No new save state,
+random personalities, difficulty settings or yard-count targets.
+
+Validation: 7/7 CTest groups, city and vanilla real-engine spending fixtures,
+dependency checks, version agreement and app signature pass. City fixtures cover
+parallel crime protection, another yard already zoning, exact plot cash, negative
+demand, blackout and no available site, plus existing military/MCV/transport tests.
+Two completed same-seed 30-minute DuneCity matches pass the spending audit:
+Harkonnen orders 150 -> 165 plots, and 52 -> 62 in minutes 25-30. This validates
+increased construction, not general combat superiority. Telemetry 15 / policy
+`dedicated-city-growth-v71` exposes assigned yard and accepted growth rules;
+the SQLite view imports them. Full evidence: `docs/quantbot-705-growth-review.md`.
+
+Local build: `build-705/bin/dunecity.app`. The user's running 704 app in `build-692`
+was not replaced or stopped. No remote push or public deployment for this patch.
+
+## 2026-09-16 — Fund continuous city growth and rich openings, 1.0.704
+
+Native703 All against Atreides session1789556870788357-0, seed1293696382,
+Atreides Brutal vs four legacy AI Player Hard, had97k cash and no heavy factory
+at4min. Its empty CHOAM catalogue could never supply its Starport. Re-running
+engine700/37e5772 on the same seed/options won34.70min with the former default60
+worker limit: the limit alone did not explain703's loss. Rich openings now budget
+the first heavy line's missing prerequisites plus four minutes of operation and
+unlock it before extra refineries/port/repair when funded. Both ordinary Starport
+paths check enabled CHOAM membership (zero stock is restockable, absent is not).
+
+Default/-1 and explicit0 mean no engine harvester cap; positive Game Options
+limits still apply. Ignore legacy map-derived caps stored on houses. QuantBot
+custom targets come from remaining spice and economic planning; campaign enemy
+and late-campaign helper planning policies remain AI decisions, not shared-house
+engine restrictions. Explicit0 no longer incorrectly prevents economic imports.
+
+Native703 DuneCity session1789558312233110-0, seed118157932, four Brutal houses,
+showed Fremen with4 idle CYs, positive demand,1100 free base-rock tiles and an
+affordable100-credit residential plot. Saving218 spendable credits toward a450
+launcher withheld all construction cash. When military wins the raw score,
+reserve one useful demanded R/C/I lot instead, then let factories spend the rest.
+Services/real income bottlenecks keep their priority. No new timers/save fields.
+
+Refinery pressure now counts loaded field returners to occupied bays before
+they walk to within6 tiles. Offset only free unbooked bays; pending refineries
+prevent repeated additions. Credit existing Carryalls' supported fleet share in
+the delivery forecast. The queue relief branch now works in vanilla too.
+Telemetry14/funded-growth-opening-v70 and SQLite expose protected city growth,
+market eligibility, funded opening costs, blocked field returns and adjusted trips.
+
+Final704 tests:7/7 CTest groups, pre/post Ninja dependency checks, codesign and
+version metadata pass. Engine probes cover poor/rich openings, absent/sold-out/
+disabled markets, default/explicit caps, distant loaded returns, city/vanilla
+shared budgets and campaign pacing. Low-land-value218/1000-credit city fixtures
+actually trigger protected growth; the latter also funds military production.
+All against Atreides same seed wins20.17min with default unlimited and21.65min
+with configured60 (old700:34.70min). First heavy ordered1.44min vs703's3.47min;
+no Starport ordered. Configured60 run has a one-worker transient overshoot from
+existing concurrent delivery/completion semantics; this patch does not change
+that engine behaviour. Default run's peak delivered fleet is120.
+
+City test uses current native roster Fremen1/Neutral2/Atreides3/Sardaukar4 and
+seed118157932. Fremen orders61 lots +89 combat units in minutes30–35; native703
+ordered0 lots +109 combat units then. It still loses at38.78min in this all-Brutal
+FFA: proof of continued growth, not proof of optimal combat balance or a guaranteed
+win. Three completed match captures pass the spending/link/overspend audit.
+Follow-up budget/utilisation check: those61 lots cost6,100 versus31,450 in combat
+orders (plus6,250 turrets/police and1,600 Carryalls). Original Fremen yards were
+99.5% idle in minutes30–35; final704 has88.1% busy/11.1% idle/0.8% upgrading,
+weighted by planning samples. Original failure was allocation, not insufficient
+yard count. The lot count alone does not prove balanced spending; no additional
+income-based yard-target change was implemented after this review.
+Full evidence: docs/quantbot-704-growth-review.md. Native build:
+build-692/bin/dunecity.app. No replacement of a running app or public deployment.
+
+## 2026-09-16 — Restore city growth and use support queues/runway, 1.0.703
+
+Reported native 702 session `1789545923897200-0`, DuneCity seed1105042893,
+Fremen/team1 with three other Brutal houses, worker override100. At15.25min:
+1CY,2R/0C/0I,4Light/2Heavy,25workers,4refineries,1Carryall,0police,1rocket;
+tax22. Heavy/light factories never upgraded and no MCV was ordered. Compared
+with700/37e5772 and701/c54a344: the new immediate military shortcut bypassed
+upgrades, full-ceiling deficits exaggerated light demand, extra factories beat
+zoning, MCV funding/idle-yard gates blocked construction throughput, and service
+spending depended on leftovers. This was a real regression, not a screenshot
+interpretation or evidence that trikes were unusually effective.
+
+703 restores factory upgrades/MCV unlocking and funded composition before
+ordinary military allocation; extra lights need a real deficit. City R/C/I can
+use independent yards; demand plus usable rock and forecast working capital
+justify saving one MCV price. Services reserve their price, and one yard upgrades
+for defence while other yards continue building. Removed the extra half-cash
+Starport worker cap; actual quotes, stock, useful workers and shared reserves
+still constrain orders. First Carryall precedes bargain campaign workers too.
+
+Cash runway includes available unit lines and demanded construction throughput.
+Only delivered workers/refineries plus current tax supply forecast income;
+spice is finite. Deduct already-reserved queues once. High cash can fund parallel
+vanilla expansion despite falling cash: no fixed20k wealth switch. Exclude MCVs
+from continuous military burn; treating every heavy factory as a permanent MCV
+line falsely choked the100k All against Atreides opening in an intermediate test.
+
+Support baselines: ceil(workers/5)+min(ceil(combatVehicles/20),2*repairYards)
+Carryalls; max(workerFleet?1:0,ceil(combatVehicles/25)) repair yards; refineries
+use delivery/unload throughput and the existing ten-second loaded-worker queue.
+Two unserved jobs with all suppliers busy add one supplier, with pending capacity
+preventing duplicates. Finished repairs and empty refinery workers awaiting a
+return flight are transport pressure, not another repair/unload bay. No cap from
+heavy-factory count. Medium vanilla's no-new-repair restriction remains; all city
+difficulties can add them. Unmet transport demand also funds a legal first High
+Tech Factory when imports are sold out/absent; an engine fixture covers this last
+supplier gap discovered in the city simulation.
+
+Telemetry13/city-capacity-recovery-v69, capital plan schema2, adds active burn,
+sustained construction/unit cost, projected cash/runway, support queues/targets,
+funded army basis and crime. SQLite capital_plans exposes these. All non-support
+vanilla passes are logged, including cash-funded parallel mode. No save changes.
+
+Built/signed local703: build-692/bin/dunecity.app. Seven CTest groups pass, Ninja
+pre/post dependency checks and version metadata pass. Shared-spending/Starport
+real-engine probes pass in both mods, including real queue prices and no duplicate
+commitments. Full-match comparison on the runway/ratio implementation: All against
+Atreides with100worker cap beats legacy AI Player Hard at31.21min (700:32.67;
+702:lost20.72); city FFA vs AI Player Hard wins33.76min; vanilla campaign9 Atreides
+Brutal helper vs Medium enemies wins20.55min. Four-Brutal reproduction loses48.88min
+but has4CY/21zones/6Carryalls at15.25min and111zones at29.95min. Full matches precede
+the last sold-out-transport factory fix. Final20min checks in
+/tmp/dunecity-703-balanced-{city,current,shared} pass: reported Fremen has4CY,
+29R/10C/4I,44workers,7refineries,12Carryalls (target12),5police,3rockets;
+tax4018 versus original73. Atreides city test has4CY,11R/4C/0I and12Carryalls
+(target12): transport is supplied but zoning is slower than the intermediate
+under-supplied-transport run. City MCV priority5000 exceeds additional transport
+4500; first Carryall5500 still wins. This is tested, not a claim of optimal tuning.
+Completed captures have no accounting/link/overspend/truncation audit violations.
+
+Test runner now supports legacy AI Player opponents and explicit house/team
+rosters; it records those plus source revision at launch. Evidence and exact
+comparison matrix: docs/quantbot-703-regression-review.md. Policy and telemetry:
+docs/quantbot-spending.md. No install over /Applications, push, or public deployment
+in this task. Existing gameplay remains separate from isolated test profiles.
+
+## 2026-09-16 — Shared QuantBot spending and audit trail, 1.0.701
+
+Implemented Stefan's common credit-allocation request across economy, units and
+production expansion. Four-minute integer forecast ranks marginal spice/tax
+receipts, military readiness/value per credit and funded capacity beyond existing
+busy factories. Protect only the chosen next order; let independent queues spend
+the remainder. Removed the fixed tax/spice hedge and alternating investment-window
+gates. Finite-spice forecasts credit only receipts beyond the existing fleet;
+Dune City includes demand/site-supported R/C/I and power/upkeep, vanilla excludes
+tax/zones. Existing recovery, prerequisite, campaign helper/enemy and difficulty
+rules remain. Extra construction retains rock/map/working-capital checks.
+
+Central acceptance now charges all production/foundations/upgrades once against
+uncommitted cash; roads report their aggregate charge. Paid imports are not
+reserved again. A seeded campaign audit exposed Starport planning using a newer
+CHOAM quote while the actual port queue charged its older displayed price
+(plan4127:1880 charged against1782 spendable). Use the actual build-list offer
+throughout comparison, affordability, bulk purchases and logging. Engine regression
+with market80/displayed120 verifies350 buys two tanks with110 left.
+
+Telemetry12/shared-capital-spending-v68 logs capital_plan inputs/options/reasons,
+linked orders and capital_outcome, upgrades/roads/blocked orders, plus detailed
+city comparisons. Capture-limit marker is explicit even when reserving terminal
+summary space. New SQLite views and tests: capital_plans/candidates/orders/outcomes.
+Report/audit: tests/ai/report-spending.py <events.jsonl> --output <report> --check.
+Documentation: docs/quantbot-spending.md. No save-format changes.
+
+Validation: native1.0.701 in build-692/bin/dunecity.app, pre/post Ninja checks,
+version metadata consistency and7/7 CTests. Six real-engine probes pass across
+vanilla/DuneCity: shared spending, Starport imports and lost-factory recovery.
+The recovery fixture supplies prepared foundations so its exact600-credit test
+continues to isolate building priority; foundation costs are now actually budgeted.
+Focused results /tmp/dunecity-701-{final,verified}-<probe>-<mod>.
+Additional multi-yard probe verifies two simultaneous city zone orders plus a
+protected factory harvester (/tmp/dunecity-701-multi-yard).
+
+Two15-minute seed701 simulations: vanilla campaign8/helperBrutal/enemyHard and
+DuneCity two-house Twin Cities custom/Brutal-v-Hard. Logs and reports under
+/tmp/dunecity-701-validated-match-{vanilla,dunecity}.3936 capital plans imported
+into /tmp/dunecity-701-validation.sqlite; no ordinary overspend, missing links,
+charge reconciliation errors or capture truncation. City houses added45/46 zones
+(21R/9C/15I and20R/11C/15I) alongside armies and workers, continuing after spice
+reached zero. Vanilla produced no zones. These are bounded simulation windows,
+not a claim of final balance across all maps. Build/test logs /tmp/build-701-verified.log and
+/tmp/ctest-701-verified.log.
+
+Not installed, pushed or published in this task. Installed app and public browser
+remain1.0.699; local source previous HEAD was700. Use this build for next playtest.
+
+## 2026-09-16 — Restore heavy production before extra light factories, 1.0.700
+
+Browser session1789523730176999-0 (vanilla SCENH022, seed158928782,
+Harkonnen human/QuantBot) lost both light and heavy factories at602.416s.
+Light replacements finished648,705.6,753.6s; heavy returned only900.8s.
+Extra lights were selected by light_unit_backlog. The configured mix had
+collapsed to100% quads because availability came only from surviving factories;
+quad performance did not justify this (reward115.546 vs launchers1119.996).
+Evidence exported to /tmp/harkonnen-1789523730176999-0.jsonl.
+
+Keep recoverable heavy units in the strategic mix after a heavy factory loss,
+using existing saved House loss counters plus enabled/tech/prerequisite gates.
+Actual production still obeys normal factory upgrades and availability. Restore
+one lost heavy line (including a missing light prerequisite) before optional
+construction. Count pending buildings to avoid duplicate replacements; wait for
+its purchase price only when a valid site exists. In normal openings, build one
+heavy before expanding beyond one light factory, after existing opening economy
+priorities. Low-tech/disabled-heavy missions retain light expansion. Optional
+vanilla concrete now respects the planner's save/wait flag, matching roads.
+
+Validation: native1.0.700 build, pre/post Ninja dependency checks, version check,
+and7/7 CTests (/tmp/ctest-700-final.log). New real-engine factory-recovery probe
+passes vanilla and city: simultaneous losses, preserved tank demand, light then
+heavy recovery, insufficient/exact funds, pending duplicate prevention, busy
+light production, and blocked placement. Results in
+/tmp/dunecity-700-factory-{vanilla,dunecity}. Runner:
+python3 tests/ai/run-campaign-balance.py --build-dir build-692 --output-dir <new-dir>
+--level 9 --mod vanilla --house harkonnen --partner-difficulty brutal
+--enemy-difficulty hard --seed 700 --minutes 1 --factory-recovery-probe
+
+Built app: build-692/bin/dunecity.app. Not installed or published by this change;
+the live browser/downloads remain1.0.699. No save-format changes.
+
 ## 2026-09-15 — Custom economy parity and local base defence, 1.0.699
 
 Stefan clarified custom-game allies/opponents should share normal economy rules,

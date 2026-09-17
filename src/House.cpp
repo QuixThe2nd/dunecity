@@ -510,14 +510,11 @@ int House::getMaxUnits() const {
 }
 
 int House::getMaxHarvesters() const {
-    int limit = maxHarvesters;
-    for (const auto& player : getPlayerList())
-        if (const auto* bot = dynamic_cast<const QuantBot*>(player.get())) {
-            if (const int alliedLimit = bot->campaignAllyHarvesterLimit(); alliedLimit > 0) limit = alliedLimit;
-            const int ceiling = bot->harvesterCountCeiling();
-            if (ceiling > 0) limit = limit > 0 ? std::min(limit, ceiling) : ceiling;
-        }
-    return limit;
+    // Saved houses may contain the former map-size default. The saved game
+    // options distinguish that default from a limit deliberately selected by
+    // the player. AI economy targets are decisions, not engine restrictions.
+    return currentGame ? std::max(0, currentGame->getGameInitSettings().getGameOptions()
+        .maximumNumberOfHarvestersOverride) : maxHarvesters;
 }
 
 bool House::isUnitLimitReached(int itemID) const {

@@ -91,7 +91,7 @@ GameOptionsWindow::GameOptionsWindow(SettingsClass::GameOptionsClass& initialGam
     vboxLeft.addWidget(VSpacer::create(6));
 
     maxHarvestersOverrideCheckbox.setText(_("Override max. number of harvesters"));
-    maxHarvestersOverrideCheckbox.setTooltipText(_("If checked the maximum number of harvesters per house can be overridden; otherwise it is based on map size from ObjectData.ini."));
+    maxHarvestersOverrideCheckbox.setTooltipText(_("Limit harvesters per house. Unchecked or 0 means unlimited; each AI chooses its own economic target."));
     maxHarvestersOverrideCheckbox.setChecked(gameOptions.maximumNumberOfHarvestersOverride >= 0);
     maxHarvestersOverrideCheckbox.setOnClick([this]() { maxHarvestersOverrideTextBox.setVisible(maxHarvestersOverrideCheckbox.isChecked()); });
     maxHarvestersOverrideHBox.addWidget(&maxHarvestersOverrideCheckbox);

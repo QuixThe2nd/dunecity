@@ -133,16 +133,20 @@ void runStarportEconomyProbe(Game& game) {
         if (offer.itemID == Unit_Carryall) offer.price = 800;
         if (offer.itemID == Unit_Harvester) offer.price = 180;
     }
-    workerPort->updateBuildList();house->addCredits(1620);
+    workerPort->updateBuildList();house->addCredits(2420);
     savedStructures = structureList;
     structureList.clear();structureList.push_back(workerPort);
     try { bot->build(0); } catch (...) { structureList=savedStructures;throw; }
     structureList=savedStructures;
-    workers=0;
-    for (const auto& queued : workerPort->currentProductionQueue) workers += queued.itemID==Unit_Harvester;
-    if (workers!=9 || house->getCredits()!=0 || workerPort->okToOrder())
+    workers=0;transports=0;
+    for (const auto& queued : workerPort->currentProductionQueue) {
+        workers += queued.itemID==Unit_Harvester;
+        transports += queued.itemID==Unit_Carryall;
+    }
+    if (workers!=9 || transports!=1 || house->getCredits()!=0 || workerPort->okToOrder()
+        || workerPort->currentProductionQueue.front().itemID!=Unit_Carryall)
         throw std::runtime_error("Human-allied Brutal failed to fill 15-worker fleet with nine bargain imports");
-    SDL_Log("STARPORT_ALLIED_WORKERS_PASS: six existing + nine imports at 180 = 15; paid 1620");
+    SDL_Log("STARPORT_ALLIED_WORKERS_PASS: first carryall at 800, then six existing + nine workers at 180 = 15; paid 2420");
     // A factory must be able to spend that reserve on a worker, rather than
     // freezing behind its own protection or choosing a military unit/upgrade.
     auto* factory = dynamic_cast<BuilderBase*>(place(Structure_HeavyFactory));
@@ -181,8 +185,72 @@ void runStarportEconomyProbe(Game& game) {
     for(const auto& queued:mixedPort->currentProductionQueue) {
         customWorkers+=queued.itemID==Unit_Harvester;customTanks+=queued.itemID==Unit_Tank;
     }
-    if(customWorkers<1 || customWorkers*180>900 || customTanks<1)
+    if(customWorkers<1 || customTanks<1 || house->getCredits()<0
+        || house->getCredits()!=1800-customWorkers*180-customTanks*100)
         throw std::runtime_error("Custom Starport failed to mix worker and army investment");
     SDL_Log("CUSTOM_MIXED_IMPORTS_PASS: workers=%d tanks=%d, campaign fleet reserve absent",customWorkers,customTanks);
+    // Market prices can refresh before this port's build list does. The real
+    // queue charges the displayed offer: never budget the newer market quote.
+    auto* quotedPort=dynamic_cast<StarPort*>(place(Structure_StarPort));
+    for (auto& offer:market.availableItems) {
+        offer.num=offer.itemID==Unit_Tank ? 20 : 0;
+        offer.price=120;
+    }
+    quotedPort->updateBuildList();
+    for (auto& offer:market.availableItems) offer.price=80;
+    bot->lastCalculatedSpice=0;
+    house->takeCredits(house->getCredits());house->addCredits(350);
+    savedStructures=structureList;structureList.clear();structureList.push_back(quotedPort);
+    try {bot->build(4000);}catch(...){structureList=savedStructures;throw;}
+    structureList=savedStructures;
+    if (quotedPort->currentProductionQueue.size()!=2 || house->getCredits()!=110)
+        throw std::runtime_error("Shared budget did not use Starport's actual quoted price");
+    for (const auto& order:quotedPort->currentProductionQueue)
+        if (order.itemID!=Unit_Tank || order.price!=120)
+            throw std::runtime_error("Starport quote fixture ordered unexpected cargo");
+    SDL_Log("STARPORT_QUOTED_PRICE_PASS: market 80, displayed/charged 120; 350 funds two tanks with 110 remaining");
+    // Reported opening: workers sold out, first transport available for 640,
+    // but optional construction gets the money first. Exercise both the custom
+    // and allied campaign planning paths with real yard/Starport queues.
+    BuilderBase* openingYard=nullptr;
+    for(auto* building:structureList)
+        if(building->getOwner()==house && building->getItemID()==Structure_ConstructionYard)
+            openingYard=static_cast<BuilderBase*>(building);
+    if(!openingYard) throw std::runtime_error("No yard for carryall priority fixture");
+    openingYard->upgrading=false;openingYard->updateBuildList();
+    for(const auto gameType:{GameType::CustomGame,GameType::Campaign}) {
+        game.gameType=gameType;bot->gameMode=QuantBot::GameMode::Custom;
+        auto* transportPort=dynamic_cast<StarPort*>(place(Structure_StarPort));
+        auto* secondPort=dynamic_cast<StarPort*>(place(Structure_StarPort));
+        for(auto& offer:market.availableItems) {
+            offer.num=offer.itemID==Unit_Carryall ? 5 : offer.itemID==Unit_Tank ? 5 : 0;
+            offer.price=offer.itemID==Unit_Carryall ? 640 : 100;
+        }
+        transportPort->updateBuildList();secondPort->updateBuildList();
+        house->producedPower=10000;bot->lastCalculatedSpice=200000;
+        house->takeCredits(house->getCredits());house->addCredits(639);
+        savedStructures=structureList;structureList.clear();
+        structureList.push_back(openingYard);structureList.push_back(transportPort);structureList.push_back(secondPort);
+        try {
+            bot->build(4000);
+            if(transportPort->getProductionQueueSize() || secondPort->getProductionQueueSize()
+                || openingYard->getProductionQueueSize() || house->getCredits()!=639)
+                throw std::runtime_error("Cheap troops or construction consumed first carryall savings");
+            house->addCredits(361);
+            bot->build(4000);
+        }catch(...){structureList=savedStructures;throw;}
+        structureList=savedStructures;
+        int firstTransports=0;
+        for(auto* candidate:{transportPort,secondPort})for(const auto& order:candidate->currentProductionQueue)
+            firstTransports+=order.itemID==Unit_Carryall;
+        if(firstTransports!=1 || transportPort->currentProductionQueue.empty()
+            || transportPort->currentProductionQueue.front().itemID!=Unit_Carryall || transportPort->okToOrder())
+            throw std::runtime_error("First carryall lost priority or was duplicated across Starports");
+        if(openingYard->getCurrentProducedItem()==Structure_RepairYard)
+            throw std::runtime_error("Repair yard spent the first carryall's cash");
+        while(openingYard->getProductionQueueSize())openingYard->doCancelItem(openingYard->getCurrentProducedItem());
+        bot->builderPlaceLocations.clear();bot->reservedStructures.clear();
+        SDL_Log("STARPORT_FIRST_TRANSPORT_PASS: sold-out workers, first carryall before repair yard, two ports, mode=%d",int(gameType));
+    }
     SDL_Log("CAMPAIGN_BALANCE_RESULT: probe=starport outcome=passed");
 }

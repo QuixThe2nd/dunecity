@@ -58,7 +58,7 @@ inline int demandedCivic(uint8_t blocked, int stadiumCommitted, bool stadiumAvai
         return Structure_Airport;
     return NONE_ID;
 }
-// Full workers waiting near occupied bays are observed capacity pressure,
+// Loaded workers returning to occupied bays are observed capacity pressure,
 // not a theoretical harvesting/travel estimate. Let an ordered bay arrive first.
 inline bool unloadingQueueNeedsBay(int waiting, int freeBays, int pendingBays, bool persistent) {
     return persistent && waiting >= std::max(0,freeBays)+2 && pendingBays == 0;
@@ -73,13 +73,6 @@ inline bool considerRefinery(bool processingNeeded, bool wantedIncludedWorker,
     // Military production is temporary. Do not buy a permanent unused bay just
     // because that factory is busy this pass. Recover a collapsed fleet first.
     return processingNeeded || (wantedIncludedWorker && (!factoryCanSupply || workerRecovery));
-}
-// Grow a permanent tax base alongside spice, rather than planting one token R.
-// Count developing/queued lots conservatively so multiple yards do not duplicate
-// the hedge. Aim for tax >= one third of spice (25% of combined income).
-inline bool taxHedgeNeeded(int taxIncome, int developingIncome, int spiceIncome) {
-    return int64_t(std::max(0,taxIncome) + std::max(0,developingIncome)) * 3
-        < std::max(0,spiceIncome);
 }
 inline bool preferRefinery(const Investment& refinery, const Investment& zone,
                            bool refineryUseful, bool residentialHedge, bool processingNeeded = false) {

@@ -35,16 +35,16 @@ void runCampaignPacingProbe(Game& game) {
     game.gameInitSettings.gameOptions.maximumNumberOfHarvestersOverride=-1;
     for (int mission : {17,20,21,22}) {
         game.gameInitSettings.mission=mission;
-        const int expected=mission>=20 ? 20 : 15;
+        const int expected=mission>=20 ? 20 : 100;
         partner->lastCalculatedSpice=200000;partner->update();
-        require(partner->harvesterLimit==expected && partnerHouse->getMaxHarvesters()==expected,
+        require(partner->harvesterLimit==expected && partnerHouse->getMaxHarvesters()==0,
             "Friendly Brutal default did not distinguish campaign levels seven and eight/nine");
     }
     partner->difficulty=QuantBot::Difficulty::Hard;partner->update();
-    require(partnerHouse->getMaxHarvesters()==15 && partner->harvesterLimit==15,"Hard inherited Brutal's larger fleet");
+    require(partnerHouse->getMaxHarvesters()==0 && partner->harvesterLimit==100,"Hard retained the old default engine ceiling");
     partner->difficulty=QuantBot::Difficulty::Brutal;
     partner->lastCalculatedSpice=18000;partner->update();
-    require(partner->harvesterLimit==9 && partnerHouse->getMaxHarvesters()==20,"Maximum20 became a mandatory worker target");
+    require(partner->harvesterLimit==9 && partnerHouse->getMaxHarvesters()==0,"Maximum20 became a mandatory worker target");
     game.gameInitSettings.gameOptions.maximumNumberOfHarvestersOverride=3;partner->update();
     require(partner->harvesterLimit==3 && partner->campaignAllyHarvesterLimit()==0,"Explicit worker override ignored");
     game.gameInitSettings.mission=savedMission;partnerHouse->maxHarvesters=savedWorkerLimit;
@@ -59,7 +59,7 @@ void runCampaignPacingProbe(Game& game) {
     require(partner->attackTimer==MILLI2CYCLES(60000),"Campaign ally attack interval is not60 seconds");
     partner->update();
     require(partner->attackTimer==MILLI2CYCLES(60000),"Ally lost its break between attacks");
-    SDL_Log("ALLIED_CAMPAIGN_LIMITS_PASS: levels8/9 Brutal20, Hard15, smaller maps unchanged, override3, spice target9, attack interval60s");
+    SDL_Log("ALLIED_CAMPAIGN_LIMITS_PASS: no default engine cap, level8/9 Brutal house target20, override3, spice target9, attack interval60s");
     auto* allyHouse=const_cast<House*>(bot->getHouse());
     const int enemyTeam=allyHouse->teamID;
     allyHouse->teamID=partner->getHouse()->getTeamID();
