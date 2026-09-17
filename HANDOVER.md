@@ -1,9 +1,23 @@
-## 2026-09-18 — Release 1.0.707 preparation
+## 2026-09-18 — Release 1.0.707 published
 
 Stefan authorized rebuilding and deploying the commercial-demand fix remotely,
 including the website. Version 1.0.707 contains the raw Micropolis commercial
-projection change and regression tests below. Public publication and local
-build verification are pending; record verified destinations after completion.
+projection change and regression tests below. PR #52 merged as `52fe7aca3df5818d7642f2786c2dbd5f96d55981`, tagged
+`v1.0.707`. All PR checks passed (run 35236887818). Release run 35244762737
+passed on attempt 2: first publication failed with a duplicate RPM upload;
+rerunning only failed jobs reused all successful builds and published six assets.
+SourceForge run 35256695885 verified uploaded checksums, all three OS defaults,
+and source branch/tag; HTTPS ls-remote independently matched the release commit.
+Browser run 35256695872 published website commit `6a6165c`; all seven live browser
+artifact SHA256 values and manifest source/version were verified. The browser
+reached the main menu showing v1.0.707. Website release copy is `d9f0320`, deployed
+successfully by 35267823112; both live pages show six 707 links and the new text.
+Local `build-707/bin/dunecity.app`: clean build, 7/7 CTest groups, dependency audits,
+version and signature verification passed. Binary SHA256:
+`ebdb406839b39ced66213c2615a6ed4cf98b145d152b773867b5b4d7ce444c23`.
+No user game was restarted and no /Applications installation was created.
+Verification files: `/tmp/dunecity-707-{ctest,sourceforge}.log`,
+`/tmp/dunecity-707-live-artifacts.json`.
 
 ## 2026-09-18 — Commercial demand before the first shop
 
