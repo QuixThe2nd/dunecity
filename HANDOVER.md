@@ -1,3 +1,10 @@
+## 2026-09-18 — Release 1.0.707 preparation
+
+Stefan authorized rebuilding and deploying the commercial-demand fix remotely,
+including the website. Version 1.0.707 contains the raw Micropolis commercial
+projection change and regression tests below. Public publication and local
+build verification are pending; record verified destinations after completion.
+
 ## 2026-09-18 — Commercial demand before the first shop
 
 Running 1.0.706 session `1789655267563429-0` (seed 2098043535) logged
