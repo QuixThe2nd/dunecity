@@ -888,10 +888,9 @@ inline ValveOutputs computeDemandValves(const ValveInputs& in) {
     if (in.comPop > 0) {
         comRatio = projectedComPop / in.comPop;
     } else {
-        // Neutral until the first commercial population exists. Feeding the
-        // raw sub-1 projection into the ratio delta creates a CATCH-22 where
-        // the valve floors before a level-0 zone can grow.
-        comRatio = 1.0;
+        // Micropolis setValves uses the raw projected population when no
+        // commercial population exists, including projections below one.
+        comRatio = projectedComPop;
     }
     if (in.indPop > 0) {
         indRatio = projectedIndPop / in.indPop;
