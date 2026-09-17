@@ -888,11 +888,9 @@ inline ValveOutputs computeDemandValves(const ValveInputs& in) {
     if (in.comPop > 0) {
         comRatio = projectedComPop / in.comPop;
     } else {
-        // Compare the market with the first commercial resident when no
-        // shops exist yet. A growing market must create demand before that
-        // first shop opens. Keep the neutral floor for sub-1 projections so
-        // an empty city cannot accumulate a startup demand deficit.
-        comRatio = std::max(1.0, projectedComPop);
+        // Micropolis setValves uses the raw projected population when no
+        // commercial population exists, including projections below one.
+        comRatio = projectedComPop;
     }
     if (in.indPop > 0) {
         indRatio = projectedIndPop / in.indPop;

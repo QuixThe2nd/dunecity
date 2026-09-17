@@ -4,13 +4,18 @@ Running 1.0.706 session `1789655267563429-0` (seed 2098043535) logged
 Harkonnen/house 0 commercial demand pinned to zero while commercial population
 was zero, including an opening with ten industrial residents. The empty-C
 branch forced its growth ratio to 1 regardless of the projected market.
-Use `max(1.0, projectedComPop)` for that branch: an emerging market can raise
-C demand before the first shop, while sub-unit markets retain the existing
-neutral floor. Existing population ratios, tax effects and civic caps remain.
+The initial fix used `max(1.0, projectedComPop)`. Following source comparison
+and Stefan's request for Micropolis behaviour, use raw `projectedComPop` as in
+`../simcity/MicropolisCore/MicropolisEngine/src/simulate.cpp:648-652`. Markets
+below one now reduce C demand, and growing markets raise it before the first
+shop. Other population formulas, industrial safeguards, tax effects and civic
+caps are unchanged; this restores the commercial zero-population branch, not
+whole-simulation parity.
 This is shared simulation logic, not a Harkonnen-specific modifier.
 
 Regression tests cover the captured industrial opening, residential-only market,
-accumulation, empty-map neutrality and high-tax suppression. The complete
+accumulation, negative sub-unit projections, valve/ratio limits and high-tax
+suppression. Numeric fixtures verify -275/-550 and +210/+600 market deltas. The complete
 `dunelegacy_tests` CTest group and pre/post dependency checks passed in build-706.
 Only the test executable was rebuilt; the running game binary was not changed
 or restarted. Source fix is local; no release bump, push or deployment.

@@ -514,14 +514,13 @@ TEST_CASE("computeDemandValves: empty city produces positive R demand",
     CHECK(vo.resValve >= 0);
 }
 
-TEST_CASE("computeDemandValves: empty C and I demand cannot drain into a bootstrap deadlock",
+TEST_CASE("computeDemandValves: empty industrial demand retains its startup safeguard",
           "[city-effects][valves][regression]") {
     ValveInputs vi;
     vi.taxRate = 7;
 
     for (int tick = 0; tick < 8; ++tick) {
         const auto vo = computeDemandValves(vi);
-        CHECK(vo.comValve >= 0);
         CHECK(vo.indValve >= 0);
         vi.resValve = vo.resValve;
         vi.comValve = vo.comValve;
@@ -532,9 +531,9 @@ TEST_CASE("computeDemandValves: empty C and I demand cannot drain into a bootstr
 TEST_CASE("Commercial demand starts before the first shop opens",
           "[city-effects][valves][regression]") {
     ValveInputs in;
-    // An empty map stays neutral, but its first residential block creates
-    // a market even while commercial population remains zero.
-    CHECK(computeDemandValves(in).comValve == 0);
+    // An undersized market reduces demand, as in Micropolis; commercial
+    // population need not exist for either negative or positive demand.
+    CHECK(computeDemandValves(in).comValve < 0);
     // Harkonnen's captured opening had ten industrial residents and no
     // commercial residents, yet C remained zero on every scan.
     in.indPop = in.prevIndPop = 10;
@@ -554,6 +553,26 @@ TEST_CASE("Commercial demand starts before the first shop opens",
     // The normal tax penalty still applies to the startup market.
     in.taxRate = 20;
     CHECK(computeDemandValves(in).comValve <= 0);
+}
+
+TEST_CASE("Empty commercial population uses the raw Micropolis market projection",
+          "[city-effects][valves][regression]") {
+    ValveInputs in;
+    // Two worker-equivalents / 3.7 market divisor, with default labour 1:
+    // (2 / 3.7 - 1) * 600 truncates to -275 at neutral 7% tax.
+    in.resPop = in.prevResPop = 16;
+    CHECK(computeDemandValves(in).comValve == -275);
+    in.comValve = -275;
+    CHECK(computeDemandValves(in).comValve == -550);
+    in.comValve = -1400;
+    CHECK(computeDemandValves(in).comValve == -kComValveRange);
+
+    // The same raw projection recovers demand as the market grows.
+    in.resPop = in.prevResPop = 40;
+    in.comValve = 0;
+    CHECK(computeDemandValves(in).comValve == 210);
+    in.resPop = in.prevResPop = 80;
+    CHECK(computeDemandValves(in).comValve == 600); // ratio capped at 2
 }
 
 TEST_CASE("computeDemandValves: jobs-only loaded history does not collapse labor demand",
