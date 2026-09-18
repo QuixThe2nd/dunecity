@@ -28,7 +28,9 @@ real campaign controls probe covering default/left move, left attack, drag/Shift
 friendly selection, right cancel, shifted attack, path renderer state, skip
 cancel/confirm/replay guard. Native Cocoa accepted all 30 cursor action/scale
 combinations and visibility changes. Browser SDL emits a 33x33 PNG CSS cursor
-with explicit hotspot at default scale. No Windows/Linux hardware run is claimed.
+with explicit hotspot at default scale. Browser playtest confirmed distinct
+force-move and attack cursor images (16,16 hotspots), followed by the normal
+menu cursor (6,6) on opening pause. No Windows/Linux hardware run is claimed.
 Evidence: `/tmp/dunecity-711-tests.log`, `/tmp/dunecity-menus-711`,
 `/tmp/dunecity-controls-711d`, `/tmp/dunecity-711-web-build4.log`.
 
@@ -42,8 +44,10 @@ while match telemetry was active. Cannot establish a current fix; keep open.
 fire services explicitly excluded by Stefan. No related implementation added.
 
 `build` points to `build-711`; the user's running 708 process was not restarted.
-This is local work only: no push, PR or deployment. GitHub closure comments must
-say implemented locally, pending release, and must not imply a deployed fix.
+This is local work only: no push, PR or deployment. Closed issues #1, #2, #5,
+#29, #43, #50, #54, #55 with implementation/validation comments. #1/#2 were
+already implemented; new-fix comments explicitly say local and pending release.
+Unresolved/partial #3, #12, #13, #14 and #16 remain open.
 
 ## 2026-09-19 — Keep reactors behind the fighting, local 1.0.710
 
