@@ -3,6 +3,28 @@
 Reviewed against DuneCity **1.0.713**, source commit **386ca05**. Read-only review:
 no game-code changes, ticket comments/closures, pushes, releases or deployments.
 
+## Implementation follow-up — local 1.0.714
+
+The original inventory below is the 713 assessment. Bugs 105, 86, 113 and 88,
+and features 62 and 45, are now implemented locally. Native and browser builds
+pass; all seven CTest suites and real-engine regressions pass (Vanilla and
+DuneCity). See HANDOVER.md for evidence and behavior. New shortcuts: S Stop
+(Shift+S with WASD), T matching types on screen, Ctrl+T matching types on the
+map, Shift+T timer. Hover intent and a flashing target outline address feature 45.
+
+Two corrections to the assessment: T previously toggled the timer, rather than
+being a no-op; the original palace diagnostic also used an unavailable campaign
+build item, whose prerequisite refresh can independently remove production.
+The corrected regression makes Palace available, tests both option values,
+and verifies the cancellation policy. The unconditional cancellation in 713's
+House::placeStructure remains direct source evidence of bug 113.
+
+No ticket was closed merely for age. Comments/closures for the six implemented
+tickets remain pending because computer access is blocked by the locked Mac.
+The build is local and unreleased; browser interaction/download validation is
+pending too. Accessibility colors, attack-move and order queuing remain separate
+work, as do historical reports requiring reproduction.
+
 ## Coverage
 
 SourceForge REST inventory: 116 bug tickets, 65 feature requests and 4 support
@@ -34,7 +56,7 @@ establish that every older Dune Legacy binary contains it.
    `House::placeStructure` unconditionally cancels other palace queues. Apply the
    one-palace option consistently; keep normal multi-yard construction independent.
 4. **Bug 88 and feature 62 — missing shortcuts.** S did not stop a selected
-   hunting tank in the real handler. T is a no-op. Add Stop and select-same-type
+   hunting tank in the real handler. T toggles the timer (corrected after review). Add Stop and select-same-type
    controls with clear modifiers when WASD camera is enabled.
 
 Useful subsequent UI/gameplay work: contextual hover cursors (feature 45),

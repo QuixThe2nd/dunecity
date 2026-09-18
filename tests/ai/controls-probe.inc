@@ -6,7 +6,7 @@
 #include <GUI/ObjectInterfaces/UnitInterface.h>
 #include <GUI/ObjectInterfaces/MultiUnitInterface.h>
 void runControlsProbe(Game& game) {
-    auto require=[](bool ok,const char* why) { if(!ok)throw std::runtime_error(why); };
+    auto require=[](bool ok,const char* why) { if(!ok){SDL_Log("CONTROLS_FAIL: %s",why);throw std::runtime_error(why);} };
     auto commands=[&](CMDTYPE type) {
         int count=0;
         for(const auto& slot:game.cmdManager.timeslot)for(const auto& command:slot)
@@ -25,7 +25,7 @@ void runControlsProbe(Game& game) {
     auto* unit=pLocalHouse->createUnit(Unit_Tank);unit->deploy(origin);
     unit->setVisible(pLocalHouse->getTeamID(),true);
     for(int dy=0;dy<8;++dy)for(int dx=0;dx<8;++dx)
-        currentGameMap->getTile(origin.x+dx,origin.y+dy)->setExplored(pLocalHouse->getTeamID(),true);
+        currentGameMap->getTile(origin.x+dx,origin.y+dy)->setExplored(pLocalHouse->getHouseID(),game.getGameCycleCount());
     screenborder->setNewScreenCenter(Coord((origin.x+2)*TILESIZE,(origin.y+2)*TILESIZE));
     auto select=[&]() { game.unselectAll(game.selectedList); game.selectedList={unit->getObjectID()};unit->setSelected(true); };
     auto point=[&](Coord tile) { return Coord(screenborder->world2screenX(tile.x*TILESIZE+TILESIZE/2),screenborder->world2screenY(tile.y*TILESIZE+TILESIZE/2)); };

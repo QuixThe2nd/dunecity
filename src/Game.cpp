@@ -55,6 +55,7 @@ std::mutex Game::performanceLogMutex;
 #include <misc/SaveCompat.h>
 #include <misc/TouchInput.h>
 #include <CursorManager.h>
+#include <misc/CursorAppearance.h>
 
 #include <players/HumanPlayer.h>
 #include <players/QuantBot.h>
@@ -2289,7 +2290,14 @@ void Game::drawScreen()
 
 ///////////draw action indicator
 
-    if((indicatorFrame != NONE_ID) && (screenborder->isInsideScreen(indicatorPosition, Coord(TILESIZE,TILESIZE)) == true)) {
+    auto* actionTarget=objectManager.getObject(actionIndicatorObject);
+    const auto* actionTile=actionTarget && currentGameMap->tileExists(actionTarget->getLocation())
+        ? currentGameMap->getTile(actionTarget->getLocation()) : nullptr;
+    const bool showTarget=actionTarget && actionTile && !SDL_TICKS_PASSED(SDL_GetTicks(),actionIndicatorUntil)
+        && actionTarget->isVisible(pLocalHouse->getTeamID()) && actionTile->isExploredByTeam(pLocalHouse->getTeamID())
+        && !actionTile->isFoggedByTeam(pLocalHouse->getTeamID());
+    if(showTarget && (SDL_GetTicks()/100)%2==0) actionTarget->drawSelectionBox();
+    if(!showTarget && (indicatorFrame != NONE_ID) && (screenborder->isInsideScreen(indicatorPosition, Coord(TILESIZE,TILESIZE)) == true)) {
         SDL_Texture* pUIIndicator = pGFXManager->getUIGraphic(UI_Indicator);
         SDL_Rect source = calcSpriteSourceRect(pUIIndicator, indicatorFrame, 3);
         SDL_Rect drawLocation = calcSpriteDrawingRect(  pUIIndicator,
@@ -3229,7 +3237,7 @@ void Game::renderFrame() {
     SDL_RenderCopy(renderer, screenTexture, nullptr, nullptr);
     // Menus use the arrow without discarding the pending gameplay command.
     const bool modalOpen = pInGameMenu || pInGameMentat || pWaitingForOtherPlayers;
-    presentWithCursor(modalOpen ? CursorMode_Normal : currentCursorMode);
+    presentWithCursor(modalOpen ? CursorMode_Normal : currentCursorMode, !modalOpen);
     
     const Uint64 renderEnd = SDL_GetPerformanceCounter();
     const double renderMs = getElapsedMs(renderStart, renderEnd);
@@ -4883,12 +4891,15 @@ void Game::handleKeyInput(SDL_KeyboardEvent& keyboardEvent) {
     switch(keyboardEvent.keysym.sym) {
 
         case SDLK_0: {
-            //if ctrl and 0 remove selected units from all groups
+            // Removing selection also changes selectedList: traverse a snapshot.
+            const auto previousSelection = selectedList;
             if(SDL_GetModState() & KMOD_CTRL) {
-                for(Uint32 objectID : selectedList) {
+                for(Uint32 objectID : previousSelection) {
                     ObjectBase* pObject = objectManager.getObject(objectID);
-                    pObject->setSelected(false);
-                    pObject->removeFromSelectionLists();
+                    if(pObject) {
+                        pObject->setSelected(false);
+                        selectedByOtherPlayerList.erase(objectID);
+                    }
                     for(int i=0; i < NUMSELECTEDLISTS; i++) {
                         pLocalPlayer->getGroupList(i).erase(objectID);
                     }
@@ -4897,8 +4908,8 @@ void Game::handleKeyInput(SDL_KeyboardEvent& keyboardEvent) {
                 currentGame->selectionChanged();
                 currentCursorMode = CursorMode_Normal;
             } else {
-                for(Uint32 objectID : selectedList) {
-                    objectManager.getObject(objectID)->setSelected(false);
+                for(Uint32 objectID : previousSelection) {
+                    if(auto* object = objectManager.getObject(objectID)) object->setSelected(false);
                 }
                 selectedList.clear();
                 currentGame->selectionChanged();
@@ -5035,8 +5046,44 @@ void Game::handleKeyInput(SDL_KeyboardEvent& keyboardEvent) {
             setCursorMode(CursorMode_Attack);
         } break;
 
+        case SDLK_s: {
+            if(keyboardEvent.keysym.mod & (KMOD_CTRL|KMOD_ALT|KMOD_GUI)) break;
+            if(settings.general.wasdCamera && !(keyboardEvent.keysym.mod & KMOD_SHIFT)) break;
+            UnitBase* responder=nullptr;
+            for(Uint32 id:selectedList) {
+                auto* unit=dynamic_cast<UnitBase*>(objectManager.getObject(id));
+                if(unit && unit->getOwner()==pLocalHouse && unit->isRespondable()) {
+                    unit->handleSetAttackModeClick(STOP); responder=unit;
+                }
+            }
+            if(responder) responder->playConfirmSound();
+        } break;
+
         case SDLK_t: {
-            bShowTime = !bShowTime;
+            if(keyboardEvent.keysym.mod & (KMOD_ALT|KMOD_GUI)) break;
+            if(keyboardEvent.keysym.mod & KMOD_SHIFT) {
+                bShowTime = !bShowTime;
+                break;
+            }
+            std::set<Uint32> types;
+            for(Uint32 id:selectedList) {
+                const auto* unit=dynamic_cast<const UnitBase*>(objectManager.getObject(id));
+                if(unit && unit->getOwner()==pLocalHouse) types.insert(unit->getItemID());
+            }
+            if(types.empty()) break;
+            const bool wholeMap=(keyboardEvent.keysym.mod & KMOD_CTRL)!=0;
+            std::set<Uint32> matching;
+            for(const auto* unit:unitList) {
+                if(unit->getOwner()==pLocalHouse && unit->isRespondable() && unit->isActive()
+                    && types.count(unit->getItemID())
+                    && (wholeMap || screenborder->isTileInsideScreen(unit->getLocation())))
+                    matching.insert(unit->getObjectID());
+            }
+            unselectAll(selectedList);
+            selectedList=std::move(matching);
+            selectAll(selectedList);
+            selectionChanged();
+            currentCursorMode=CursorMode_Normal;
         } break;
 
         case SDLK_ESCAPE: {
@@ -5576,6 +5623,31 @@ void Game::handleCityRoadPlacementClick(int xPos, int yPos) {
     soundPlayer->playSound(Sound_PlaceStructure);
 }
 
+CursorAppearance::Action Game::getHoverCursorAction() const {
+    using Action=CursorAppearance::Action;
+    if(!pLocalHouse || !screenborder || !pInterface || pInterface->hasChildWindow()
+        || chatMode || selectionMode || !screenborder->isScreenCoordInsideMap(drawnMouseX,drawnMouseY))
+        return Action::Pointer;
+    const int x=screenborder->screen2MapX(drawnMouseX),y=screenborder->screen2MapY(drawnMouseY);
+    if(!currentGameMap->tileExists(x,y)) return Action::Pointer;
+    Action action=Action::Pointer;
+    for(Uint32 id:selectedList) {
+        const auto* unit=dynamic_cast<const UnitBase*>(objectManager.getObject(id));
+        if(!unit || unit->getOwner()!=pLocalHouse || !unit->isRespondable()) continue;
+        const auto* target=unit->getActionClickTarget(x,y);
+        if(settings.general.leftClickOrders && target && target->getOwner()==pLocalHouse) continue;
+        if(target && target->getOwner()->getTeamID()!=pLocalHouse->getTeamID()) {
+            if(unit->canAttack(target)) return Action::Attack;
+        } else {
+            const auto* structure=dynamic_cast<const StructureBase*>(target);
+            if(isHarvesterLikeUnit(unit->getItemID()) && structure && structure->getOwner()==pLocalHouse
+                && structure->acceptsHarvesterDropoff()) return Action::Return;
+            action=Action::Move;
+        }
+    }
+    return action;
+}
+
 bool Game::handleSelectedObjectsActionClick(int xPos, int yPos) {
     //let unit handle right click on map or target
     ObjectBase  *pResponder = nullptr;
@@ -5590,7 +5662,14 @@ bool Game::handleSelectedObjectsActionClick(int xPos, int yPos) {
         }
     }
 
+    actionIndicatorObject=NONE_ID;
     if(pResponder) {
+        if(const auto* unit=dynamic_cast<const UnitBase*>(pResponder)) {
+            if(const auto* target=unit->getActionClickTarget(xPos,yPos)) {
+                actionIndicatorObject=target->getObjectID();
+                actionIndicatorUntil=SDL_GetTicks()+600;
+            }
+        }
         pResponder->playConfirmSound();
         return true;
     } else {
@@ -5898,16 +5977,13 @@ void Game::drawCityPlacementHint() {
 
 
 void Game::takeScreenshot() const {
-    std::string screenshotFilename;
-    int i = 1;
-    do {
-        screenshotFilename = "Screenshot" + std::to_string(i) + ".png";
-        i++;
-    } while(existsFile(screenshotFilename) == true);
-
-    sdl2::surface_ptr pCurrentScreen = renderReadSurface(renderer);
-    SavePNG(pCurrentScreen.get(), screenshotFilename.c_str());
-    currentGame->addToNewsTicker(_("Screenshot saved") + ": '" + screenshotFilename + "'");
+    std::string filename;
+    if(saveScreenshot(renderer,filename)) {
+        currentGame->addToNewsTicker(_("Screenshot saved") + ": '" + filename + "'");
+    } else {
+        SDL_Log("Screenshot failed: %s",SDL_GetError());
+        currentGame->addToNewsTicker(_("Could not save screenshot"));
+    }
 }
 
 void Game::triggerFireDisaster() {

@@ -348,6 +348,7 @@ OptionsMenu::OptionsMenu() : MenuBase()
         pages[3].addWidget(VSpacer::create(6)); pages[3].addWidget(&row,32);
     };
     addControl(cameraKeysHBox,wasdCameraCheckbox,"WASD camera (Shift+A attack, Shift+D drop)",settings.general.wasdCamera);
+    wasdCameraCheckbox.setTooltipText(_("With WASD: Shift+S stops selected units. T selects matching units on screen; Ctrl+T selects across the map; Shift+T toggles time."));
     addControl(mouseOrdersHBox,leftClickOrdersCheckbox,"Left-click orders (drag to select, right-click cancels)",settings.general.leftClickOrders);
     addControl(movementPathsHBox,movementPathsCheckbox,"Show movement paths for selected units",settings.general.showMovementPaths);
 

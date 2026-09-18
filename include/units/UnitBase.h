@@ -69,6 +69,8 @@ public:
         \param  yPos    the y position on the map
     */
     void handleActionClick(int xPos, int yPos) override;
+    // Shared by contextual cursor/feedback and the actual right-click command.
+    ObjectBase* getActionClickTarget(int xPos, int yPos) const;
 
     /**
         This method is called when an unit is ordered to attack

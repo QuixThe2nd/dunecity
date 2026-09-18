@@ -75,9 +75,12 @@ class MetaServerClient;
 #define GAME_CUSTOM_GAME_STATS  5
 
 
+namespace CursorAppearance { enum class Action; }
+
 class Game
 {
 public:
+    CursorAppearance::Action getHoverCursorAction() const;
 
     /**
         Default constructor. Call initGame() or initReplay() afterwards.
@@ -842,6 +845,8 @@ private:
 
     int         whatNextParam = GAME_NOTHING;
 
+    Uint32      actionIndicatorObject = NONE_ID;
+    Uint32      actionIndicatorUntil = 0;
     Uint32      indicatorFrame = NONE_ID;
     int         indicatorTime = 5;
     int         indicatorTimer = 0;

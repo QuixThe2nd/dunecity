@@ -18,6 +18,7 @@
 #ifndef DRAW_UTIL_H
 #define DRAW_UTIL_H
 
+#include <string>
 #include <Colors.h>
 #include <misc/SDL2pp.h>
 
@@ -81,6 +82,8 @@ inline void renderFillRect(SDL_Renderer* renderer, int x1, int y1, int x2, int y
 }
 
 sdl2::surface_ptr renderReadSurface(SDL_Renderer* renderer);
+// Save in the writable user profile; filename is populated only on success.
+bool saveScreenshot(SDL_Renderer* renderer, std::string& filename);
 
 void replaceColor(SDL_Surface *surface, Uint32 oldColor, Uint32 newColor);
 void mapColor(SDL_Surface *surface, Uint8 colorMap[256]);

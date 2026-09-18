@@ -160,7 +160,7 @@ protected:
 
         stopButton.setText(_("Stop"));
         stopButton.setTextColor(color);
-        stopButton.setTooltipText(_("Unit will not move, nor attack"));
+        stopButton.setTooltipText(settings.general.wasdCamera ? _("Stop (Shift+S): unit will not move or attack") : _("Stop (S): unit will not move or attack"));
         stopButton.setToggleButton(true);
         stopButton.setOnClick(std::bind(&MultiUnitInterface::onStop, this));
         buttonVBox.addWidget(&stopButton, 26);

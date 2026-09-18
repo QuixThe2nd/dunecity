@@ -36,6 +36,7 @@ parser.add_argument('--enemy-ai', choices=('quantbot','ai-player'), default='qua
 parser.add_argument('--enemy-difficulty', choices=('easy','medium','hard','brutal'), default='easy')
 parser.add_argument('--shared-spending-probe', action='store_true')
 parser.add_argument('--controls-probe', action='store_true')
+parser.add_argument('--sourceforge-probe', action='store_true')
 parser.add_argument('--harvester-safety-probe', action='store_true')
 parser.add_argument('--city-placement-probe', action='store_true')
 parser.add_argument('--opening-economy-probe', action='store_true')
@@ -160,8 +161,9 @@ if args.custom_map:
 (out/'setup.json').write_text(json.dumps({**vars(args), 'resolved_roster': roster}, default=str, indent=2)+'\n')
 if args.shared_spending_probe: env['BALANCE_SHARED_SPENDING_PROBE'] = '1'
 if args.harvester_safety_probe: env['BALANCE_HARVESTER_SAFETY_PROBE'] = '1'
-if args.controls_probe:
-    env['BALANCE_CONTROLS_PROBE'] = '1'
+if args.sourceforge_probe: env['BALANCE_SOURCEFORGE_PROBE'] = '1'
+if args.controls_probe or args.sourceforge_probe:
+    if args.controls_probe: env['BALANCE_CONTROLS_PROBE'] = '1'
     profile = out/'profile'
     profile.mkdir(exist_ok=True)
     (profile/'Dune City.ini').write_text('[Video]\nPhysical Width = 640\nPhysical Height = 480\nWidth = 640\nHeight = 480\nInterface Height = 480\nFullscreen = false\n[General]\nPlay Intro = false\n')

@@ -1093,8 +1093,8 @@ StructureBase* House::placeStructure(Uint32 builderID, int itemID, int xPos, int
             if(pBuilder != nullptr) {
                 pBuilder->unSetWaitingToPlace();
 
-                if(itemID == Structure_Palace) {
-                    // cancel all other palaces
+                if(itemID == Structure_Palace && currentGame->getGameInitSettings().getGameOptions().onlyOnePalace) {
+                    // Enforce the optional one-palace limit across all yards.
                     for(StructureBase* pStructure : structureList) {
                         if(pStructure->getOwner() == this && pStructure->getItemID() == Structure_ConstructionYard) {
                             ConstructionYard* pConstructionYard = static_cast<ConstructionYard*>(pStructure);

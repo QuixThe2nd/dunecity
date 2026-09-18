@@ -942,12 +942,18 @@ void UnitBase::idleAction() {
     }
 }
 
+ObjectBase* UnitBase::getActionClickTarget(int xPos, int yPos) const {
+    const auto* tile=currentGameMap->tileExists(xPos,yPos) ? currentGameMap->getTile(xPos,yPos) : nullptr;
+    if(!tile || !tile->isExploredByTeam(owner->getTeamID()) || tile->isFoggedByTeam(owner->getTeamID())) return nullptr;
+    auto* object=tile->getObject();
+    return object && object->isVisible(owner->getTeamID()) ? object : nullptr;
+}
+
 void UnitBase::handleActionClick(int xPos, int yPos) {
     if(respondable) {
         if(currentGameMap->tileExists(xPos, yPos)) {
-            if(currentGameMap->getTile(xPos,yPos)->hasAnObject()) {
-                // attack unit/structure or move to structure
-                ObjectBase* tempTarget = currentGameMap->getTile(xPos,yPos)->getObject();
+            if(ObjectBase* tempTarget = getActionClickTarget(xPos,yPos)) {
+                // Attack/follow only a visible target, as shown by the cursor.
 
                 if(tempTarget->getOwner()->getTeamID() != getOwner()->getTeamID()) {
                     // attack

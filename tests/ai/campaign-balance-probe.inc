@@ -14,6 +14,7 @@
 #include "starport-economy-probe.inc"
 #include "city-placement-probe.inc"
 #include "controls-probe.inc"
+#include "sourceforge-regressions-probe.inc"
 #include "harvester-safety-probe.inc"
 #include "shared-spending-probe.inc"
 #include "opening-economy-probe.inc"
@@ -97,6 +98,10 @@ int runCampaignBalanceProbe() {
     game->initializeGameLoop();
     if(std::getenv("BALANCE_HARVESTER_SAFETY_PROBE")) {
         runHarvesterSafetyProbe(*game);game.reset();currentGame=nullptr;pLocalPlayer=nullptr;
+        return MENU_QUIT_DEFAULT;
+    }
+    if(std::getenv("BALANCE_SOURCEFORGE_PROBE")) {
+        runSourceforgeRegressionsProbe(*game);game.reset();currentGame=nullptr;pLocalPlayer=nullptr;
         return MENU_QUIT_DEFAULT;
     }
     if(std::getenv("BALANCE_CONTROLS_PROBE")) {

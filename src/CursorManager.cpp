@@ -66,10 +66,11 @@ void applyCursorVisibilitySetting() {
     SDL_ShowCursor(shouldShowCursor() ? SDL_ENABLE : SDL_DISABLE);
 }
 
-void presentWithCursor(int mode) {
+void presentWithCursor(int mode, bool contextual) {
     if(pGFXManager && shouldShowCursor()) {
         using Action = CursorAppearance::Action;
-        Action action = Action::Pointer;
+        Action action = contextual && mode==Game::CursorMode_Normal && currentGame
+            ? currentGame->getHoverCursorAction() : Action::Pointer;
         switch(mode) {
             case Game::CursorMode_Move: action = Action::Move; break;
             case Game::CursorMode_Attack: action = Action::Attack; break;

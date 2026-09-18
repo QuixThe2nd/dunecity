@@ -47,6 +47,6 @@ void releaseCursorResources();
 void updateCursorVisibilityForInput(const SDL_Event& event);
 
 /** Present the frame and update the single SDL cursor on desktop and web. */
-void presentWithCursor(int mode = 0);
+void presentWithCursor(int mode = 0, bool contextual = false);
 
 #endif // CURSORMANAGER_H

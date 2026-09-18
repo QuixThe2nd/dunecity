@@ -1,3 +1,41 @@
+## 2026-09-19 — SourceForge fixes, local 1.0.714
+
+Implemented bugs 105 (Ctrl+0), 86 (screenshots), 113 (palace queue cancellation),
+88 (Stop shortcut), and features 62 (matching units) and 45 (hover intent/feedback).
+Ctrl+0 now clears selection and group membership with a single sidebar refresh;
+null/stale IDs are tolerated. Palace placement cancels other yards' palace orders
+only when Only One Palace is enabled. Screenshot allocation follows physical
+renderer/texture dimensions; writing uses the writable user screenshots folder,
+checks failures, syncs browser storage and offers a browser PNG download.
+
+S stops owned selected units through normal multiplayer commands; with WASD,
+Shift+S stops while S remains camera movement. T selects matching owned active
+unit types on screen, Ctrl+T across the map. Shift+T preserves the old timer
+shortcut. The earlier review incorrectly called T a no-op. Contextual cursors
+show move, attack or harvester return intent; menus, selection drags and friendly
+left-click selection retain the arrow. Normal object orders flash their target
+outline. Both hover and normal orders use explored, unfogged, visible targets.
+Local feedback adds no network/save state.
+
+Validation: native Release and Emscripten 4.0.14 builds passed, all seven CTest
+suites passed, dependency and version checks passed. Real-engine SourceForge
+probe passed in Vanilla and DuneCity, including both palace-limit settings,
+stale IDs, group clearing, Stop/WASD, on/off-screen/mixed-type selection, timer,
+visible/hidden target intent, feedback and actual screenshot writes at physical
+and texture sizes. Evidence: `/tmp/dunecity-sourceforge-714c` and
+`/tmp/dunecity-sourceforge-714-city`. Existing controls/sidebar probe passed at
+`/tmp/dunecity-controls-714b`. Two diagnostic fixture fixes were necessary:
+Palace must meet campaign prerequisites to survive a build-list refresh, and
+Tile::setExplored takes a house ID, not a team ID. The stale-ID test exposed an
+extra Ctrl+0 sidebar refresh crash, fixed before the passing runs.
+
+`build` points to `build-714`. Local browser preview: http://127.0.0.1:8714/dunecity.html.
+No existing match was replaced. SourceForge comments/closures are authorized but
+not yet submitted: computer use reports the Mac locked. Browser interaction and
+PNG-download checks likewise remain pending; a successful web build is not a
+browser runtime test. No Windows/Linux runtime test, push, PR or release performed.
+The SourceForge review document records the six follow-ups and remaining scope.
+
 ## 2026-09-19 — SourceForge outstanding issue review (no game change)
 
 Reviewed the public REST inventory: 185 total bug/feature/support tickets, 89
@@ -7,7 +45,7 @@ Three defects remain demonstrable: bug 105 Ctrl+0 selection iterator invalidatio
 (SIGSEGV), bug 86 screenshot logical/output buffer mismatch (guarded SDL read
 wrote 678,656 bytes beyond nominal logical allocation), and bug 113 unconditional
 cancellation of another yard's palace queue with onlyOnePalace=false.
-Bug 88 Stop shortcut is absent; feature 62 T select-same-type remains a no-op.
+Bug 88 Stop shortcut is absent; feature 62 select-same-type is absent (correction: T previously toggled the timer).
 Mentat help 115 passed a real topic/click/update test. Many older reports have
 later-version success comments or specific code guards; unresolved old crashes
 were not declared fixed just from their age. Useful remaining features include
