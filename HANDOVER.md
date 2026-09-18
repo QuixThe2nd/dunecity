@@ -1,3 +1,22 @@
+## 2026-09-18 — High-detail DuneCity Compact source contract
+
+Classic Dune II object sheets are indexed 8-bit art and use DuneLegacy's real
+tiled Scale2x/Scale3x path. DuneCity skin PNGs are RGBA; the compatibility atlas
+path fits those images into native SimCity cells and therefore cannot retain
+extra source detail. Zone manifests already separate source-frame dimensions
+from the immutable logical footprint. The DuneCity packager now preserves a
+declared 1x-4x Compact frame and records its logical 16px/tile footprint
+separately, so a 64x64 source can still occupy a 2x2 / 32x32 world rectangle at
+base zoom. R/C/I placement, collision, and simulation remain 2x2.
+
+Special DuneCity buildings now have a direct manifest-frame draw path. It draws
+the selected high-detail frame into the classic destination rectangle already
+calculated by `StructureBase`, preserving exact on-map size, anchor, engine
+animation frame selection, and fog fallback while bypassing the lossy native
+atlas round trip. Native SimCity compatibility atlases and UI portraits remain
+available and fixed to their existing slots. The bot-side `Compact All` modal
+selects 1x-4x (16-64 source pixels per tile) and current-unit/all-DuneCity scope.
+
 ## 2026-09-17 — Selectable DuneCity graphics skins on canonical main
 
 Ported the presentation-only SimCity/Dune2 skin system onto a clean worktree of

@@ -2,8 +2,9 @@
 """Package accepted Oathkeeper Compact cells for DuneCity's Dune2 skin.
 
 This intentionally refuses the large source sprite. DuneCity consumes the
-already-approved Compact PNG verbatim (or nearest-neighbour fits it to the
-declared footprint), preserving the QA result seen in Discord.
+already-approved Compact PNG verbatim, or fits it to the explicitly selected
+Compact resolution, preserving the QA result seen in Discord while keeping the
+logical building footprint separate.
 """
 
 from __future__ import annotations
@@ -30,7 +31,21 @@ def package(source_unit: Path, output: Path, item_id: int, house_id: int) -> int
     footprint = metadata.get("render_profile", {}).get("logical_footprint_tiles", [2, 2])
     footprint_width = max(1, int(footprint[0]))
     footprint_height = max(1, int(footprint[1]))
-    target_size = (footprint_width * 16, footprint_height * 16)
+    render_profile = metadata.get("render_profile", {})
+    declared_size = render_profile.get("compact_frame_pixels", [])
+    if (
+        isinstance(declared_size, list)
+        and len(declared_size) == 2
+        and all(isinstance(value, int) and 0 < value <= 2048 for value in declared_size)
+    ):
+        target_size = (declared_size[0], declared_size[1])
+    else:
+        target_size = (footprint_width * 16, footprint_height * 16)
+    pixels_per_tile = max(16, min(64, int(
+        city.get("compact_pixels_per_tile")
+        or render_profile.get("compact_pixels_per_tile")
+        or 16
+    )))
     asset_root = source_unit.parent.parent
 
     manifest = configparser.ConfigParser()
@@ -44,7 +59,12 @@ def package(source_unit: Path, output: Path, item_id: int, house_id: int) -> int
         "FootprintWidth": str(footprint_width),
         "FootprintHeight": str(footprint_height),
     }
-    manifest["Render"] = {"PixelsPerTile": "16", "Source": "accepted-compact"}
+    manifest["Render"] = {
+        "PixelsPerTile": str(pixels_per_tile),
+        "LogicalPixelsPerTile": "16",
+        "Source": "accepted-compact",
+        "Sizing": "high-detail-source-fixed-engine-footprint",
+    }
 
     states = metadata.get("categories", {}).get("building_idle", {}).get("states", {})
     packaged = 0
@@ -63,7 +83,7 @@ def package(source_unit: Path, output: Path, item_id: int, house_id: int) -> int
             with Image.open(compact_path) as source:
                 compact = source.convert("RGBA")
                 if compact.size != target_size:
-                    compact = compact.resize(target_size, Image.Resampling.NEAREST)
+                    compact = compact.resize(target_size, Image.Resampling.LANCZOS)
                 compact.save(output / destination, optimize=True)
 
             section = f"Cell.{density}.{value}.Idle"

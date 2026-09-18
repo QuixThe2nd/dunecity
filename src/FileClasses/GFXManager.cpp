@@ -4666,6 +4666,8 @@ void GFXManager::invalidateAllSpriteTextures() {
     enhancedBuildingDefinitions.clear();
     enhancedTerrainDefinitions.clear();
     enhancedWorldManifestsLoaded = false;
+    duneCityBuildingDefinitions.clear();
+    duneCityBuildingManifestsLoaded = false;
     if(enhancedBuildingAtlasCache) {
         enhancedBuildingAtlasCache->clear();
     }
@@ -7299,6 +7301,81 @@ void GFXManager::loadDuneCityZoneManifests() {
     }
 }
 
+void GFXManager::loadDuneCityBuildingManifests() {
+    if(duneCityBuildingManifestsLoaded) {
+        return;
+    }
+    duneCityBuildingManifestsLoaded = true;
+    duneCityBuildingDefinitions.clear();
+
+    if(!ModManager::instance().isInitialized()
+       || !ModManager::instance().isCityModeActive()) {
+        return;
+    }
+    const std::filesystem::path buildingsRoot =
+        std::filesystem::path(ModManager::instance().getModPath("dunecity"))
+        / "graphics_skins" / "Dune2" / "buildings";
+    if(!std::filesystem::is_directory(buildingsRoot)) {
+        return;
+    }
+    const auto itemForObjPic = [](const std::string& name) {
+        if(name == "NuclearPlant") return static_cast<int>(Structure_NuclearPlant);
+        if(name == "PoliceStation") return static_cast<int>(Structure_PoliceStation);
+        if(name == "Stadium") return static_cast<int>(Structure_Stadium);
+        if(name == "Airport") return static_cast<int>(Structure_Airport);
+        return -1;
+    };
+
+    for(const auto& entry : std::filesystem::directory_iterator(buildingsRoot)) {
+        const auto manifestPath = entry.path() / "building.ini";
+        if(!entry.is_directory() || !std::filesystem::is_regular_file(manifestPath)) {
+            continue;
+        }
+        try {
+            INIFile manifest(manifestPath.string());
+            DuneCityBuildingDefinition definition;
+            definition.itemID = itemForObjPic(
+                manifest.getStringValue("Building", "ObjPic", ""));
+            definition.houseID = manifest.getIntValue("Building", "HouseID", -1);
+            definition.sourceUnit = manifest.getStringValue(
+                "Building", "SourceUnit", entry.path().filename().string());
+            const int frameCount = std::clamp(
+                manifest.getIntValue("Building", "Frames", 0), 0, 64);
+            if(definition.itemID < 0 || definition.houseID < 0
+               || definition.houseID >= static_cast<int>(NUM_HOUSES)
+               || frameCount <= 0) {
+                continue;
+            }
+            for(int frame = 0; frame < frameCount; ++frame) {
+                const std::string section = "Frame." + std::to_string(frame);
+                const std::string imageName = manifest.getStringValue(section, "File", "");
+                const auto imagePath = std::filesystem::weakly_canonical(entry.path() / imageName);
+                if(imageName.empty() || !isPathInside(imagePath, buildingsRoot)
+                   || !std::filesystem::is_regular_file(imagePath)) {
+                    definition.frames.clear();
+                    break;
+                }
+                auto input = sdl2::RWops_ptr{SDL_RWFromFile(imagePath.string().c_str(), "rb")};
+                auto surface = input ? LoadPNG_RW(input.get()) : nullptr;
+                if(!surface || surface->w <= 0 || surface->h <= 0
+                   || surface->w > 2048 || surface->h > 2048) {
+                    definition.frames.clear();
+                    break;
+                }
+                definition.frames.push_back({imagePath.string(), surface->w, surface->h});
+            }
+            if(static_cast<int>(definition.frames.size()) == frameCount) {
+                SDL_Log("GFXManager: Registered high-detail DuneCity building ItemID=%d HouseID=%d from %s",
+                        definition.itemID, definition.houseID, manifestPath.string().c_str());
+                duneCityBuildingDefinitions.push_back(std::move(definition));
+            }
+        } catch(const std::exception& e) {
+            SDL_Log("GFXManager: Failed to read DuneCity building manifest %s: %s",
+                    manifestPath.string().c_str(), e.what());
+        }
+    }
+}
+
 void GFXManager::loadEnhancedRenderModes() {
     if(enhancedRenderModesLoaded) {
         return;
@@ -7778,6 +7855,40 @@ bool GFXManager::drawDuneCityZone(int itemID, int house, unsigned int z,
             break;
         }
     }
+    return true;
+}
+
+bool GFXManager::drawDuneCityBuilding(int itemID, int house, int frame,
+                                      const SDL_Rect& destination) {
+    if(destination.w <= 0 || destination.h <= 0
+       || !isDuneCityHouseUsingDune2(house)) {
+        return false;
+    }
+    loadDuneCityBuildingManifests();
+    DuneCityBuildingDefinition* selected = nullptr;
+    for(auto& definition : duneCityBuildingDefinitions) {
+        if(definition.itemID == itemID && definition.houseID == house) {
+            selected = &definition;
+            break;
+        }
+    }
+    if(!selected || selected->frames.empty()) {
+        return false;
+    }
+    const int frameCount = static_cast<int>(selected->frames.size());
+    const int selectedFrame = std::clamp(frame, 0, frameCount - 1);
+    const auto& visual = selected->frames[selectedFrame];
+    if(!enhancedBuildingAtlasCache) {
+        enhancedBuildingAtlasCache = std::make_unique<EnhancedAtlasCache>(renderer);
+    }
+    SDL_Texture* texture = enhancedBuildingAtlasCache->request(
+        visual.imagePath, visual.width, visual.height);
+    if(!texture) {
+        return false;
+    }
+    const SDL_Rect source{0, 0, visual.width, visual.height};
+    SDL_SetTextureBlendMode(texture, SDL_BLENDMODE_BLEND);
+    SDL_RenderCopy(renderer, texture, &source, &destination);
     return true;
 }
 

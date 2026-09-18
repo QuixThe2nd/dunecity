@@ -677,6 +677,8 @@ public:
                                       int density, int valueTier,
                                       DuneCityZoneActivity activity,
                                       Uint32 elapsedMs, int anchorX, int anchorY);
+    bool             drawDuneCityBuilding(int itemID, int house, int frame,
+                                          const SDL_Rect& destination);
     Uint8            getDune2RVisualBlend();
     bool             isDune2RVisualsEnabled();
     void             setDune2RVisualsEnabled(bool enabled);
@@ -743,6 +745,7 @@ private:
     void                loadEnhancedUnitManifests();
     void                loadEnhancedWorldManifests();
     void                loadDuneCityZoneManifests();
+    void                loadDuneCityBuildingManifests();
     void                invalidateEnhancedUnitMountsIfChanged(bool force = false);
     void                loadEnhancedRenderModes();
     void                loadDune2RVisualPreference();
@@ -868,6 +871,19 @@ private:
         std::map<int, EnhancedBuildingAnimation> animations;
     };
 
+    struct DuneCityBuildingFrame {
+        std::string imagePath;
+        int width = 0;
+        int height = 0;
+    };
+
+    struct DuneCityBuildingDefinition {
+        int itemID = -1;
+        int houseID = -1;
+        std::string sourceUnit;
+        std::vector<DuneCityBuildingFrame> frames;
+    };
+
     struct EnhancedTerrainVariant {
         EnhancedTerrainVariant() = default;
         EnhancedTerrainVariant(const EnhancedTerrainVariant&) = delete;
@@ -917,11 +933,13 @@ private:
     std::vector<EnhancedUnitDefinition> enhancedUnitDefinitions;
     std::vector<EnhancedBuildingDefinition> enhancedBuildingDefinitions;
     std::vector<DuneCityZoneDefinition> duneCityZoneDefinitions;
+    std::vector<DuneCityBuildingDefinition> duneCityBuildingDefinitions;
     std::unique_ptr<EnhancedAtlasCache> enhancedBuildingAtlasCache;
     std::vector<EnhancedTerrainDefinition> enhancedTerrainDefinitions;
     bool enhancedUnitManifestsLoaded = false;
     bool enhancedWorldManifestsLoaded = false;
     bool duneCityZoneManifestsLoaded = false;
+    bool duneCityBuildingManifestsLoaded = false;
     std::string enhancedUnitMountRevision;
     Uint32 enhancedUnitMountLastCheck = 0;
     std::map<int, EnhancedRenderMode> enhancedUnitRenderModes;
