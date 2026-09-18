@@ -7,10 +7,8 @@
 #include <players/CityPlacementPolicy.h>
 
 namespace TacticalSafetyPolicy {
-inline bool needsRefineryRefuge(bool threatened,bool unsafeJob,bool returning,bool hasCargo) {
-    // An empty vehicle already in safety needs a new field or a safe hold,
-    // not another unload/deploy loop caused by its old dangerous spice job.
-    return threatened || (hasCargo && (unsafeJob || returning));
+inline bool needsRefineryRefuge(bool returning,bool full,bool hasCargo,bool safeField) {
+    return hasCargo && (returning || full || !safeField);
 }
 
 inline int harvesterThreatRadius(int item, int range) {

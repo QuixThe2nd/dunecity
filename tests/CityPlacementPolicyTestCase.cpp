@@ -431,16 +431,14 @@ TEST_CASE("Harvesters avoid launcher approach range before actual weapon reach",
     REQUIRE(escapeCorridor(9,0,0,0,danger)); // Allow escape out of the warning margin.
 }
 
-TEST_CASE("Empty harvesters do not repeat refuge trips because their old field is unsafe", "[ai][harvester]") {
+TEST_CASE("Harvester evacuation prefers another field over unnecessary unloading", "[ai][harvester]") {
     using TacticalSafetyPolicy::needsRefineryRefuge;
-    // Escape first; after unloading at a safe site, find a safe job or hold.
-    REQUIRE(needsRefineryRefuge(true,true,false,false));
-    REQUIRE_FALSE(needsRefineryRefuge(false,true,false,false));
-    REQUIRE_FALSE(needsRefineryRefuge(false,true,true,false));
-    // Carrying spice still warrants safe unloading, even before being hit.
-    REQUIRE(needsRefineryRefuge(false,true,false,true));
-    REQUIRE(needsRefineryRefuge(false,false,true,true));
     REQUIRE_FALSE(needsRefineryRefuge(false,false,false,true));
+    REQUIRE_FALSE(needsRefineryRefuge(false,false,true,true));
+    REQUIRE_FALSE(needsRefineryRefuge(true,false,false,false));
+    REQUIRE(needsRefineryRefuge(false,true,true,true));
+    REQUIRE(needsRefineryRefuge(true,false,true,true));
+    REQUIRE(needsRefineryRefuge(false,false,true,false));
 }
 
 TEST_CASE("A spare lane can become foundation while the other lane stays connected", "[city][placement][roads]") {

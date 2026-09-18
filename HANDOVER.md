@@ -1,3 +1,35 @@
+## 2026-09-19 — Harvest elsewhere after danger, local 1.0.713
+
+Stefan reported harvesters evacuating to base and then returning to the same
+unsafe spice. QuantBot's safety policy previously prioritized refinery refuge
+for every threatened vehicle, including empty ones, and retained the old
+harvesting guard point across unloading/deployment.
+
+Safety now chooses a safe alternate spice field first for empty/partial loads.
+Full loads and existing cargo-return trips still unload; an unsafe remembered
+job is replaced with the safe field before the refinery order. If no safe field
+exists, loaded vehicles unload with harvesting stopped, while empty vehicles
+move to a safe hold. Safe unloading trips are preserved. Visible threats at the
+vehicle/job now refresh field memory before damage occurs; fields within six
+tiles of an incident are excluded for two minutes instead of receiving a weak
+distance penalty. Fog therefore does not immediately reopen the evacuated field.
+The existing corridor checks still apply; no new omniscient enemy query, command
+format, save field or platform-specific behavior was added.
+
+Validation: the new real-engine `--harvester-safety-probe` fails against 712 with
+"Evacuation unnecessarily returned to refinery" and passes against 713 in both
+vanilla and DuneCity modes. It checks empty/partial relocation, full-load return,
+replacement guard point and actual deployment hook, hidden-enemy memory, no-safe-
+field holding/unloading, preserved return orders, and cooldown expiry/resumption.
+Evidence: `/tmp/dunecity-harvester-713-before2`,
+`/tmp/dunecity-harvester-713-after`, `/tmp/dunecity-harvester-713-city`.
+Native Release and Emscripten 4.0.14 builds succeeded; all seven CTest suites
+passed (`/tmp/dunecity-713-tests.log`); Ninja dependency and version checks passed.
+
+`build` points to `build-713`; browser preview is http://127.0.0.1:8713/dunecity.html.
+Existing running games were left intact. Changes committed locally; no push,
+PR or deployment. No specific GitHub ticket was supplied for this follow-up.
+
 ## 2026-09-19 — Sidebar path toggle and clear targeting icons, local 1.0.712
 
 Stefan requested an in-game sidebar toggle for movement paths, matching sidebar

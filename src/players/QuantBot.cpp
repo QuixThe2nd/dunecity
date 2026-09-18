@@ -1439,7 +1439,18 @@ bool QuantBot::manageHarvesterSafety(const Harvester* harvester) {
             ? harvesterDanger[p.y*getMap().getSizeX()+p.x] : 0;
     };
     const bool threatened = danger(origin) > 0;
-    // A remembered incident is a preference penalty, never a two-minute veto.
+    // Remember evacuations before the first hit too. Losing sight of an enemy
+    // must not immediately make its spice field attractive again.
+    auto rememberUnsafe = [&](Coord p) {
+        if (!p.isValid() || danger(p)==0) return;
+        for (auto& field : unsafeFields) if (distance(p,field.location)<=3) {
+            field.cycle=now; return;
+        }
+        unsafeFields.push_back({p,now});
+    };
+    rememberUnsafe(origin);
+    rememberUnsafe(destination);
+    // Recently evacuated fields cool down for two minutes, even under fog.
     auto memoryPenalty = [&](Coord p) {
         int penalty = 0;
         for (const auto& field : unsafeFields)
@@ -1468,44 +1479,23 @@ bool QuantBot::manageHarvesterSafety(const Harvester* harvester) {
         if (fromHarvester<nearestThreat) { clearingTarget=enemy; nearestThreat=fromHarvester; }
     }
     if (clearingTarget) scrambleUnitsAndDefend(clearingTarget,true);
-    // Never replace an active safe unloading trip with another spice order.
-    if (harvester->isReturning()) {
-        const auto* target = dynamic_cast<const StructureBase*>(harvester->getTarget());
-        if (target && target->getOwner() == getHouse() && target->getHealth() > 0
-            && target->acceptsHarvesterDropoff() && danger(target->getClosestPoint(origin)) == 0
-            && routeSafe(target->getClosestPoint(origin))) {
-            state.controlled = true;
-            return true;
-        }
-    }
-    if (TacticalSafetyPolicy::needsRefineryRefuge(threatened,danger(destination)>0,
-            harvester->isReturning(),harvester->getAmountOfSpice()>0)) {
-        const StructureBase* refuge = nullptr;
-        int bestRefineryScore = std::numeric_limits<int>::max();
-        for (const auto* structure : getStructureList()) {
-            if (structure->getOwner() != getHouse() || structure->getHealth() <= 0
-                || !structure->acceptsHarvesterDropoff()) continue;
-            const Coord entry = structure->getClosestPoint(origin);
-            if (danger(entry) > 0 || !routeSafe(entry)) continue;
-            const int score = distance(origin,entry) + structure->getHarvesterDropoffBookings()*3;
-            if (score < bestRefineryScore) { refuge=structure; bestRefineryScore=score; }
-        }
-        if (refuge) {
-            state.controlled = true;
-            state.plannedDestination = refuge->getLocation();
-            if (harvester->getTarget() != refuge) {
-                doMove2Object(harvester,refuge);
-                traceDecision("harvester_safety",AITelemetry::Record().set("object",harvester->getObjectID())
-                    .set("action","retreat_refinery").set("refinery",refuge->getObjectID())
-                    .set("x",origin.x).set("y",origin.y).set("cargo",harvester->getAmountOfSpice().lround()));
-            }
+    // Leave an established safe unloading trip alone when its next job is safe.
+    if (harvester->isReturning() && harvester->getAmountOfSpice()>0) {
+        const auto* target=dynamic_cast<const StructureBase*>(harvester->getTarget());
+        const Coord job=harvester->getGuardPoint();
+        if (target && target->getOwner()==getHouse() && target->getHealth()>0
+            && target->acceptsHarvesterDropoff() && danger(target->getClosestPoint(origin))==0
+            && routeSafe(target->getClosestPoint(origin))
+            && (harvester->getAttackMode()==STOP
+                || (job.isValid() && danger(job)==0 && memoryPenalty(job)==0 && routeSafe(job)))) {
+            state.controlled=true;
             return true;
         }
     }
     // Do not hold a safe vehicle after enemies leave. Keep its existing safe job.
-    if (!threatened && destination.isValid() && danger(destination)==0
-        && (harvester->isReturning() || (harvester->getAttackMode() != STOP
-            && !newHarvester && routeSafe(destination)))) {
+    if (!threatened && !harvester->isReturning() && destination.isValid()
+        && danger(destination)==0 && memoryPenalty(destination)==0
+        && harvester->getAttackMode() != STOP && !newHarvester && routeSafe(destination)) {
         state.controlled = false;
         state.retreatUntil = 0;
         return false;
@@ -1532,14 +1522,57 @@ bool QuantBot::manageHarvesterSafety(const Harvester* harvester) {
     int safeFields = 0, rejectedRoutes = 0;
     for (int y = 0; y < getMap().getSizeY(); ++y) for (int x = 0; x < getMap().getSizeX(); ++x) {
         const Coord candidate(x,y);
-        if (!getMap().getTile(x,y)->hasSpice() || danger(candidate)>0 || !harvester->canPass(x,y)) continue;
+        if (!getMap().getTile(x,y)->hasSpice() || danger(candidate)>0
+            || memoryPenalty(candidate)>0 || !harvester->canPass(x,y)) continue;
         ++safeFields;
-        const int score = distance(origin,candidate)*3 + memoryPenalty(candidate) + crowdPenalty(candidate);
+        const int score = distance(origin,candidate)*3 + crowdPenalty(candidate);
         if (score >= bestScore) continue;
         if (!routeSafe(candidate)) { ++rejectedRoutes; continue; }
         bestScore = score; best = candidate;
     }
     const bool foundSpice = best.isValid();
+    // A partial load can continue harvesting elsewhere. Only unload a full load,
+    // finish a real return trip, or salvage cargo when no safe field exists.
+    if (TacticalSafetyPolicy::needsRefineryRefuge(harvester->isReturning(),
+            harvester->getAmountOfSpice()>=HARVESTERMAXSPICE,
+            harvester->getAmountOfSpice()>0,foundSpice)) {
+        const StructureBase* refuge = nullptr;
+        int bestRefineryScore = std::numeric_limits<int>::max();
+        for (const auto* structure : getStructureList()) {
+            if (structure->getOwner() != getHouse() || structure->getHealth() <= 0
+                || !structure->acceptsHarvesterDropoff()) continue;
+            const Coord entry = structure->getClosestPoint(origin);
+            if (danger(entry) > 0 || !routeSafe(entry)) continue;
+            const int score = distance(origin,entry) + structure->getHarvesterDropoffBookings()*3;
+            if (score < bestRefineryScore) { refuge=structure; bestRefineryScore=score; }
+        }
+        if (harvester->isReturning()) {
+            const auto* target=dynamic_cast<const StructureBase*>(harvester->getTarget());
+            if (target && target->getOwner()==getHouse() && target->getHealth()>0
+                && target->acceptsHarvesterDropoff() && danger(target->getClosestPoint(origin))==0
+                && routeSafe(target->getClosestPoint(origin))) refuge=target;
+        }
+        if (refuge) {
+            state.controlled = true;
+            state.plannedDestination = refuge->getLocation();
+            // Replace the remembered job before unloading, so deploy/carryall
+            // return resumes at the alternate field rather than the old one.
+            const Coord job=harvester->getGuardPoint();
+            const bool replaceJob=job.isInvalid() || danger(job)>0 || memoryPenalty(job)>0 || !routeSafe(job);
+            if (replaceJob) {
+                doSetAttackMode(harvester,foundSpice ? HARVEST : STOP);
+                if (foundSpice) doMove2Pos(harvester,best.x,best.y,false);
+            }
+            if (harvester->getTarget() != refuge) {
+                doMove2Object(harvester,refuge);
+                traceDecision("harvester_safety",AITelemetry::Record().set("object",harvester->getObjectID())
+                    .set("action","retreat_refinery").set("refinery",refuge->getObjectID())
+                    .set("x",origin.x).set("y",origin.y).set("cargo",harvester->getAmountOfSpice().lround()));
+            }
+            return true;
+        }
+    }
+
     // If no safe spice corridor exists, disperse to the nearest safe open tile.
     // There is deliberately no base-centre attraction.
     if (!foundSpice) {

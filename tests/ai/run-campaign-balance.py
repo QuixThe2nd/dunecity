@@ -36,6 +36,7 @@ parser.add_argument('--enemy-ai', choices=('quantbot','ai-player'), default='qua
 parser.add_argument('--enemy-difficulty', choices=('easy','medium','hard','brutal'), default='easy')
 parser.add_argument('--shared-spending-probe', action='store_true')
 parser.add_argument('--controls-probe', action='store_true')
+parser.add_argument('--harvester-safety-probe', action='store_true')
 parser.add_argument('--city-placement-probe', action='store_true')
 parser.add_argument('--opening-economy-probe', action='store_true')
 parser.add_argument('--starport-probe', action='store_true', help='Exercise reserved cash with above-normal Starport prices')
@@ -158,6 +159,7 @@ if args.custom_map:
     env['BALANCE_ROSTER'] = ','.join(f'{house}:{team}' for house, team in roster)
 (out/'setup.json').write_text(json.dumps({**vars(args), 'resolved_roster': roster}, default=str, indent=2)+'\n')
 if args.shared_spending_probe: env['BALANCE_SHARED_SPENDING_PROBE'] = '1'
+if args.harvester_safety_probe: env['BALANCE_HARVESTER_SAFETY_PROBE'] = '1'
 if args.controls_probe:
     env['BALANCE_CONTROLS_PROBE'] = '1'
     profile = out/'profile'
