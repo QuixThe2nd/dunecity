@@ -31,7 +31,8 @@ GameOptionsWindow::GameOptionsWindow(SettingsClass::GameOptionsClass& initialGam
 
     captionlabel.setText(_("Game Rules"));
     captionlabel.setAlignment(Alignment_HCenter);
-    vbox.addWidget(&captionlabel);
+    captionlabel.setTextFontSize(22);
+    vbox.addWidget(&captionlabel,32);
     vbox.addWidget(VSpacer::create(3));
     vbox.addWidget(&hbox);
     vbox.addWidget(VSpacer::create(6));

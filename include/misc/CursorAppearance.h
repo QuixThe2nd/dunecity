@@ -111,6 +111,11 @@ inline SDL_Surface* createIcon(Action action) {
         const SDL_Rect crop{1,1,20,20};
         SDL_SetSurfaceBlendMode(source,SDL_BLENDMODE_NONE);
         SDL_BlitSurface(source,&crop,icon,nullptr);
+        for(int y=0;y<icon->h;++y) for(int x=0;x<icon->w;++x) {
+            auto* row=reinterpret_cast<Uint32*>(static_cast<Uint8*>(icon->pixels)+y*icon->pitch);
+            Uint8 red,green,blue,alpha;SDL_GetRGBA(row[x],icon->format,&red,&green,&blue,&alpha);
+            row[x]=SDL_MapRGBA(icon->format,250,248,240,alpha);
+        }
         SDL_SetSurfaceBlendMode(icon,SDL_BLENDMODE_BLEND);
     }
     SDL_FreeSurface(source);

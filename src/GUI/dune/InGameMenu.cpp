@@ -34,33 +34,8 @@
 #include <GUI/dune/LoadSaveWindow.h>
 
 
-namespace {
-sdl2::surface_ptr menuButtonSurface(int width, int height, const std::string& text, bool pressed, bool focused) {
-    sdl2::surface_ptr surface{SDL_CreateRGBSurfaceWithFormat(0,width,height,32,SCREEN_FORMAT)};
-    if(!surface) return nullptr;
-    SDL_FillRect(surface.get(),nullptr,pressed ? COLOR_RGB(63,70,83) : COLOR_RGB(39,45,57));
-    drawRect(surface.get(),0,0,width-1,height-1,focused ? COLOR_RGB(245,199,103) : COLOR_RGB(94,104,120));
-    auto& style=GUIStyle::getInstance();
-    int size=20;
-    while(size>12 && style.getTextWidth(text,size)>width-28) --size;
-    auto label=pFontManager->createSurfaceWithText(text,COLOR_RGB(250,248,240),size);
-    SDL_Rect rect=calcDrawingRect(label.get(),width/2+(pressed ? 1 : 0),height/2+(pressed ? 1 : 0),HAlign::Center,VAlign::Center);
-    SDL_BlitSurface(label.get(),nullptr,surface.get(),&rect);
-    return surface;
-}
-}
-
 Point InGameMenuButton::getMinimumSize() const {
     return Point(GUIStyle::getInstance().getTextWidth(getText(),20)+32,40);
-}
-
-void InGameMenuButton::updateTextures() {
-    Button::updateTextures();
-    if(!pUnpressedTexture) {
-        setSurfaces(menuButtonSurface(getSize().x,getSize().y,getText(),false,false),
-                    menuButtonSurface(getSize().x,getSize().y,getText(),true,true),
-                    menuButtonSurface(getSize().x,getSize().y,getText(),false,true));
-    }
 }
 
 InGameMenu::InGameMenu(bool bMultiplayer, int color)

@@ -1,3 +1,42 @@
+## 2026-09-19 — Consistent readable menus, local 1.0.716
+
+Stefan requested consistent, readable menus, including Game Settings, City Budget,
+the top buttons and sidebar. Shared DuneStyle now uses opaque dark backgrounds,
+light text without the old text shadow, gray controls and gold focus/toggle edges.
+Buttons size their text to available space; lists use 14px text and 20px rows.
+Dark team-colored labels are lightened while explicitly colored label backgrounds
+retain their intended contrast. Sidebar action symbols use light ink with alpha
+preserved; the actual black cursor assets and explicit-Move rules are unchanged.
+Options/Mentat now use the same text-button style as Budget and feedback. The
+empty-sidebar path toggle says Paths on/off and keeps the existing saved setting.
+
+Game Settings is now 440x352, with 24px title, 18px labels, visible slider tracks,
+36x32 adjustment buttons and Apply/Cancel. Save/Load is 440x360 with larger title,
+list and buttons. Game Rules and confirmation dialogs have larger text. Campaign
+results use the dark background while retaining house emblems and team bars.
+City Budget is 620x460 with a 24px title, gold section headings, two columns for
+forecast/status, and separate tax/funding controls. It fits 640x480 and preserves
+the deterministic tax/funding commands. The budget test checks representative
+long figures from Stefan's screenshot fit the forecast column.
+
+Validation: native Release and Emscripten builds passed; seven CTest suites pass
+(menu flows/captures at 640x480, 854x480 and 1280x720). Real-engine controls and
+budget probe passed in DuneCity at /tmp/dunecity-menus-716-city-ready; results
+probe passed at /tmp/dunecity-menus-716-stats-ready (level 9 is required for its
+three-house fixture; level 4 cannot supply the fixture). Inspected rendered
+settings, budget, save, confirmation, sidebars, game rules and results. Browser
+startup/welcome, keyboard navigation and Settings were checked in the in-app
+browser. No Windows/Linux runtime verification. Dependency and version checks
+pass. Bundled font lacks Unicode minus: use ASCII '-' for adjustment buttons.
+GFXManager loads before the global GUIStyle exists, so asset generation uses a
+local DuneStyle, not GUIStyle::getInstance().
+
+Current app: build-714/bin/dunecity.app, reached by the existing build symlink;
+this configured tree now contains 1.0.716. Web preview remains port 8714. Restart
+or reload to use it; no running match was restarted and nothing was pushed or
+released. Suggested helpers (advice only): Next construction yard/factory (existing
+G/F actions), Idle harvesters, and Latest attack. No speculative helpers added.
+
 ## 2026-09-19 — Readable pause menu and top-row paths toggle, local 1.0.715
 
 Stefan requested the movement-path toggle alongside the top action icons and a

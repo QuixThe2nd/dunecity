@@ -1,5 +1,7 @@
 // Exercise the actual input/menu command path in an isolated campaign.
 #include <GUI/dune/InGameMenu.h>
+#include <GUI/dune/InGameSettingsMenu.h>
+#include <GUI/dune/CityBudgetWindow.h>
 #include <GUI/QstBox.h>
 #include <ScreenBorder.h>
 #include <GameInterface.h>
@@ -119,11 +121,30 @@ void runControlsProbe(Game& game) {
     require(game.canSkipMission(),"Fixture cannot skip campaign");
     game.onOptions();
     capture("pause-menu.bmp");
+    auto* pause=dynamic_cast<InGameMenu*>(game.pInGameMenu.get());
+    pause->onSettings();pause->processChildWindowOpenCloses();
+    capture("game-settings.bmp");
+    pause->closeChildWindow();pause->processChildWindowOpenCloses();
+    pause->onSave();pause->processChildWindowOpenCloses();
+    capture("save-game.bmp");
+    pause->closeChildWindow();pause->processChildWindowOpenCloses();
+    if(game.isCitySimEnabled()) {
+        game.pInGameMenu=std::make_unique<CityBudgetWindow>();
+        capture("city-budget.bmp");
+        auto* budget=static_cast<CityBudgetWindow*>(game.pInGameMenu.get());
+        for(const auto* text : {"Police stations: 83 | -8300/yr", "Rocket turrets: 376 | -5640/yr",
+                               "Net Annual: +86305.0/yr", "Projected Tax: +102245/yr"})
+            require(GUIStyle::getInstance().getTextWidth(text,14)<=budget->forecastVBox.getSize().x,
+                    "Established-city forecast text exceeds its column");
+        require(budget->getSize().x<=getRendererWidth() && budget->getSize().y<=getRendererHeight(),
+                "Budget window exceeds the renderer");
+    }
     game.pInGameMenu.reset();game.bMenu=false;game.resumeGame();
     game.onSkipMission();
     auto* menu=dynamic_cast<InGameMenu*>(game.pInGameMenu.get());require(menu,"Missing pause menu");menu->processChildWindowOpenCloses();
     auto* question=dynamic_cast<QstBox*>(menu->pChildWindow);
     require(question && question->button2.isActive() && commands(CMD_CAMPAIGN_SKIP)==0,"Skip was not safely confirmed");
+    capture("skip-confirmation.bmp");
     question->onButton(QSTBOX_BUTTON2);menu->processChildWindowOpenCloses();
     require(commands(CMD_CAMPAIGN_SKIP)==0,"Cancel skipped mission");
     menu->onSkipMission();menu->processChildWindowOpenCloses();

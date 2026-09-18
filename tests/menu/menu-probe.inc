@@ -4,6 +4,11 @@
 #include <Menu/CustomGameMenu.h>
 #include <Menu/CrossplayMenu.h>
 #include <Menu/OptionsMenu.h>
+#include <Menu/AboutMenu.h>
+#include <Menu/HowToPlayMenu.h>
+#include <Menu/ModMenu.h>
+#include <Menu/DisplayMenu.h>
+#include <GUI/dune/GameOptionsWindow.h>
 #include <Menu/PlaySetup.h>
 #include <mod/ModManager.h>
 #include <misc/FileSystem.h>
@@ -13,7 +18,7 @@
 void menuRequire(bool value, const char* message) {
     if(!value) { SDL_Log("MENU_PROBE_FAIL: %s", message); throw std::runtime_error(message); }
 }
-void menuCapture(MenuBase& menu, const std::string& name) {
+void menuCapture(Window& menu, const std::string& name) {
     SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
     SDL_RenderClear(renderer);
     menu.draw();
@@ -299,6 +304,11 @@ int runMenuProbe() {
             && !savedOptions.getBoolValue("General","Movement Paths",true),"Input options not persisted");
         menuRequire(menu.isQuiting(),"Unchanged legacy network field blocked audio apply");
     }
+    { AboutMenu menu;menuCapture(menu,"about"); }
+    { HowToPlayMenu menu;menuCapture(menu,"help"); }
+    { ModMenu menu;menuCapture(menu,"mods"); }
+    { DisplayMenu menu;menuCapture(menu,"display"); }
+    { auto rules=settings.gameOptions;GameOptionsWindow menu(rules);menuCapture(menu,"game-rules"); }
     SDL_Log("MENU_PROBE_PASS: home, campaign retry, mission ranges, custom roster, online transition, settings validation and rendering");
     return MENU_QUIT_DEFAULT;
 }

@@ -106,7 +106,7 @@ protected:
                 return;
             }
 
-            sdl2::surface_ptr pUnpressed = GUIStyle::getInstance().createButtonSurface(width, height, "", false, true);
+            sdl2::surface_ptr pUnpressed = GUIStyle::getInstance().createButtonSurface(width, height, "", false, false);
             sdl2::surface_ptr pPressed = GUIStyle::getInstance().createButtonSurface(width, height, "", true, true);
             sdl2::surface_ptr pActive;
 

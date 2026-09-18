@@ -72,22 +72,20 @@ GameInterface::GameInterface() : Window(0,0,0,0) {
     windowWidget.addWidget(&sideBar, dest);
 
     // add buttons
-    windowWidget.addWidget(&topBarHBox,Point(5,5),
-                            Point(getRendererWidth() - sideBar.getSize().x, topBar.getSize().y - 10));
+    windowWidget.addWidget(&topBarHBox,Point(5,2),
+                            Point(getRendererWidth() - sideBar.getSize().x, topBar.getSize().y - 4));
 
     topBarHBox.addWidget(&newsticker, 3.0);
 
     topBarHBox.addWidget(Spacer::create());
 
-    optionsButton.setTextures(  pGFXManager->getUIGraphic(UI_Options, interfaceHouse),
-                                pGFXManager->getUIGraphic(UI_Options_Pressed, interfaceHouse));
+    optionsButton.setText(_("Options"));
     optionsButton.setOnClick(std::bind(&Game::onOptions, currentGame));
     topBarHBox.addWidget(&optionsButton);
 
     topBarHBox.addWidget(Spacer::create());
 
-    mentatButton.setTextures(   pGFXManager->getUIGraphic(UI_Mentat, interfaceHouse),
-                                pGFXManager->getUIGraphic(UI_Mentat_Pressed, interfaceHouse));
+    mentatButton.setText(_("Mentat"));
     mentatButton.setOnClick(std::bind(&Game::onMentat, currentGame));
     topBarHBox.addWidget(&mentatButton);
 
@@ -451,6 +449,8 @@ void GameInterface::updateObjectInterface() {
     autoRepairButton.setVisible(selection.empty() && pLocalHouse && pLocalPlayer);
     movementPathsButton.setVisible(selection.empty());
     movementPathsButton.setToggleState(settings.general.showMovementPaths);
+    const std::string pathsText=settings.general.showMovementPaths ? _("Paths on") : _("Paths off");
+    if(movementPathsButton.getText()!=pathsText) movementPathsButton.setText(pathsText);
     const bool showOverlayButtons = selection.empty() && currentGame->isCitySimEnabled();
     landValueOverlayButton.setVisible(showOverlayButtons);
     crimeOverlayButton.setVisible(showOverlayButtons);

@@ -28,8 +28,6 @@
 class InGameMenuButton : public TextButton {
 public:
     Point getMinimumSize() const override;
-protected:
-    void updateTextures() override;
 };
 
 class InGameMenu : public Window

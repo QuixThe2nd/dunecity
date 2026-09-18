@@ -20,6 +20,7 @@
 #include <FileClasses/EnhancedAtlasCache.h>
 
 #include <globals.h>
+#include <GUI/dune/DuneStyle.h>
 
 #include <FileClasses/FileManager.h>
 #include <FileClasses/INIFile.h>
@@ -2199,7 +2200,8 @@ GFXManager::GFXManager() {
     uiGraphic[UI_GreyPlace_Zoomlevel0][HOUSE_HARKONNEN] = PicFactory->createPlacingGrid(16, PALCOLOR_LIGHTGREY);
     uiGraphic[UI_GreyPlace_Zoomlevel1][HOUSE_HARKONNEN] = PicFactory->createPlacingGrid(32, PALCOLOR_LIGHTGREY);
     uiGraphic[UI_GreyPlace_Zoomlevel2][HOUSE_HARKONNEN] = PicFactory->createPlacingGrid(48, PALCOLOR_LIGHTGREY);
-    uiGraphic[UI_MenuBackground][HOUSE_HARKONNEN] = PicFactory->createMainBackground();
+    DuneStyle menuStyle(settings.video.menuPalette);
+    uiGraphic[UI_MenuBackground][HOUSE_HARKONNEN] = menuStyle.createBackground(getRendererWidth(),getRendererHeight());
     uiGraphic[UI_GameStatsBackground][HOUSE_HARKONNEN] = PicFactory->createGameStatsBackground(HOUSE_HARKONNEN);
     uiGraphic[UI_GameStatsBackground][HOUSE_ATREIDES] = PicFactory->createGameStatsBackground(HOUSE_ATREIDES);
     uiGraphic[UI_GameStatsBackground][HOUSE_ORDOS] = PicFactory->createGameStatsBackground(HOUSE_ORDOS);
@@ -2255,39 +2257,37 @@ GFXManager::GFXManager() {
     uiGraphic[UI_Plus][HOUSE_HARKONNEN] = LoadPNG_RW(pFileManager->openFile("Button_Plus.png").get());
     uiGraphic[UI_Plus_Active][HOUSE_HARKONNEN] = mapSurfaceColorRange(uiGraphic[UI_Plus][HOUSE_HARKONNEN].get(), PALCOLOR_HARKONNEN, PALCOLOR_HARKONNEN-2);
     uiGraphic[UI_Plus_Pressed][HOUSE_HARKONNEN] = LoadPNG_RW(pFileManager->openFile("Button_PlusPushed.png").get());
+    for(auto pair : {std::pair{UI_Minus,UI_Minus_Pressed},std::pair{UI_Plus,UI_Plus_Pressed}}) {
+        const auto* source=uiGraphic[pair.first][HOUSE_HARKONNEN].get();
+        const int width=source->w,height=source->h;
+        const std::string text=pair.first==UI_Plus ? "+" : "-";
+        uiGraphic[pair.first][HOUSE_HARKONNEN]=menuStyle.createButtonSurface(width,height,text,false,false);
+        uiGraphic[pair.second][HOUSE_HARKONNEN]=menuStyle.createButtonSurface(width,height,text,true,true);
+        const auto active=pair.first==UI_Plus ? UI_Plus_Active : UI_Minus_Active;
+        uiGraphic[active][HOUSE_HARKONNEN]=menuStyle.createButtonSurface(width,height,text,false,true);
+    }
     uiGraphic[UI_MissionSelect][HOUSE_HARKONNEN] = LoadPNG_RW(pFileManager->openFile("Menu_MissionSelect.png").get());
     PicFactory->drawFrame(uiGraphic[UI_MissionSelect][HOUSE_HARKONNEN].get(),PictureFactory::SimpleFrame,nullptr);
     SDL_SetColorKey(uiGraphic[UI_MissionSelect][HOUSE_HARKONNEN].get(), SDL_TRUE, 0);
     uiGraphic[UI_OptionsMenu][HOUSE_HARKONNEN] = PicFactory->createOptionsMenu();
-    uiGraphic[UI_LoadSaveWindow][HOUSE_HARKONNEN] = PicFactory->createMenu(280,228);
-    uiGraphic[UI_NewMapWindow][HOUSE_HARKONNEN] = PicFactory->createMenu(600,440);
+    uiGraphic[UI_LoadSaveWindow][HOUSE_HARKONNEN] = menuStyle.createBackground(440,360);
+    uiGraphic[UI_NewMapWindow][HOUSE_HARKONNEN] = menuStyle.createBackground(600,440);
     uiGraphic[UI_DuneLegacy][HOUSE_HARKONNEN] = LoadPNG_RW(pFileManager->openFile("DuneLegacy.png").get());
     {
-        // Replace the baked-in "Dune Legacy" title with "Dune City": fill the
-        // central text region with the banner's dark interior tone and draw
-        // our own title centered. Decorative wood frame at the edges remains
-        // visible. The same surface is then reused as UI_GameMenu's header.
-        SDL_Surface* pBanner = uiGraphic[UI_DuneLegacy][HOUSE_HARKONNEN].get();
-        const int bw = pBanner->w;
-        const int bh = pBanner->h;
-        SDL_Rect inner = { bw / 16, bh / 8, bw - (bw / 16) * 2, bh - (bh / 8) * 2 };
-        SDL_FillRect(pBanner, &inner, SDL_MapRGB(pBanner->format, 18, 22, 60));
-
-        const int titleFontSize = std::max(16, std::min(34, bh - 16));
-        sdl2::surface_ptr titleText{
-            pFontManager->createSurfaceWithText("Dune City", COLOR_LIGHTYELLOW, titleFontSize) };
-        SDL_Rect titleDest = calcDrawingRect(titleText.get(), bw / 2, bh / 2,
-                                             HAlign::Center, VAlign::Center);
-        SDL_BlitSurface(titleText.get(), nullptr, pBanner, &titleDest);
+        const int width=uiGraphic[UI_DuneLegacy][HOUSE_HARKONNEN]->w;
+        const int height=uiGraphic[UI_DuneLegacy][HOUSE_HARKONNEN]->h;
+        auto banner=menuStyle.createBackground(width,height);
+        auto title=pFontManager->createSurfaceWithText("Dune City",COLOR_WHITE,std::max(16,height-16));
+        auto rect=calcDrawingRect(title.get(),width/2,height/2,HAlign::Center,VAlign::Center);
+        SDL_BlitSurface(title.get(),nullptr,banner.get(),&rect);
+        uiGraphic[UI_DuneLegacy][HOUSE_HARKONNEN]=std::move(banner);
+        uiGraphic[UI_GameMenu][HOUSE_HARKONNEN]=menuStyle.createBackground(width,158);
     }
-    uiGraphic[UI_GameMenu][HOUSE_HARKONNEN] = PicFactory->createMenu(uiGraphic[UI_DuneLegacy][HOUSE_HARKONNEN].get(),158);
-    PicFactory->drawFrame(uiGraphic[UI_DuneLegacy][HOUSE_HARKONNEN].get(),PictureFactory::SimpleFrame);
 
     uiGraphic[UI_PlanetBackground][HOUSE_HARKONNEN] = LoadCPS_RW(pFileManager->openFile("BIGPLAN.CPS").get());
     PicFactory->drawFrame(uiGraphic[UI_PlanetBackground][HOUSE_HARKONNEN].get(),PictureFactory::SimpleFrame);
     uiGraphic[UI_MenuButtonBorder][HOUSE_HARKONNEN] = PicFactory->createFrame(PictureFactory::DecorationFrame1,190,140,false);
 
-    PicFactory->drawFrame(uiGraphic[UI_DuneLegacy][HOUSE_HARKONNEN].get(),PictureFactory::SimpleFrame);
 
     const bool tornieActive = ModManager::instance().isInitialized()
         && ModManager::instance().isTornieContentActive();

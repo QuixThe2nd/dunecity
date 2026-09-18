@@ -278,7 +278,7 @@ OptionsMenu::OptionsMenu() : MenuBase()
     startMenuModeDropDownBox.setOnSelectionChange(std::bind(&OptionsMenu::onChangeOption, this, std::placeholders::_1));
     paletteHBox.addWidget(&startMenuModeDropDownBox, 120);
     paletteHBox.addWidget(optionLabel(_("Colors")), 70);
-    paletteDropDownBox.addEntry(_("Desert Gold"), 0);
+    paletteDropDownBox.addEntry(_("Dark"), 0);
     paletteDropDownBox.addEntry(_("High Contrast"), 1);
     paletteDropDownBox.setSelectedItem(validatedMenuPalette(settings.video.menuPalette));
     paletteDropDownBox.setOnSelectionChange([this](bool interactive) {
@@ -289,7 +289,7 @@ OptionsMenu::OptionsMenu() : MenuBase()
     paletteHBox.addWidget(Spacer::create(), 0.5);
     pages[1].addWidget(&paletteHBox, 32);
     pages[1].addWidget(VSpacer::create(6));
-    palettePreview.setText("DUNE LEGACY");
+    palettePreview.setText("Dune City");
     palettePreview.setEnabled(false);
     updatePalettePreview();
     pages[1].addWidget(&palettePreview, 24);
