@@ -1643,8 +1643,15 @@ bool blocksGroundAccess(Uint32 item) {
 }
 }
 
-void QuantBot::clearPlacementCache(bool geometryChanged) {
-    placementCache.clear();
+void QuantBot::clearPlacementCache(bool geometryChanged, bool reuseForBuilder) {
+    // Within a build pass, unreserved yards see the same map and reservation
+    // set until an order changes geometry. Reuse successful AND failed searches.
+    // A yard with its own reservation excludes that reservation, so its key
+    // differs. All order/geometry changes keep the original invalidation.
+    const Uint32 excluded=reservedStructures.count(planningBuilder) ? planningBuilder : NONE_ID;
+    if (geometryChanged || !reuseForBuilder || placementCacheExcludedBuilder!=excluded)
+        placementCache.clear();
+    placementCacheExcludedBuilder=excluded;
     if (geometryChanged) {
         cityServiceSearch.invalidate();
         cityTurretSearch.invalidate();
@@ -1771,8 +1778,10 @@ Coord QuantBot::findPlaceLocation(Uint32 itemID) {
 	// Check per-build-cycle cache first
 	auto cacheIt = placementCache.find(itemID);
 	if (cacheIt != placementCache.end()) {
+        AITelemetry::log().performance(getGameCycleCount(),getHouse()->getHouseID(),"ai.placement_cache_hit",1,itemID,false);
 		return cacheIt->second;
 	}
+    AITelemetry::log().performance(getGameCycleCount(),getHouse()->getHouseID(),"ai.placement_search",1,itemID,false);
 
 	int newSizeX = getStructureSize(itemID).x;
 	int newSizeY = getStructureSize(itemID).y;
@@ -3139,6 +3148,7 @@ bool QuantBot::canAddRepairYard(int includingQueued) const {
 
 void QuantBot::build(int militaryValue) {
     AITelemetry::PerformanceScope perfScope("ai.build", getGameCycleCount(), getHouse()->getHouseID());
+    AITelemetry::PerformanceScope phaseScope("ai.build.evaluate",getGameCycleCount(),getHouse()->getHouseID());
     refreshTacticalDanger();
     planningBuilder = NONE_ID;
     recentStructureLosses.erase(std::remove_if(recentStructureLosses.begin(), recentStructureLosses.end(),
@@ -4537,7 +4547,7 @@ void QuantBot::build(int militaryValue) {
             && (!port || static_cast<const StarPort*>(builder)->okToOrder());
         if (building==Structure_ConstructionYard) {
             if (!ready || gameMode!=GameMode::Custom) continue;
-            planningBuilder=builder->getObjectID(); clearPlacementCache(false);
+            planningBuilder=builder->getObjectID(); clearPlacementCache(false,true);
             CapitalCandidate economy;
             economy.builder=builder->getObjectID();
             if (citySimEnabled) {
@@ -4778,14 +4788,14 @@ void QuantBot::build(int militaryValue) {
     for (auto& candidate:capitalCandidates) if (isStructure(candidate.item) && candidate.score>0) {
         const auto* builder=dynamic_cast<const BuilderBase*>(getObject(candidate.builder));
         if (!builder) continue;
-        planningBuilder=candidate.builder;clearPlacementCache(false);
+        planningBuilder=candidate.builder;clearPlacementCache(false,true);
         const Coord site=candidate.site.isValid() ? candidate.site : findPlaceLocation(candidate.item);
         std::vector<Uint32> removed;
         if (site.isValid() && !redevelopmentZones(candidate.item,site,removed))
             for (const auto& foundation:foundationOrders(builder,candidate.item,site))
                 candidate.foundationCost+=purchasePrice(builder,foundation.first);
     }
-    planningBuilder=NONE_ID; clearPlacementCache(false);
+    planningBuilder=NONE_ID; clearPlacementCache(false,true);
     int capitalChoice=-1;
     for (size_t i=0;i<capitalCandidates.size();++i)
         if (capitalCandidates[i].score>0 && (capitalChoice<0
@@ -4810,7 +4820,7 @@ void QuantBot::build(int militaryValue) {
                 dedicatedCityYard=builder->getObjectID();
                 break;
             }
-            planningBuilder=builder->getObjectID();clearPlacementCache(false);
+            planningBuilder=builder->getObjectID();clearPlacementCache(false,true);
             const Uint32 zone=affordableCityZone(builder,money);
             if (zone==NONE_ID) continue;
             dedicatedCityYard=builder->getObjectID();
@@ -4823,7 +4833,7 @@ void QuantBot::build(int militaryValue) {
             cityGrowthProtected=true;
             break;
         }
-        planningBuilder=NONE_ID;clearPlacementCache(false);
+        planningBuilder=NONE_ID;clearPlacementCache(false,true);
     }
     if (!cityGrowthProtected && citySimEnabled
         && getHouse()->getProducedPower()-getHouse()->getPowerRequirement()>=24
@@ -4903,6 +4913,7 @@ void QuantBot::build(int militaryValue) {
                 ? "no_useful_available_purchase" : "highest_marginal_priority"));
     }
 
+    phaseScope.next("ai.build.orders");
     // Give city construction first access to this pass's planning budget.
     // Air gets its allocation before ground production, then light precedes heavy overflow.
     // Stable ordering keeps peers deterministic.
@@ -4990,6 +5001,7 @@ void QuantBot::build(int militaryValue) {
 
 					if (houseID != HOUSE_HARKONNEN && houseID != HOUSE_SARDAUKAR) {
 						doSpecialWeapon(pPalace);
+                        placementCache.clear(); // Palace summons can occupy previously free sites.
 					}
 					else {
 						int enemyHouseID = -1;
@@ -5017,7 +5029,7 @@ void QuantBot::build(int militaryValue) {
 			if (pStructure->isABuilder()) {
 				const BuilderBase* pBuilder = static_cast<const BuilderBase*>(pStructure);
                 planningBuilder = pBuilder->getObjectID();
-                clearPlacementCache(false);
+                clearPlacementCache(false,true);
 
 				// Log all builder status for campaign AIs (not just CY)
 				if (gameMode == GameMode::Campaign && !supportMode && pStructure->getItemID() != Structure_ConstructionYard) {
@@ -5127,6 +5139,7 @@ void QuantBot::build(int militaryValue) {
                     if (!produceItemWithLogging(Structure_WindTrap,__LINE__,"campaign_required_power")) return false;
                     builderPlaceLocations[pBuilder->getObjectID()].push_back(site);
                     reservedStructures[pBuilder->getObjectID()]={Structure_WindTrap,site};
+                    placementCache.clear();
                     ++itemCount[Structure_WindTrap];
                     traceDecision("campaign_power",AITelemetry::Record().set("produced",getHouse()->getProducedPower())
                         .set("required",getHouse()->getPowerRequirement()).set("next_demand",nextDemand));
@@ -5166,6 +5179,7 @@ void QuantBot::build(int militaryValue) {
                         if (site.isValid() && produceItemWithLogging(repairStep,__LINE__,"campaign_repair_capacity")) {
                             builderPlaceLocations[pBuilder->getObjectID()].push_back(site);
                             reservedStructures[pBuilder->getObjectID()]={repairStep,site};
+                            placementCache.clear();
                             ++itemCount[repairStep];
                             continue;
                         }
@@ -5750,7 +5764,7 @@ void QuantBot::build(int militaryValue) {
 				// Each yard owns its concrete/structure placement sequence. Sharing
 				// a single FIFO lets the faster yard consume the other's locations.
 				planningBuilder = pBuilder->getObjectID();
-                clearPlacementCache(false);
+                clearPlacementCache(false,true);
                 auto& placeLocations = builderPlaceLocations[pBuilder->getObjectID()];
 				if (pBuilder->getProductionQueueSize() == 0) placeLocations.clear();
 				if (emitStatsLog) {

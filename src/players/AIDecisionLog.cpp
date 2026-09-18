@@ -126,6 +126,13 @@ void DecisionLog::slowFrame(uint32_t cycle, int64_t microseconds, const Record& 
     if (!enabled() || microseconds <= worstFrameUs) return;
     worstFrameUs = microseconds; worstFrameCycle = cycle; worstFrame = context;
 }
+void DecisionLog::frameStall(uint32_t cycle, int64_t microseconds, const Record& context) {
+    if (!enabled() || microseconds<100000) return;
+    const auto now=std::chrono::steady_clock::now();
+    write(cycle,-1,-1,"frame_stall",Record().set("duration_us",microseconds)
+        .set("session_wall_us",std::chrono::duration_cast<std::chrono::microseconds>(now-sessionStart).count())
+        .set("context",context));
+}
 bool DecisionLog::performanceDue() const {
     return enabled() && std::chrono::steady_clock::now() - performanceStart >= std::chrono::seconds(5);
 }

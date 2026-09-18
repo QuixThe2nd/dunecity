@@ -2,12 +2,15 @@
 """Run a fixed saved-game simulation in an isolated profile using the real engine.
 
 Run before and after a change, then compare STATE lines and final save bytes.
+Use --render-seconds and --profile-from to reproduce the ordinary graphical loop.
 Requires the existing macOS Ninja build and its bundled game data.
 """
 import argparse
 import hashlib
 import json
 import struct
+import shutil
+import plistlib
 import os
 from pathlib import Path
 import shlex
@@ -19,8 +22,11 @@ parser.add_argument('--build-dir', type=Path, default=root / 'build')
 parser.add_argument('--output-dir', type=Path, required=True)
 parser.add_argument('--save', type=Path, required=True)
 parser.add_argument('--cycles', type=int, default=2000)
+parser.add_argument('--render-seconds', type=int, default=0, help='Run the ordinary graphical game loop for this many seconds')
+parser.add_argument('--profile-from', type=Path, help='Copy display/audio settings and active city mod from this profile')
 parser.add_argument('--compare-dir', type=Path, help='Previous probe output; require matching checkpoints and saved state')
 args = parser.parse_args()
+if args.render_seconds and args.compare_dir: parser.error('Rendered runs do not have a fixed final cycle; use --cycles for exact state comparison')
 build, out = args.build_dir.resolve(), args.output_dir.resolve()
 out.mkdir(parents=True, exist_ok=False)
 subprocess.run(['python3', str(root/'scripts/check-build-deps.py'), str(build)], check=True)
@@ -54,6 +60,7 @@ app = out/'simulation-probe.app/Contents'
 (app/'MacOS').mkdir(parents=True)
 (app/'Resources').symlink_to(build/'bin/dunecity.app/Contents/Resources')
 binary = app/'MacOS/simulation-probe'
+(app/'Info.plist').write_bytes(plistlib.dumps({'CFBundleExecutable':'simulation-probe', 'CFBundleIdentifier':'net.dunecity.performance-probe', 'CFBundleName':'DuneCity Performance Probe', 'CFBundlePackageType':'APPL'}))
 link = shlex.split(next(line for line in commands if ' -o '+target+' ' in line))
 link = link[link.index('&&')+1:]
 link = link[:link.index('&&')]
@@ -65,9 +72,18 @@ with (out/'build.log').open('w') as log:
 profile = out/'profile'
 profile.mkdir()
 (profile/'Dune City.ini').write_text('[Video]\nPhysical Width = 640\nPhysical Height = 480\nWidth = 640\nHeight = 480\nFullscreen = false\n[General]\nPlay Intro = false\n')
-env = dict(os.environ, DUNECITY_USERDIR=str(profile), SDL_VIDEODRIVER='dummy', SDL_AUDIODRIVER='dummy', SIM_PROBE_SAVE=str(args.save.resolve()), SIM_PROBE_CYCLES=str(args.cycles), SIM_PROBE_OUTPUT=str(out/'final.dls'))
+if args.profile_from:
+    shutil.copyfile(args.profile_from/'Dune City.ini',profile/'Dune City.ini')
+    for mod in ('dunecity','vanilla'):
+        shutil.copytree(args.profile_from/'mods'/mod,profile/'mods'/mod)
+    (profile/'mods/active_mod.txt').write_text('dunecity')
+env = dict(os.environ, DUNECITY_USERDIR=str(profile), SIM_PROBE_SAVE=str(args.save.resolve()), SIM_PROBE_CYCLES=str(args.cycles), SIM_PROBE_OUTPUT=str(out/'final.dls'))
+if args.render_seconds:
+    env['SIM_PROBE_RENDER_SECONDS']=str(args.render_seconds)
+else:
+    env.update(SDL_VIDEODRIVER='dummy',SDL_AUDIODRIVER='dummy')
 with (out/'run.log').open('w') as log:
-    subprocess.run([str(binary),'--window','--showlog'], cwd=out, env=env, stdout=log, stderr=subprocess.STDOUT, check=True, timeout=300)
+    subprocess.run([str(binary),'--window','--showlog'], cwd=out, env=env, stdout=log, stderr=subprocess.STDOUT, check=True, timeout=max(300,args.render_seconds+120))
 results = [line for line in (out/'run.log').read_text().splitlines() if 'SIM_PROBE_' in line]
 if not any('SIM_PROBE_PASS:' in line for line in results): raise RuntimeError('Missing probe result')
 print('\n'.join(results))

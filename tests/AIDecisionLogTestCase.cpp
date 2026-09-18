@@ -120,3 +120,28 @@ TEST_CASE("Performance capture aggregates every sample and flushes partial windo
         std::filesystem::copy_file(file,artifact,std::filesystem::copy_options::overwrite_existing);
     std::filesystem::remove_all(root);
 }
+
+TEST_CASE("Every substantial frame stall is timestamped including smaller consecutive stalls", "[ai][telemetry][performance]") {
+    const auto root=std::filesystem::temp_directory_path()/("dunecity-stalls-"+
+        std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+    AITelemetry::DecisionLog writer;
+    REQUIRE(writer.start(root.string(),AITelemetry::Record()));
+    const auto file=writer.path();
+    writer.frameStall(10,99999,AITelemetry::Record().set("kind","game_frame"));
+    writer.frameStall(11,750000,AITelemetry::Record().set("kind","game_frame").set("ai_us",730000));
+    writer.frameStall(12,100000,AITelemetry::Record().set("kind","game_frame"));
+    writer.frameStall(13,1500000,AITelemetry::Record().set("kind","between_frames"));
+    writer.stop();
+    std::ifstream in(file);std::string line,all;int stalls=0;
+    while (std::getline(in,line)) {
+        if (line.find("\"event\":\"frame_stall\"")==std::string::npos) continue;
+        ++stalls;all+=line;
+        REQUIRE(line.find("\"session_wall_us\":")!=std::string::npos);
+    }
+    REQUIRE(stalls==3);
+    REQUIRE(all.find("\"duration_us\":100000")!=std::string::npos);
+    REQUIRE(all.find("\"duration_us\":1500000")!=std::string::npos);
+    REQUIRE(all.find("\"ai_us\":730000")!=std::string::npos);
+    REQUIRE(all.find("\"kind\":\"between_frames\"")!=std::string::npos);
+    std::filesystem::remove_all(root);
+}

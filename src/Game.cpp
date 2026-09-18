@@ -2833,10 +2833,21 @@ void Game::runMainLoop() {
 
     int frameStart = SDL_GetTicks();
     int frameTime = 0;
+    Uint64 previousFrameEndPerf=0;
 
     do {
         // Start timing this rendered frame
         const Uint64 frameStartPerf = SDL_GetPerformanceCounter();
+        const Uint32 frameStartCycle=gameCycleCount;
+        double inputMsThisFrame=0.0,commandsMsThisFrame=0.0;
+        if (previousFrameEndPerf) {
+            const auto gapUs=static_cast<int64_t>(getElapsedMs(previousFrameEndPerf,frameStartPerf)*1000);
+            auto& perf=AITelemetry::log();
+            perf.performance(gameCycleCount,-1,"frame.gap",gapUs);
+            if (gapUs>=100000) perf.frameStall(gameCycleCount,gapUs,AITelemetry::Record()
+                .set("kind","between_frames").set("paused",bPause)
+                .set("input_focus",(SDL_GetWindowFlags(window)&SDL_WINDOW_INPUT_FOCUS)!=0));
+        }
         frameTiming.gameCyclesThisFrame = 0;
         frameTiming.totalPathsProcessedThisFrame = 0;
         frameTiming.pathTokensThisFrame = 0;
@@ -2921,7 +2932,9 @@ void Game::runMainLoop() {
                 bWaitForNetwork = handleNetworkUpdates();
             }
 
+            const Uint64 inputStart=SDL_GetPerformanceCounter();
             processInput();
+            inputMsThisFrame+=getElapsedMs(inputStart,SDL_GetPerformanceCounter());
 
             if(pInGameMentat != nullptr) {
                 pInGameMentat->update();
@@ -2931,7 +2944,9 @@ void Game::runMainLoop() {
                 pWaitingForOtherPlayers->update();
             }
 
+            const Uint64 commandsStart=SDL_GetPerformanceCounter();
             cmdManager.update();
+            commandsMsThisFrame+=getElapsedMs(commandsStart,SDL_GetPerformanceCounter());
 
             if(!bWaitForNetwork && !bPause) {
                 // Time the core simulation step for CPU load detection
@@ -3061,6 +3076,7 @@ void Game::runMainLoop() {
 
         // End timing this rendered frame
         const Uint64 frameEndPerf = SDL_GetPerformanceCounter();
+        previousFrameEndPerf=frameEndPerf;
         const double thisFrameMs = getElapsedMs(frameStartPerf, frameEndPerf);
         frameTiming.totalMs += thisFrameMs;
         frameTiming.totalGameCycles += frameTiming.gameCyclesThisFrame;
@@ -3080,12 +3096,19 @@ void Game::runMainLoop() {
             record("frame.structures",frameTiming.structuresMsThisFrame);
             record("frame.render",frameTiming.renderingMsThisFrame);
             record("frame.network",frameTiming.networkWaitMsThisFrame);
+            record("frame.input",inputMsThisFrame);
+            record("frame.commands",commandsMsThisFrame);
             perf.performance(gameCycleCount,-1,"frame.cycles",frameTiming.gameCyclesThisFrame,-1,false);
             perf.performance(gameCycleCount,-1,"frame.units_count",unitList.size(),-1,false);
             perf.performance(gameCycleCount,-1,"frame.structures_count",structureList.size(),-1,false);
             perf.performance(gameCycleCount,-1,"frame.tick_ms",getGameSpeed(),-1,false);
             perf.performance(gameCycleCount,-1,"frame.paused",bPause,-1,false);
-            if (perf.isWorstFrame(us(thisFrameMs))) perf.slowFrame(gameCycleCount,us(thisFrameMs),AITelemetry::Record()
+            if (perf.isWorstFrame(us(thisFrameMs)) || thisFrameMs>=100.0) {
+                const auto context=AITelemetry::Record()
+                .set("kind","game_frame").set("start_cycle",frameStartCycle)
+                .set("input_us",us(inputMsThisFrame)).set("commands_us",us(commandsMsThisFrame))
+                .set("menu_open",pInGameMenu!=nullptr || pInGameMentat!=nullptr || pWaitingForOtherPlayers!=nullptr)
+                .set("input_focus",(SDL_GetWindowFlags(window)&SDL_WINDOW_INPUT_FOCUS)!=0)
                 .set("ai_us",us(frameTiming.aiMsThisFrame)).set("city_us",us(frameTiming.citySimMsThisFrame))
                 .set("path_us",us(frameTiming.pathfindingMsThisFrame)).set("render_us",us(frameTiming.renderingMsThisFrame))
                 .set("units_us",us(frameTiming.unitsMsThisFrame)).set("structures_us",us(frameTiming.structuresMsThisFrame))
@@ -3094,7 +3117,10 @@ void Game::runMainLoop() {
                 .set("cycles",frameTiming.gameCyclesThisFrame).set("queue",pathRequestQueue.size())
                 .set("path_nodes",frameTiming.pathTokensThisFrame).set("paths",frameTiming.totalPathsProcessedThisFrame)
                 .set("units",unitList.size()).set("structures",structureList.size())
-                .set("tick_ms",getGameSpeed()).set("paused",bPause));
+                .set("tick_ms",getGameSpeed()).set("paused",bPause);
+                perf.slowFrame(gameCycleCount,us(thisFrameMs),context);
+                perf.frameStall(gameCycleCount,us(thisFrameMs),context);
+            }
             perf.flushPerformance(gameCycleCount);
         }
 
@@ -3108,9 +3134,9 @@ void Game::runMainLoop() {
         static Uint32 lastSpikeLogCycle = 0;
         if (thisFrameMs > kFrameSpikeThresholdMs
             && frameTiming.frameCount > kSpikeWarmupFrames
-            // Rate-limit to one spike log per 10 game cycles so a sustained
-            // bad period doesn't flood the file.
-            && (gameCycleCount - lastSpikeLogCycle >= 10 || lastSpikeLogCycle == 0)) {
+            // Rate-limit smaller spikes to one per 10 cycles; keep every
+            // substantial stall even when adjacent frames are worse.
+            && (thisFrameMs>=100.0 || gameCycleCount - lastSpikeLogCycle >= 10 || lastSpikeLogCycle == 0)) {
             lastSpikeLogCycle = gameCycleCount;
             logPerformance("[FRAME SPIKE] Cycle %u frame=%.1fms cycles=%d ai=%.1f(worst h%d=%.1f)"
                            " citySim=%.1f units=%.1f"

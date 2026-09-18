@@ -7,6 +7,7 @@
 #include <chrono>
 #include <memory>
 #include <algorithm>
+#include <filesystem>
 
 int runSimulationProbe() {
     ModManager::instance().setActiveMod("dunecity");
@@ -15,6 +16,24 @@ int runSimulationProbe() {
     game->bReplay = true; // Suppress public match analytics and interactive briefings.
     game->initGame(GameInitSettings(std::string(std::getenv("SIM_PROBE_SAVE"))));
     game->bReplay = false;
+    if (const char* duration=std::getenv("SIM_PROBE_RENDER_SECONDS")) {
+        const int seconds=std::stoi(duration);
+        if (seconds<=0) throw std::runtime_error("Render duration must be positive");
+        const auto title="DuneCity - lag reproduction: "+std::filesystem::path(std::getenv("SIM_PROBE_SAVE")).stem().string();
+        SDL_SetWindowTitle(window,title.c_str());
+        game->bPause=false;
+        SDL_Log("SIM_PROBE_RENDER_BEGIN: save=%s seconds=%d tick_ms=%d start_cycle=%u",
+            std::getenv("SIM_PROBE_SAVE"),seconds,game->getGameSpeed(),game->getGameCycleCount());
+        const SDL_TimerID timer=SDL_AddTimer(seconds*1000,[](Uint32,void*) -> Uint32 {
+            SDL_Event quit{};quit.type=SDL_QUIT;SDL_PushEvent(&quit);return 0;
+        },nullptr);
+        if (!timer) throw std::runtime_error("Cannot schedule probe exit");
+        game->runMainLoop(); // Identical input, presentation, pacing and simulation loop.
+        SDL_RemoveTimer(timer);
+        SDL_Log("SIM_PROBE_PASS: rendered=1 end_cycle=%u",game->getGameCycleCount());
+        game.reset();currentGame=nullptr;pLocalPlayer=nullptr;
+        return MENU_QUIT_DEFAULT;
+    }
     game->initializeGameLoop();
     game->bPause=false;
     const int cycles = std::stoi(std::getenv("SIM_PROBE_CYCLES"));

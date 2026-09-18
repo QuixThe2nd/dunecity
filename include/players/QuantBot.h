@@ -191,7 +191,7 @@ private:
     std::unordered_map<Uint32,Uint32> mcvSurveyCycles;
     Coord findPlaceLocation(Uint32 itemID);
     bool preservesGroundAccess(Uint32 item, Coord pos);
-    void clearPlacementCache(bool geometryChanged = true);
+    void clearPlacementCache(bool geometryChanged = true, bool reuseForBuilder = false);
     Coord findRedevelopmentSite(Uint32 itemID);
     bool redevelopmentZones(Uint32 itemID, Coord pos, std::vector<Uint32>& zones) const;
     Coord findPlaceLocationSimple(Uint32 itemID);
@@ -259,6 +259,7 @@ private:
     bool overlapsReservedStructure(int x, int y, int width, int height) const;
     OrnithopterStrikeTeam ornithopterStrikeTeam;
     std::unordered_map<Uint32, Coord> placementCache; ///< Per-build-cycle cache for findPlaceLocation results
+    Uint32 placementCacheExcludedBuilder = NONE_ID;
 
     struct CityServiceSite {
         Coord site = Coord::Invalid();
