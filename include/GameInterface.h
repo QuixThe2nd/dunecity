@@ -135,6 +135,7 @@ private:
     ChatManager         chatManager;            ///< Manages chat manages shown overlayed with the main map
     TextButton          feedbackButton;
     TextButton          autoRepairButton;
+    TextButton movementPathsButton;
     TextButton          landValueOverlayButton;
     TextButton          crimeOverlayButton;
     TextButton          pollutionOverlayButton;

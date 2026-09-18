@@ -1,3 +1,35 @@
+## 2026-09-19 — Sidebar path toggle and clear targeting icons, local 1.0.712
+
+Stefan requested an in-game sidebar toggle for movement paths, matching sidebar
+icons, and transparent white areas so action cursors do not hide their target.
+Single-unit and group sidebars now have a route-symbol toggle beside Retreat;
+the empty-selection sidebar has a Movement paths button. All use the same
+General/Movement Paths preference as Settings, persist immediately, and request
+browser filesystem sync. This is local display state, not a simulation command.
+
+Unit/group move, attack, capture, drop, heal, repair, return, deploy and destruct
+buttons now render compact icons from CursorAppearance's shared vector geometry.
+The black action symbols have no white paint and an open 7-unit diameter aiming
+centre. The ordinary pointer keeps its contrasting white border. Button icons
+fit the existing 26px rows; no extra vertical row was added to the unit controls.
+The route toggle shares the Retreat row, including at 640x480.
+
+Validation: native Release and Emscripten 4.0.14 builds succeeded; all seven CTest
+suites passed. Cursor tests check transparency at the hotspot at every supported
+size, absence of white action pixels and distinct silhouettes. The real controls
+probe now runs at 640x480, clicks single/group/empty-selection sidebar toggles,
+checks persistence and synchronization, and captures all three layouts. Reviewed
+`/tmp/dunecity-controls-712c/sidebar-{single,group,empty}.bmp`; all controls fit.
+The diagnostic must present between captures: repeated draw/readback without a
+frame boundary hid newly allocated group-button textures under sdl2-compat;
+adding the real frame boundary fixed the diagnostic, with no production workaround.
+Evidence: `/tmp/dunecity-712-tests.log`, `/tmp/dunecity-controls-712c`,
+`/tmp/dunecity-712-web.log`. Browser preview: http://127.0.0.1:8712/dunecity.html.
+
+`build` now points to `build-712`. Existing live games were not restarted. No
+push, PR or deployment. The 711 issue closures remain historical local-build
+notes; this follow-up changes the action icons' white border to transparency.
+
 ## 2026-09-19 — Feature requests and shared cursors, local 1.0.711
 
 Implemented #50/#55: one SDL platform cursor path, shared by desktop and web,

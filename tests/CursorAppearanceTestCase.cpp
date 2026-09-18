@@ -7,7 +7,7 @@
 TEST_CASE("All cursor actions retain contrast and smooth edges at every supported size", "[rendering][cursor]") {
     for(float scale : {1.0f,1.5f,2.0f,3.0f,4.0f}) {
         std::set<std::vector<Uint32>> silhouettes;
-        for(int mode=0;mode<6;++mode) {
+        for(int mode=0;mode<11;++mode) {
             CAPTURE(scale,mode);
             const auto action=static_cast<CursorAppearance::Action>(mode);
             sdl2::surface_ptr surface{CursorAppearance::create(action,scale)};
@@ -27,7 +27,18 @@ TEST_CASE("All cursor actions retain contrast and smooth edges at every supporte
                 if(a>0 && a<255)++smooth;
                 if(a==0)++transparent;
             }
-            CHECK(black>0);CHECK(white>0);CHECK(smooth>0);CHECK(transparent>0);
+            CHECK(black>0);CHECK(smooth>0);CHECK(transparent>0);
+            if(action==CursorAppearance::Action::Pointer) CHECK(white>0);
+            else CHECK(white==0);
+            if(action>=CursorAppearance::Action::Move && action<=CursorAppearance::Action::Heal) {
+                const int radius=static_cast<int>(scale/1.5f);
+                for(int dy=-radius;dy<=radius;++dy)for(int dx=-radius;dx<=radius;++dx) {
+                    Uint8 r,g,b,a;
+                    const auto pixel=reinterpret_cast<Uint32*>(static_cast<Uint8*>(surface->pixels)+(hotspot.y+dy)*surface->pitch)[hotspot.x+dx];
+                    SDL_GetRGBA(pixel,surface->format,&r,&g,&b,&a);
+                    CHECK(a==0);
+                }
+            }
             CHECK(silhouettes.insert(pixels).second);
         }
     }

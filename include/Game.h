@@ -302,6 +302,7 @@ public:
     void onSkipMission();
     void confirmSkipMission();
     void drawMovementPaths();
+    void toggleMovementPaths();
     bool canSkipMission() const;
 
     /**

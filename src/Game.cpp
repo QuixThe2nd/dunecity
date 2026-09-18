@@ -6275,3 +6275,11 @@ void Game::drawMovementPaths() {
     SDL_SetRenderDrawColor(renderer,r,g,b,a);
     SDL_RenderSetClipRect(renderer,clipped ? &previousClip : nullptr);
 }
+
+void Game::toggleMovementPaths() {
+    settings.general.showMovementPaths = !settings.general.showMovementPaths;
+    INIFile config(getConfigFilepath());
+    config.setBoolValue("General","Movement Paths",settings.general.showMovementPaths);
+    config.saveChangesTo(getConfigFilepath());
+    WebRuntime::syncPersistentFiles();
+}

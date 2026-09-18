@@ -2,6 +2,9 @@
 #include <GUI/dune/InGameMenu.h>
 #include <GUI/QstBox.h>
 #include <ScreenBorder.h>
+#include <GameInterface.h>
+#include <GUI/ObjectInterfaces/UnitInterface.h>
+#include <GUI/ObjectInterfaces/MultiUnitInterface.h>
 void runControlsProbe(Game& game) {
     auto require=[](bool ok,const char* why) { if(!ok)throw std::runtime_error(why); };
     auto commands=[&](CMDTYPE type) {
@@ -67,6 +70,38 @@ void runControlsProbe(Game& game) {
     Uint8 r,g,b,a;SDL_GetRenderDrawColor(renderer,&r,&g,&b,&a);
     require(SDL_RectEquals(&clip,&after) && r==3 && g==7 && b==11 && a==255,"Paths changed scene render state");
     SDL_RenderSetClipRect(renderer,nullptr);
+    // Sidebar toggles operate on the same persistent local setting as Options.
+    game.pInterface->updateObjectInterface();
+    auto* single=dynamic_cast<UnitInterface*>(game.pInterface->pObjectContainer);
+    require(single,"Missing selected-unit sidebar");
+    settings.general.showMovementPaths=true;single->update();
+    auto toggle=[&](auto& button) { button.handleMouseLeft(5,5,true);button.handleMouseLeft(5,5,false); };
+    toggle(single->movementPathsButton);single->update();
+    require(!settings.general.showMovementPaths && !single->movementPathsButton.getToggleState(),"Sidebar failed to hide paths");
+    INIFile saved(getConfigFilepath());
+    require(!saved.getBoolValue("General","Movement Paths",true),"Sidebar path preference was not saved");
+    toggle(single->movementPathsButton);single->update();
+    require(settings.general.showMovementPaths,"Sidebar failed to show paths");
+    auto capture=[&](const char* name) {
+        game.drawScreen();
+        int w,h;SDL_GetRendererOutputSize(renderer,&w,&h);
+        sdl2::surface_ptr image{SDL_CreateRGBSurfaceWithFormat(0,w,h,32,SDL_PIXELFORMAT_ARGB8888)};
+        require(SDL_RenderReadPixels(renderer,nullptr,SDL_PIXELFORMAT_ARGB8888,image->pixels,image->pitch)==0,"Sidebar capture failed");
+        SDL_SaveBMP(image.get(),name);
+        SDL_RenderPresent(renderer);
+    };
+    capture("sidebar-single.bmp");
+    auto* second=pLocalHouse->createUnit(Unit_Tank);second->deploy(origin+Coord(1,1));
+    game.selectedList.insert(second->getObjectID());second->setSelected(true);
+    game.pInterface->updateObjectInterface();
+    auto* multi=dynamic_cast<MultiUnitInterface*>(game.pInterface->pObjectContainer);
+    require(multi,"Missing group sidebar");toggle(multi->movementPathsButton);multi->update();
+    require(!settings.general.showMovementPaths && !multi->movementPathsButton.getToggleState(),"Group path toggle is out of sync");
+    capture("sidebar-group.bmp");
+    game.selectedList.clear();game.pInterface->updateObjectInterface();
+    toggle(game.pInterface->movementPathsButton);game.pInterface->updateObjectInterface();
+    require(settings.general.showMovementPaths,"Empty sidebar path toggle failed");
+    capture("sidebar-empty.bmp");
     settings.general.wasdCamera=true;select();
     SDL_KeyboardEvent key{};key.type=SDL_KEYDOWN;key.keysym.sym=SDLK_a;
     game.handleKeyInput(key);require(game.currentCursorMode==Game::CursorMode_Normal,"WASD A activated attack");

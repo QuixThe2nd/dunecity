@@ -158,7 +158,11 @@ if args.custom_map:
     env['BALANCE_ROSTER'] = ','.join(f'{house}:{team}' for house, team in roster)
 (out/'setup.json').write_text(json.dumps({**vars(args), 'resolved_roster': roster}, default=str, indent=2)+'\n')
 if args.shared_spending_probe: env['BALANCE_SHARED_SPENDING_PROBE'] = '1'
-if args.controls_probe: env['BALANCE_CONTROLS_PROBE'] = '1'
+if args.controls_probe:
+    env['BALANCE_CONTROLS_PROBE'] = '1'
+    profile = out/'profile'
+    profile.mkdir(exist_ok=True)
+    (profile/'Dune City.ini').write_text('[Video]\nPhysical Width = 640\nPhysical Height = 480\nWidth = 640\nHeight = 480\nInterface Height = 480\nFullscreen = false\n[General]\nPlay Intro = false\n')
 if args.city_placement_probe: env['BALANCE_CITY_PLACEMENT_PROBE'] = '1'
 if args.opening_economy_probe: env['BALANCE_OPENING_ECONOMY_PROBE'] = '1'
 if args.nuclear_probe or args.reactor_safety_probe: env['BALANCE_NUCLEAR_PROBE'] = '1'

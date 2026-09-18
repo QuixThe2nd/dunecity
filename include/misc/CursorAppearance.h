@@ -6,7 +6,7 @@
 #include <initializer_list>
 
 namespace CursorAppearance {
-enum class Action { Pointer, Move, Attack, Capture, Drop, Heal };
+enum class Action { Pointer, Move, Attack, Capture, Drop, Heal, Repair, Return, Deploy, Destruct, Paths };
 inline SDL_Point hotspot(Action action, float scale) {
     const float factor = scale / 1.5f;
     const int coordinate = static_cast<int>(std::lround((action == Action::Pointer ? 6 : 16) * factor));
@@ -48,6 +48,24 @@ inline float shapeDistance(Action action, SDL_FPoint p) {
             return std::min({polygonDistance(p,{{12,3},{16,3},{16,12},{22,12},{14,20},{6,12},{12,12}}),
                 segmentDistance(p,{5,21},{5,25})-1,segmentDistance(p,{5,25},{23,25})-1,
                 segmentDistance(p,{23,25},{23,21})-1});
+        case Action::Repair:
+            return std::min(segmentDistance(p,{7,23},{19,11})-2.3f,
+                std::max(std::hypot(p.x-20,p.y-8)-5.5f,
+                    -polygonDistance(p,{{17,1},{17,8},{21,11},{28,5},{29,0}})));
+        case Action::Return:
+            return std::min(segmentDistance(p,{23,9},{23,22})-1.5f,
+                std::min(segmentDistance(p,{9,22},{23,22})-1.5f,
+                    polygonDistance(p,{{4,9},{11,3},{11,7},{23,7},{23,11},{11,11},{11,15}})));
+        case Action::Deploy:
+            return std::min(polygonDistance(p,{{4,13},{14,4},{24,13},{21,13},{21,24},{7,24},{7,13}}),
+                segmentDistance(p,{3,25},{25,25})-1);
+        case Action::Destruct:
+            return polygonDistance(p,{{14,2},{17,9},{24,5},{21,12},{27,15},{20,18},{23,25},{16,22},{11,27},{9,20},{2,22},{7,15},{2,9},{10,10}});
+        case Action::Paths:
+            return std::min({segmentDistance(p,{5,23},{11,12})-1.3f,
+                segmentDistance(p,{11,12},{23,5})-1.3f,
+                std::abs(std::hypot(p.x-5,p.y-23)-2.5f)-1,
+                std::abs(std::hypot(p.x-23,p.y-5)-2.5f)-1});
         case Action::Heal:
             return polygonDistance(p,{{11,4},{17,4},{17,11},{24,11},{24,17},{17,17},{17,24},{11,24},{11,17},{4,17},{4,11},{11,11}})-0.2f;
     }
@@ -55,7 +73,7 @@ inline float shapeDistance(Action action, SDL_FPoint p) {
 }
 // The same vector geometry creates platform cursors for SDL desktop and web.
 // Supersampling at the chosen size keeps the outline smooth at fractional scales.
-inline SDL_Surface* create(Action action, float scale) {
+inline SDL_Surface* create(Action action, float scale, bool targeting = true) {
     if(!std::isfinite(scale) || scale<1 || scale>4) return nullptr;
     const float factor=scale/1.5f;
     const int extent=static_cast<int>(std::ceil(33*factor));
@@ -67,9 +85,14 @@ inline SDL_Surface* create(Action action, float scale) {
         for(int sy=0;sy<samples;++sy) for(int sx=0;sx<samples;++sx) {
             const SDL_FPoint p{(x+(sx+0.5f)/samples)/factor-2,(y+(sy+0.5f)/samples)/factor-2};
             const float distance=shapeDistance(action,p)*factor;
-            if(distance<1.75f) {
+            const bool pointer = action == Action::Pointer;
+            // Action symbols contain no white paint. Leave a clear opening at
+            // the click hotspot as well, so the exact target stays visible.
+            const bool aiming = targeting && action >= Action::Move && action <= Action::Heal;
+            if(aiming && std::hypot(p.x-14,p.y-14)<3.5f) continue;
+            if(distance <= (pointer ? 1.75f : 0.0f)) {
                 ++coverage;
-                brightness+=distance<=0 ? 16 : 255;
+                brightness += pointer && distance>0 ? 255 : 16;
             }
         }
         const Uint8 color=coverage ? brightness/coverage : 0;
@@ -78,6 +101,20 @@ inline SDL_Surface* create(Action action, float scale) {
         row[x]=SDL_MapRGBA(surface->format,color,color,color,alpha);
     }
     return surface;
+}
+// A compact version of the same geometry fits the existing 26px sidebar rows.
+inline SDL_Surface* createIcon(Action action) {
+    SDL_Surface* source = create(action,1.0f);
+    if(!source) return nullptr;
+    SDL_Surface* icon = SDL_CreateRGBSurfaceWithFormat(0,20,20,32,SDL_PIXELFORMAT_RGBA32);
+    if(icon) {
+        const SDL_Rect crop{1,1,20,20};
+        SDL_SetSurfaceBlendMode(source,SDL_BLENDMODE_NONE);
+        SDL_BlitSurface(source,&crop,icon,nullptr);
+        SDL_SetSurfaceBlendMode(icon,SDL_BLENDMODE_BLEND);
+    }
+    SDL_FreeSurface(source);
+    return icon;
 }
 }
 #endif
