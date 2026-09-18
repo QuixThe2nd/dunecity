@@ -137,7 +137,6 @@ MainMenu::MainMenu()
     loadButton.setOnClick([this]() { showGameLibrary(); canContinue = hasRecentGame(); });
     campaignButton.setText(_("Campaign"));
     campaignButton.setOnClick([this]() { SinglePlayerMenu::playCampaign(); canContinue = hasRecentGame(); });
-    campaignButton.setActive();
     modesButton.setText(_("Extras"));
     modesButton.setOnClick(std::bind(&MainMenu::onModes, this));
     dune2rEditorButton.setText("DUNE2R ASSETS");
@@ -188,13 +187,13 @@ MainMenu::MainMenu()
     TextButton* allButtons[] = {&continueButton, &campaignButton, &customButton, &onlineButton,
                                 &loadButton, &optionsButton, &modesButton, &quitButton};
     for(TextButton* button : allButtons) {
+        button->setKeyboardFocusVisible(false);
         windowWidget.addWidget(button, Point(0, 0), Point(1, 1));
     }
     // The generic product logo must not imply DuneCity rules when Vanilla is active.
     logoPicture.setVisible(false);
     activeModLabel.setTextFontSize(24);
-    // Same-colour shadow supplies an extra pixel of weight to the lettering.
-    activeModLabel.setTextColor(COLOR_WHITE, COLOR_WHITE, COLOR_BLACK);
+    activeModLabel.setTextColor(COLOR_RGB(115,220,210), COLOR_TRANSPARENT, COLOR_TRANSPARENT);
     activeModLabel.setAlignment(static_cast<Alignment_Enum>(Alignment_HCenter | Alignment_VCenter));
     windowWidget.addWidget(&activeModLabel, Point(0, 0), Point(1, 1));
     refreshContextButtons();
@@ -211,6 +210,20 @@ MainMenu::MainMenu()
     }
     if(canContinue) continueButton.setActive();
     else campaignButton.setActive();
+}
+
+void MainMenu::handleInput(SDL_Event& event)
+{
+    if(!pChildWindow && (event.type == SDL_KEYDOWN || event.type == SDL_MOUSEMOTION
+                       || event.type == SDL_MOUSEBUTTONDOWN)) {
+        const bool keyboard = event.type == SDL_KEYDOWN;
+        for(auto* button : {&continueButton, &campaignButton, &customButton, &onlineButton,
+                            &loadButton, &optionsButton, &modesButton, &quitButton}) {
+            button->setKeyboardFocusVisible(keyboard);
+            if(keyboard) button->handleMouseMovement(-1,-1,false);
+        }
+    }
+    MenuBase::handleInput(event);
 }
 
 void MainMenu::refreshModVersionLabel()

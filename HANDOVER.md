@@ -1,3 +1,25 @@
+## 2026-09-19 — Home menu colour and focus, local 1.0.717
+
+Stefan reported Campaign always outlined even with the pointer elsewhere and
+requested a distinct mod-label colour. The active mod banner is now teal on the
+shared dark background, without the black strip or duplicated white shadow.
+MainMenu keeps the default keyboard destination but suppresses its focus outline
+until keyboard input; pointer movement/clicks restore hover-only highlighting.
+Keyboard input clears stale hover so two destinations do not appear selected.
+The premature Campaign activation before attachment to its container is removed.
+Button exposes an opt-in focus-visibility setting with its existing behaviour
+as the default, so other menus, confirmations and toggle states are unaffected.
+The real menu probe checks initial, keyboard, pointer and enter/leave hover states
+and captures the resulting home screens at its three renderer sizes.
+
+Native Release and Emscripten builds, dependency checks and all seven CTest suites passed
+(/tmp/dunecity-home-717-tests.log). Home captures confirm teal text, no initial
+outline, and a visible keyboard-focus outline at 640x480, 854x480 and 1280x720.
+
+Build location stays build-714/bin/dunecity.app (also build/bin/dunecity.app), now
+1.0.717; web output stays build-714/emscripten/bin, served on port 8714. No release
+or push; a running app needs a restart to show the updated menu.
+
 ## 2026-09-19 — Consistent readable menus, local 1.0.716
 
 Stefan requested consistent, readable menus, including Game Settings, City Budget,

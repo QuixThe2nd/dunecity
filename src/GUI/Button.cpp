@@ -128,7 +128,7 @@ void Button::draw(Point position) {
         if(pPressedTexture) {
             tex = pPressedTexture.get();
         } else {
-            if(isActive() && pActiveTexture) {
+            if(isActive() && keyboardFocusVisible && pActiveTexture) {
                 tex = pActiveTexture.get();
             } else {
                 tex = pUnpressedTexture.get();
@@ -139,14 +139,14 @@ void Button::draw(Point position) {
             if(pPressedTexture) {
                 tex = pPressedTexture.get();
             } else {
-                if(isActive() && pActiveTexture) {
+                if(isActive() && keyboardFocusVisible && pActiveTexture) {
                     tex = pActiveTexture.get();
                 } else {
                     tex = pUnpressedTexture.get();
                 }
             }
         } else {
-            if((isActive() || bHover) && pActiveTexture) {
+            if(((isActive() && keyboardFocusVisible) || bHover) && pActiveTexture) {
                 tex = pActiveTexture.get();
             } else {
                 tex = pUnpressedTexture.get();

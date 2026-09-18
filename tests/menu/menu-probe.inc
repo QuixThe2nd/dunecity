@@ -97,12 +97,24 @@ int runMenuProbe() {
         MainMenu menu;
         menuRequire(menu.campaignButton.isVisible() && menu.customButton.isVisible() && menu.onlineButton.isVisible(), "Home play actions missing");
         menuRequire(!menu.displayButton.isVisible(),"Duplicate Display entry remains");
+        menuRequire(!menu.campaignButton.keyboardFocusVisible,"Home shows unsolicited keyboard focus");
         menuCapture(menu,"home");
         SDL_Event tab{}; tab.type=SDL_KEYDOWN; tab.key.keysym.sym=SDLK_TAB;
         for(auto* expected : {&menu.customButton,&menu.onlineButton,&menu.loadButton,&menu.optionsButton,&menu.modesButton,&menu.quitButton,&menu.campaignButton}) {
             menu.handleInput(tab);
             menuRequire(menu.windowWidget.pActiveChildWidget==expected,"Home Tab order reaches a hidden destination or disagrees with screen order");
+            menuRequire(expected->keyboardFocusVisible,"Keyboard navigation lost its visible focus");
         }
+        menuCapture(menu,"home-keyboard");
+        SDL_Event motion{}; motion.type=SDL_MOUSEMOTION; motion.motion.x=2; motion.motion.y=2;
+        menu.handleInput(motion);
+        menuRequire(!menu.campaignButton.keyboardFocusVisible,"Pointer movement left Campaign highlighted");
+        menuRequire(!menu.campaignButton.bHover,"Pointer outside menu left Campaign hovered");
+        menu.campaignButton.handleMouseMovement(5,5,false);
+        menuRequire(menu.campaignButton.bHover,"Campaign no longer responds to hover");
+        menu.campaignButton.handleMouseMovement(-1,-1,false);
+        menuRequire(!menu.campaignButton.bHover,"Campaign hover stuck after pointer left");
+        menuCapture(menu,"home-pointer");
     }
     {
         HouseChoiceMenu menu;
