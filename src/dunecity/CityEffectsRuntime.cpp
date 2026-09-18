@@ -33,6 +33,7 @@
 
 #include <algorithm>
 #include <cstdlib>
+#include <limits>
 #include <vector>
 
 // --- Per-house getter implementations ---
@@ -1435,7 +1436,7 @@ void CitySimulation::runDailyBudget() {
     if (!currentGameMap) return;
     const Map& map = *currentGameMap;
 
-    // One map walk collects the tax base and police costs. Roads have no upkeep.
+    // One structure walk collects the tax base and police costs. Roads have no upkeep.
     // All annual amounts are paid fractionally over kBudgetTicksPerYear.
     for (auto& hs : houseState_) {
         hs.taxBaseEighths = 0;
@@ -1443,6 +1444,7 @@ void CitySimulation::runDailyBudget() {
     struct HouseBudget {
         int taxBaseEighths = 0;
         FixPoint policeCost = 0;
+        int firstOrigin = std::numeric_limits<int>::max();
     };
     std::vector<std::pair<House*, HouseBudget>> houseBudgets;
 
@@ -1462,6 +1464,7 @@ void CitySimulation::runDailyBudget() {
         const Tile* t = map.getTile(x, y);
         const int itemID = pStruct->getItemID();
         HouseBudget& hb = findOrAdd(owner);
+        hb.firstOrigin=std::min(hb.firstOrigin,y*map.getSizeX()+x);
 
         if (getStructureCityRole(itemID) != CityRole::None) {
             const int level = cityLevelOf(t, pStruct);
@@ -1469,18 +1472,20 @@ void CitySimulation::runDailyBudget() {
         }
         hb.policeCost += getPoliceAnnualCost(itemID);
     };
-    for (int y = 0; y < map.getSizeY(); ++y) {
-        for (int x = 0; x < map.getSizeX(); ++x) {
-            const Tile* tile = map.getTile(x, y);
-            if (!tile) continue;
-            if (!tile->hasANonInfantryGroundObject()) continue;
-            const ObjectBase* object = tile->getNonInfantryGroundObject();
-            if (!object || !object->isAStructure()) continue;
-            const auto* structure = static_cast<const StructureBase*>(object);
-            if (structure->getLocation().x == x && structure->getLocation().y == y)
-                accumulateStructure(x, y, structure);
-        }
+    for (const auto* structure : structureList) {
+        const auto location=structure->getLocation();
+        if (!map.tileExists(location)) continue;
+        const auto* tile=map.getTile(location);
+        // Preserve the map-origin filter, including structures removed from
+        // the map but not yet removed from the global list.
+        if (tile->hasANonInfantryGroundObject() && tile->getNonInfantryGroundObject()==structure)
+            accumulateStructure(location.x,location.y,structure);
     }
+    // Integer/fixed-point sums are order-independent; keep the old row-major
+    // house payout/log order by remembering each house's first origin.
+    std::sort(houseBudgets.begin(),houseBudgets.end(),[](const auto& a,const auto& b) {
+        return a.second.firstOrigin<b.second.firstOrigin;
+    });
 
     for (auto& [house, hb] : houseBudgets) {
         // Annual values divided by cycles-per-year for smooth payout.

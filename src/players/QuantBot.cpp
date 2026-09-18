@@ -2,6 +2,7 @@
 #include <dunecity/CityStructurePopulation.h>
 #include <dunecity/ZonePower.h>
 #include <players/LocalPointIndex.h>
+#include <players/CityDistanceField.h>
 #include <players/CityRoadRepairPolicy.h>
 #include <players/UnitMixPolicy.h>
 #include <players/CityServiceInvestmentPolicy.h>
@@ -1813,27 +1814,55 @@ Coord QuantBot::findPlaceLocation(Uint32 itemID) {
 	int endX = std::min(mapW - newSizeX, baseCenter.x + searchRadius);
 	int endY = std::min(mapH - newSizeY, baseCenter.y + searchRadius);
 
-    // Plan both sides of the pollution buffer, including other yards' queues.
-    struct CityNeighbour { Coord location, size; bool pollutes, sensitive; DuneCity::CityRole role; };
-    std::vector<CityNeighbour> cityNeighbours;
+    // Snapshot only the zones used by proximity scoring. A bounded index
+    // replaces the full structure-list walk for every candidate origin.
+    struct ZoneNeighbour { Coord location; int item; };
+    std::vector<ZoneNeighbour> zoneNeighbours;
+    LocalPointIndex zoneIndex(mapW,mapH);
+    if (DuneCity::isCityZoneStructure(itemID)) {
+        for (const auto* structure : getStructureList()) {
+            if (structure->getOwner() != getHouse() || !DuneCity::isCityZoneStructure(structure->getItemID())) continue;
+            const auto location=structure->getLocation();
+            zoneIndex.add(location.x,location.y,zoneNeighbours.size());
+            zoneNeighbours.push_back({location,structure->getItemID()});
+        }
+    }
+
+    // Resolve nearest origins and full-footprint pollution separation once,
+    // instead of scanning every neighbour again at every candidate. These
+    // fields include the same live buildings and other yards' reservations.
+    // Build lazily: crowded maps often reject every site before scoring.
     auto* citySim = currentGame && currentGame->isCitySimEnabled() ? currentGame->getCitySimulation() : nullptr;
     const auto newRole = DuneCity::getStructureCityRole(itemID);
     const bool newSensitive = newRole == DuneCity::CityRole::Residential || newRole == DuneCity::CityRole::Commercial;
     const bool newPolluter = DuneCity::getPollutionEmission(itemID, DuneCity::getStructureMaxLevel(itemID)) > 0;
+    const bool needCityDistances = citySim && (newSensitive || newPolluter);
+    bool cityDistancesReady=false;
+    CityDistanceField nearestResidential(0,0),nearestCommercial(0,0),
+        nearestIndustrial(0,0),pollutionSeparation(0,0);
     auto addNeighbour = [&](Uint32 item, Coord location, Coord size) {
         const auto role = DuneCity::getStructureCityRole(item);
-        cityNeighbours.push_back({location, size,
-            DuneCity::getPollutionEmission(item, DuneCity::getStructureMaxLevel(item)) > 0,
-            role == DuneCity::CityRole::Residential || role == DuneCity::CityRole::Commercial, role});
+        if (role == DuneCity::CityRole::Residential) nearestResidential.add(location.x,location.y);
+        if (role == DuneCity::CityRole::Commercial) nearestCommercial.add(location.x,location.y);
+        if (role == DuneCity::CityRole::Industrial) nearestIndustrial.add(location.x,location.y);
+        const bool pollutes=DuneCity::getPollutionEmission(item,DuneCity::getStructureMaxLevel(item))>0;
+        const bool sensitive=role==DuneCity::CityRole::Residential || role==DuneCity::CityRole::Commercial;
+        if ((newSensitive && pollutes) || (newPolluter && sensitive))
+            pollutionSeparation.add(location.x,location.y,size.x,size.y);
     };
-    if (citySim && (newSensitive || newPolluter)) {
+    auto prepareCityDistances = [&] {
+        if (cityDistancesReady) return;
+        cityDistancesReady=true;
+        nearestResidential=CityDistanceField(mapW,mapH); nearestCommercial=CityDistanceField(mapW,mapH);
+        nearestIndustrial=CityDistanceField(mapW,mapH); pollutionSeparation=CityDistanceField(mapW,mapH);
         for (const auto* structure : getStructureList())
             if (structure->getOwner() == getHouse() && structure->getHealth() > 0)
                 addNeighbour(structure->getItemID(), structure->getLocation(), structure->getStructureSize());
         for (const auto& entry : reservedStructures)
             if (entry.first != planningBuilder)
                 addNeighbour(entry.second.item, entry.second.location, getStructureSize(entry.second.item));
-    }
+        nearestResidential.build(); nearestCommercial.build(); nearestIndustrial.build(); pollutionSeparation.build();
+    };
 
 	// Pre-collect spice tile positions for refinery placement (avoids O(N^2) inner loop)
 	std::vector<Coord> spiceTiles;
@@ -2162,23 +2191,16 @@ Coord QuantBot::findPlaceLocation(Uint32 itemID) {
 					}
 				}
 
-				int closestIndDist = 100;
-				int nearbyRes = 0, nearbyCom = 0, nearbyInd = 0;
-
-				for (const StructureBase* pStruct : getStructureList()) {
-					if (pStruct->getOwner() != getHouse()) continue;
-					int dist = lround(blockDistance(
-						Coord(placeLocationX, placeLocationY), pStruct->getLocation()));
-					if (dist > 16) continue;  // outside supply radius
-
-					int sid = pStruct->getItemID();
-					if (sid == Structure_ZoneIndustrial) {
-						nearbyInd++;
-						if (dist < closestIndDist) closestIndDist = dist;
-					}
-					if (sid == Structure_ZoneResidential) nearbyRes++;
-					if (sid == Structure_ZoneCommercial) nearbyCom++;
-				}
+                int closestIndDist = 100, closestResDist = 100, closestComDist = 100;
+                int nearbyRes = 0, nearbyCom = 0, nearbyInd = 0;
+                zoneIndex.visit(placeLocationX,placeLocationY,16,[&](size_t index) {
+                    const auto& zone=zoneNeighbours[index];
+                    const int dist=lround(blockDistance(Coord(placeLocationX,placeLocationY),zone.location));
+                    if (dist>16) return;
+                    if (zone.item==Structure_ZoneIndustrial) { ++nearbyInd; closestIndDist=std::min(closestIndDist,dist); }
+                    if (zone.item==Structure_ZoneResidential) { ++nearbyRes; closestResDist=std::min(closestResDist,dist); }
+                    if (zone.item==Structure_ZoneCommercial) { ++nearbyCom; closestComDist=std::min(closestComDist,dist); }
+                });
 
 				if (isResidential || isCommercial) {
 					auto* citySim = currentGame ? currentGame->getCitySimulation() : nullptr;
@@ -2254,18 +2276,9 @@ Coord QuantBot::findPlaceLocation(Uint32 itemID) {
 
 					// I should stay away from R/C to avoid polluting them
 					// but within commute distance (6-16 tiles = sweet spot)
-					int closestResDist = 100;
-					int closestComDist = 100;
-					for (const StructureBase* pStruct : getStructureList()) {
-						if (pStruct->getOwner() != getHouse()) continue;
-						int sid = pStruct->getItemID();
-						int dist = lround(blockDistance(
-							Coord(placeLocationX, placeLocationY), pStruct->getLocation()));
-						if (sid == Structure_ZoneResidential && dist < closestResDist)
-							closestResDist = dist;
-						if (sid == Structure_ZoneCommercial && dist < closestComDist)
-							closestComDist = dist;
-					}
+                    // All following distance decisions use only the 6/16 thresholds;
+                    // a missing neighbour within 16 has the same score as any
+                    // more distant neighbour, so reuse the bounded query above.
 
 					// Sweet spot: outside pollution radius but within commute
 					if (closestResDist >= 6 && closestResDist <= 16) {
@@ -2288,20 +2301,12 @@ Coord QuantBot::findPlaceLocation(Uint32 itemID) {
                 int siteTier = 0;
                 AITelemetry::Record quality;
                 quality.set("four_zone_block_bonus",blockBonus);
-                if (citySim && (newSensitive || newPolluter)) {
-                    int separation = 1000000;
-                    int nearestR = 1000000, nearestC = 1000000, nearestI = 1000000;
-                    for (const auto& neighbour : cityNeighbours) {
-                        const int originDistance = std::max(std::abs(placeLocationX-neighbour.location.x),
-                                                            std::abs(placeLocationY-neighbour.location.y));
-                        if (neighbour.role == DuneCity::CityRole::Residential) nearestR = std::min(nearestR, originDistance);
-                        if (neighbour.role == DuneCity::CityRole::Commercial) nearestC = std::min(nearestC, originDistance);
-                        if (neighbour.role == DuneCity::CityRole::Industrial) nearestI = std::min(nearestI, originDistance);
-                        if ((newSensitive && neighbour.pollutes) || (newPolluter && neighbour.sensitive))
-                            separation = std::min(separation, CityPlacementPolicy::footprintDistance(
-                                placeLocationX, placeLocationY, newSizeX, newSizeY,
-                                neighbour.location.x, neighbour.location.y, neighbour.size.x, neighbour.size.y));
-                    }
+                if (needCityDistances) {
+                    prepareCityDistances();
+                    const int separation=pollutionSeparation.footprint(placeLocationX,placeLocationY,newSizeX,newSizeY);
+                    const int nearestR=nearestResidential.get(placeLocationX,placeLocationY);
+                    const int nearestC=nearestCommercial.get(placeLocationX,placeLocationY);
+                    const int nearestI=nearestIndustrial.get(placeLocationX,placeLocationY);
                     auto inReachOrMissing = [](int distance) { return distance == 1000000 || distance <= DuneCity::kSupplyRadius; };
                     const bool withinSupply = newRole == DuneCity::CityRole::Residential
                         ? inReachOrMissing(std::min(nearestC, nearestI))

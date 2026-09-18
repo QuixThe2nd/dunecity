@@ -532,3 +532,38 @@ TEST_CASE("Placement fallback reaches disconnected districts without rescanning 
         REQUIRE(visits==1);
     }
 }
+
+#include <players/CityDistanceField.h>
+TEST_CASE("Placement distance fields match direct footprint scans", "[ai][placement]") {
+    constexpr int w=9,h=7;
+    struct Rect {int x,y,w,h;};
+    // Vary source count, origins, overlaps and footprints deterministically,
+    // checking every candidate origin and size, including all map edges.
+    for (unsigned scenario=0; scenario<80; ++scenario) {
+        CityDistanceField field(w,h);
+        std::vector<Rect> sources;
+        unsigned random=scenario+1;
+        auto next=[&] {random=random*1664525u+1013904223u;return random;};
+        for (unsigned i=0; i<scenario%11; ++i) {
+            const int sw=1+next()%3,sh=1+next()%3;
+            Rect r{int(next()%(w-sw+1)),int(next()%(h-sh+1)),sw,sh};
+            sources.push_back(r);field.add(r.x,r.y,r.w,r.h);
+        }
+        field.build();
+        for (int ch=1;ch<=3;++ch) for (int cw=1;cw<=3;++cw)
+            for (int y=0;y<=h-ch;++y) for (int x=0;x<=w-cw;++x) {
+                int expected=CityDistanceField::missing;
+                for (const auto& r:sources)
+                    expected=std::min(expected,CityPlacementPolicy::footprintDistance(x,y,cw,ch,r.x,r.y,r.w,r.h));
+                REQUIRE(field.footprint(x,y,cw,ch)==expected);
+            }
+    }
+}
+TEST_CASE("Placement fields are rebuilt after a reservation changes", "[ai][placement]") {
+    CityDistanceField first(12,10);first.add(2,3,3,2);first.build();
+    CityDistanceField next(12,10);next.add(9,7,2,3);next.build();
+    REQUIRE(first.get(2,3)==0);
+    REQUIRE(next.get(2,3)==7);
+    REQUIRE(first.get(9,7)==5);
+    REQUIRE(next.get(9,7)==0);
+}
