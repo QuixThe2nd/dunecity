@@ -1,3 +1,39 @@
+## 2026-09-19 — Keep reactors behind the fighting, local 1.0.710
+
+Stefan reported Fremen repeatedly building nuclear plants beside the enemy.
+Inspected the running 708 app and capture `1789747703462791-0`: SCENF022.INI,
+seed 648039438, Fremen house 3 full QuantBot Brutal (`support=0`). Eight Fremen
+reactors detonated in the captured match. Later construction selections report
+700–2100 enemy-fire risk and negative rear scores; one completed replacement
+lasted eight game seconds. These are observations of 708, not a 710 replay.
+
+Reactors were exempt from normal live-fire rejection. Their ranking also put
+blast spacing above the amount of enemy fire when every plot had some risk,
+and distance behind the base was only a packing-score bonus. Emergency power
+placement repeated that exemption. Reactors now reject known weapon halos,
+rank safe plots by loss history, clearance beyond enemy weapon reach, blast
+spacing and rear position before packing, and compare the full buildable map.
+Redevelopment uses the same ranking. Only windtraps retain the exposed emergency
+placement fallback. A finished reactor with no unexposed physical footprint is
+refunded, freeing the yard for a windtrap; a friendly unit occupying a safe
+footprint still causes a wait. Existing blast-spacing preferences and decaying
+loss history remain; this is not an absolute ban on recently damaged districts.
+No new saved state or hidden-enemy knowledge was introduced. Policy v73.
+
+The real-engine `--reactor-safety-probe` first fails against 709 with
+`Reactor planning accepts enemy fire` (`/tmp/dunecity-reactor-before-710/run.log`).
+710 passes rejection, two-plot weapon distance/rear selection, blocked-unit
+waiting, exposed finished-order refund/no immediate requeue, and safe windtrap
+recovery (`/tmp/dunecity-reactor-c-710/run.log`). The pre-existing disappearing
+footprint probe also passes (`/tmp/dunecity-nuclear-b-710/run.log`); its fixture
+now clears an unrelated yard upgrade before the independent recovery check.
+Pure policy comparisons and all 7 CTest groups pass, along with pre/post build
+dependency audits, version agreement and app signature verification.
+`/tmp/dunecity-710-ctest.log` contains the complete standard test result.
+
+`build` points to self-contained `build-710` (1.0.710), ready for the next launch.
+The live 708 match was not restarted or altered; no push or deployment performed.
+
 ## 2026-09-19 — Protect spice from city placement, local 1.0.709
 
 Stefan requested that SimCity buildings cannot cover spice or spice blooms.

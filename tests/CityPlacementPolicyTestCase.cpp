@@ -493,13 +493,19 @@ TEST_CASE("Service placement penalises clusters and favours underserved crime", 
     REQUIRE(cluster.useful(false));
 }
 
-TEST_CASE("Reactor placement prefers safety and separation without vetoing the only site", "[city][safety]") {
+TEST_CASE("Reactor placement puts weapon distance and rear safety ahead of packing", "[city][safety]") {
     using namespace TacticalSafetyPolicy;
     REQUIRE(reactorPlacementAllowed(Structure_NuclearPlant,false));
     REQUIRE_FALSE(reactorPlacementAllowed(Structure_HeavyFactory,false));
-    REQUIRE(reactorSiteRank(0,0,true,-10000) > reactorSiteRank(0,0,false,10000));
-    REQUIRE(reactorSiteRank(0,0,false,0) > reactorSiteRank(100,0,true,10000));
-    REQUIRE(reactorSiteRank(100,0,false,0) > reactorSiteRank(200,0,false,10000));
+    // Live fire cannot win merely because the sheltered plot has loss history
+    // or cannot clear every neighbouring critical building's blast radius.
+    REQUIRE(reactorSiteRank(0,100,1,false,-80,-10000) > reactorSiteRank(100,0,0,true,800,10000));
+    REQUIRE(reactorSiteRank(100,0,0,false,0,0) > reactorSiteRank(200,0,0,true,800,10000));
+    REQUIRE(reactorSiteRank(0,0,6,false,0,-10000) > reactorSiteRank(0,0,1,true,800,10000));
+    REQUIRE(reactorSiteRank(0,0,12,true,160,-10000) > reactorSiteRank(0,0,12,true,-160,10000));
+    REQUIRE(reactorSiteRank(0,0,12,true,0,-10000) > reactorSiteRank(0,0,12,false,0,10000));
+    REQUIRE(reactorSiteRank(0,0,6,true,0,0) > reactorSiteRank(0,100,12,true,800,10000));
+    REQUIRE(reactorSiteRank(0,0,12,true,0,1) > reactorSiteRank(0,0,12,true,0,0));
 }
 
 TEST_CASE("Rocket coverage includes city districts and whole diagonal footprints", "[city][placement][air]") {

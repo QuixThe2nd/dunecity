@@ -1692,6 +1692,7 @@ Coord QuantBot::findRedevelopmentSite(Uint32 item) {
     Coord best=Coord::Invalid();
     int bestScore=std::numeric_limits<int>::max();
     auto bestFactoryRank=TacticalSafetyPolicy::factorySiteRank(1,-1,-1,0);
+    auto bestReactorRank=TacticalSafetyPolicy::reactorSiteRank(100000,100000,-1,false,0,0);
     auto* sim=currentGame->getCitySimulation();
     if (!sim) return best;
     for (int y=std::max(0,base.y-50); y<=std::min(getMap().getSizeY()-size.y,base.y+50); ++y)
@@ -1716,8 +1717,12 @@ Coord QuantBot::findRedevelopmentSite(Uint32 item) {
             const auto rank=TacticalSafetyPolicy::factorySiteRank(dangerAt(pos,size,true),
                 TacticalSafetyPolicy::footprintClearance(factoryEnemyClearance,getMap().getSizeX(),getMap().getSizeY(),
                     x,y,size.x,size.y),0,-score);
-            if (TacticalSafetyPolicy::productionFactory(item) ? rank>bestFactoryRank : score<bestScore) {
-                bestFactoryRank=rank; bestScore=score; best=pos;
+            const auto reactorRank=TacticalSafetyPolicy::reactorSiteRank(0,dangerAt(pos,size,true),
+                TacticalSafetyPolicy::footprintClearance(factoryEnemyClearance,getMap().getSizeX(),getMap().getSizeY(),
+                    x,y,size.x,size.y),true,rearScore(pos,base),-score);
+            if (item==Structure_NuclearPlant ? reactorRank>bestReactorRank
+                : TacticalSafetyPolicy::productionFactory(item) ? rank>bestFactoryRank : score<bestScore) {
+                bestReactorRank=reactorRank; bestFactoryRank=rank; bestScore=score; best=pos;
             }
         }
     return best;
@@ -1749,7 +1754,7 @@ Coord QuantBot::findPlaceLocation(Uint32 itemID) {
     const bool factoryPlacement = TacticalSafetyPolicy::productionFactory(itemID);
     auto bestFactoryRank = TacticalSafetyPolicy::factorySiteRank(1,-1,-1,0);
     AITelemetry::Record bestQuality;
-    auto bestReactorRank = TacticalSafetyPolicy::reactorSiteRank(100000,100000,false,std::numeric_limits<int>::min());
+    auto bestReactorRank = TacticalSafetyPolicy::reactorSiteRank(100000,100000,-1,false,0,std::numeric_limits<int>::min());
     int candidates = 0, threatRejected = 0, blastRejected = 0, lossRejected = 0;
 
 	bool itemIsBuilder = (itemID == Structure_HeavyFactory
@@ -1819,7 +1824,7 @@ Coord QuantBot::findPlaceLocation(Uint32 itemID) {
     // as the limit of a spread-out city's buildable territory.
     for (int searchPass=0; searchPass<2; ++searchPass) {
         if (searchPass==1) {
-            if (bestLocation.isValid()) break;
+            if (bestLocation.isValid() && itemID != Structure_NuclearPlant) break;
             startX=0; startY=0; endX=mapW-newSizeX; endY=mapH-newSizeY;
         }
         searchPassUsed=searchPass;
@@ -1852,7 +1857,7 @@ Coord QuantBot::findPlaceLocation(Uint32 itemID) {
                     && itemID != Structure_NuclearPlant
                     && nearRecentStructureLoss(placeLocationX, placeLocationY, newSizeX, newSizeY)) { ++lossRejected; continue; }
                 if (itemID != Structure_RocketTurret && itemID != Structure_GunTurret && itemID != Structure_Wall) {
-                    if (itemID != Structure_NuclearPlant && dangerAt(Coord(placeLocationX, placeLocationY), Coord(newSizeX, newSizeY)) > 0) { ++threatRejected; continue; }
+                    if (dangerAt(Coord(placeLocationX, placeLocationY), Coord(newSizeX, newSizeY)) > 0) { ++threatRejected; continue; }
                     if (!TacticalSafetyPolicy::reactorPlacementAllowed(itemID, reactorClearance(itemID, Coord(placeLocationX, placeLocationY)))) { ++blastRejected; continue; }
                 }
                 const auto roads = cityRoadImpact(getMap(), placeLocationX, placeLocationY, newSizeX, newSizeY, itemID);
@@ -2312,12 +2317,12 @@ Coord QuantBot::findPlaceLocation(Uint32 itemID) {
                 locationScore -= lossRisk * 5;
                 const int rear = (itemID == Structure_NuclearPlant || factoryPlacement) ? rearScore(Coord(placeLocationX, placeLocationY), baseCenter) : 0;
                 locationScore += rear;
-                const int enemyClearance = factoryPlacement ? TacticalSafetyPolicy::footprintClearance(
+                const int enemyClearance = (factoryPlacement || itemID == Structure_NuclearPlant) ? TacticalSafetyPolicy::footprintClearance(
                     factoryEnemyClearance,mapW,mapH,placeLocationX,placeLocationY,newSizeX,newSizeY) : 0;
                 const auto factoryRank = TacticalSafetyPolicy::factorySiteRank(lossRisk,enemyClearance,siteTier,locationScore);
                 const bool clearsReactor = itemID != Structure_NuclearPlant || reactorClearance(itemID,Coord(placeLocationX,placeLocationY));
                 const int fireRisk = itemID == Structure_NuclearPlant ? dangerAt(Coord(placeLocationX,placeLocationY),Coord(newSizeX,newSizeY)) : 0;
-                const auto reactorRank = TacticalSafetyPolicy::reactorSiteRank(fireRisk,lossRisk,clearsReactor,locationScore);
+                const auto reactorRank = TacticalSafetyPolicy::reactorSiteRank(fireRisk,lossRisk,enemyClearance,clearsReactor,rear,locationScore);
                 quality.set("enemy_clearance_tiles", enemyClearance)
                     .set("recent_loss_risk", lossRisk).set("enemy_fire_risk", fireRisk)
                     .set("rear_score", rear).set("reactor_clearance", clearsReactor);
@@ -7230,14 +7235,11 @@ void QuantBot::build(int militaryValue) {
 						}
 					}
 
-                        // A completed generator must not hold the only yard
-                        // forever because every legal site is in a threat halo.
-                        // Prefer safe, separated reactors and the least exposed
-                        // fallback; preserve roads and neighbouring access.
-                        if (location.isInvalid() && (itemToBePlaced == Structure_NuclearPlant
-                            || itemToBePlaced == Structure_WindTrap)) {
+                        // Only windtraps may use an exposed emergency power site.
+                        // A reactor under known fire risks another blackout and
+                        // collateral damage; normal placement must find it safety.
+                        if (location.isInvalid() && itemToBePlaced == Structure_WindTrap) {
                             const Coord size = getStructureSize(itemToBePlaced);
-                            auto bestRecoveryRank = TacticalSafetyPolicy::reactorSiteRank(100000,100000,false,std::numeric_limits<int>::min());
                             int bestRisk = std::numeric_limits<int>::max();
                             int bestDistance = std::numeric_limits<int>::max();
                             for (int x=0; x<=getMap().getSizeX()-size.x; ++x) {
@@ -7254,10 +7256,7 @@ void QuantBot::build(int militaryValue) {
                                         + (nearRecentStructureLoss(x,y,size.x,size.y) ? 1000 : 0);
                                     const Coord yard = pConstYard->getLocation();
                                     const int distance = std::abs(x-yard.x)+std::abs(y-yard.y);
-                                    const auto rank = TacticalSafetyPolicy::reactorSiteRank(risk,0,reactorClearance(itemToBePlaced,site),-distance);
-                                    if (itemToBePlaced == Structure_NuclearPlant ? rank > bestRecoveryRank
-                                        : risk < bestRisk || (risk == bestRisk && distance < bestDistance)) {
-                                        bestRecoveryRank = rank;
+                                    if (risk < bestRisk || (risk == bestRisk && distance < bestDistance)) {
                                         bestRisk = risk; bestDistance = distance; location = site;
                                     }
                                 }
@@ -7275,7 +7274,8 @@ void QuantBot::build(int militaryValue) {
                             for (int y=0;y<=getMap().getSizeY()-size.y && !potentialSite;++y)
                                 for (int x=0;x<=getMap().getSizeX()-size.x && !potentialSite;++x) {
                                     if (!getMap().okayToPlaceStructure(x,y,size.x,size.y,false,getHouse(),true,itemToBePlaced)
-                                        || overlapsReservedStructure(x,y,size.x,size.y)) continue;
+                                        || overlapsReservedStructure(x,y,size.x,size.y)
+                                        || dangerAt(Coord(x,y),size)>0) continue;
                                     bool structure=false;
                                     for(int dy=0;dy<size.y;++dy) for(int dx=0;dx<size.x;++dx) {
                                         const auto* object=getMap().getTile(x+dx,y+dy)->getGroundObject();
@@ -7286,7 +7286,7 @@ void QuantBot::build(int militaryValue) {
                             if (!potentialSite) {
                                 // Refund through the ordinary production API. The
                                 // next planning pass can buy a smaller windtrap.
-                                tracePlacementIssue("placement_cancel","nuclear_footprint_lost",Coord::Invalid());
+                                tracePlacementIssue("placement_cancel","no_safe_nuclear_footprint",Coord::Invalid());
                                 doCancelItem(pConstYard,itemToBePlaced);
                                 placeLocations.clear();
                                 reservedStructures.erase(planningBuilder);
