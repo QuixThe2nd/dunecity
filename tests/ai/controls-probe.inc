@@ -98,6 +98,14 @@ void runControlsProbe(Game& game) {
     require(multi,"Missing group sidebar");toggle(multi->movementPathsButton);multi->update();
     require(!settings.general.showMovementPaths && !multi->movementPathsButton.getToggleState(),"Group path toggle is out of sync");
     capture("sidebar-group.bmp");
+    // Exercise the maximum action count at the 640x480 fixture size.
+    for(auto* button : {&multi->moveButton,&multi->attackButton,&multi->movementPathsButton,
+            &multi->carryallDropButton,&multi->captureButton,&multi->returnButton,
+            &multi->deployButton,&multi->destructButton,&multi->healButton,&multi->sendToRepairButton})
+        button->setVisible(true);
+    multi->actionBar.refresh();
+    require(multi->actionBar.getSize().y==82,"Full action bar must wrap into three rows");
+    capture("sidebar-all-actions.bmp");
     game.selectedList.clear();game.pInterface->updateObjectInterface();
     toggle(game.pInterface->movementPathsButton);game.pInterface->updateObjectInterface();
     require(settings.general.showMovementPaths,"Empty sidebar path toggle failed");
@@ -109,6 +117,9 @@ void runControlsProbe(Game& game) {
     require(game.currentCursorMode==Game::CursorMode_Attack,"Shift+A cannot attack with WASD enabled");
     game.setCursorMode(Game::CursorMode_Normal);
     require(game.canSkipMission(),"Fixture cannot skip campaign");
+    game.onOptions();
+    capture("pause-menu.bmp");
+    game.pInGameMenu.reset();game.bMenu=false;game.resumeGame();
     game.onSkipMission();
     auto* menu=dynamic_cast<InGameMenu*>(game.pInGameMenu.get());require(menu,"Missing pause menu");menu->processChildWindowOpenCloses();
     auto* question=dynamic_cast<QstBox*>(menu->pChildWindow);

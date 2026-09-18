@@ -1,3 +1,32 @@
+## 2026-09-19 — Readable pause menu and top-row paths toggle, local 1.0.715
+
+Stefan requested the movement-path toggle alongside the top action icons and a
+larger, readable pause menu, explicitly allowing a new visual style. The pause
+menu now uses a 440px-wide dark panel, 40px-high dark buttons with 20px white
+labels, a 24px light title and six-pixel gaps. Width fits the renderer; the full
+seven-action campaign menu is 408px high and fits 640x480. Keyboard hover/focus
+uses a gold outline. Existing callbacks, multiplayer restrictions and skip/quit/
+restart confirmations remain; online games still display their ongoing status.
+
+UnitActionBar packs visible unit actions in four columns, with Paths immediately
+after Move and Attack. Single-unit and group sidebars share it. It updates when
+capabilities change and wraps larger selections without shrinking icons. Low
+renderer heights use compact stance-button gaps so even ten actions and all six
+stances fit 640x480. Retreat is full width again. The path toggle continues to
+use the same saved preference; explicit-Move cursor behavior is preserved.
+
+Validation: native Release and Emscripten builds passed; all seven CTest suites
+passed (`/tmp/dunecity-menu-715-final-tests.log`). The existing controls probe
+passed and produced visually inspected pause-menu, single/group sidebar and
+maximum-action-count captures at `/tmp/dunecity-menu-715-final`. Native dependency
+checks and version consistency pass. No new live browser interaction claim.
+
+The configured `build-714` cache now contains **1.0.715**, reached by the existing
+`build` link; it was rebuilt in place rather than relocating a configured tree.
+The browser preview remains http://127.0.0.1:8714/dunecity.html and now serves 715.
+Restart the desktop app or reload the preview to use it; no running match was
+restarted. No push, PR, release or SourceForge mutation in this follow-up.
+
 ## 2026-09-19 — Move cursor only for explicit orders (1.0.714 follow-up)
 
 Stefan requested that the move icon appear only after clicking Move or pressing M.

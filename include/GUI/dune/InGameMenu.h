@@ -25,6 +25,13 @@
 #include <GUI/Spacer.h>
 #include <GUI/Label.h>
 
+class InGameMenuButton : public TextButton {
+public:
+    Point getMinimumSize() const override;
+protected:
+    void updateTextures() override;
+};
+
 class InGameMenu : public Window
 {
 public:
@@ -59,15 +66,16 @@ private:
 
     HBox    mainHBox;
     VBox    mainVBox;
+    Label   title;
     Label   onlineNotice;
 
-    TextButton  resumeButton;
-    TextButton  gameSettingsButton;
-    TextButton  restartGameButton;
-    TextButton  saveGameButton;
-    TextButton  loadGameButton;
-    TextButton  quitButton;
-    TextButton  skipMissionButton;
+    InGameMenuButton  resumeButton;
+    InGameMenuButton  gameSettingsButton;
+    InGameMenuButton  restartGameButton;
+    InGameMenuButton  saveGameButton;
+    InGameMenuButton  loadGameButton;
+    InGameMenuButton  quitButton;
+    InGameMenuButton  skipMissionButton;
 };
 
 
