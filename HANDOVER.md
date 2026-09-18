@@ -1,3 +1,36 @@
+## 2026-09-19 — Settings-driven diagnostics, unified 1.0.722
+
+Stefan requested diagnostic logs for development, off by default in browsers.
+Source f325c7b adds Settings → Advanced → Diagnostic logs (development), stored
+as General / Diagnostic Logs in the user INI. Browser default is false (including
+older profiles without the key); desktop default remains true. Fresh config
+creation explicitly uses the platform default even when copying a template.
+Apply persists the choice and reinitializes the menu; the next match uses it.
+
+Disabled capture stops AI JSONL/ledger/performance aggregation, performance text
+writes, routine SDL messages and the extra development crash-log mirror. Errors,
+warnings and critical messages remain on stderr; fatal exceptions also log at
+critical priority. Browser stdout/stderr stays in the console rather than a
+persistent profile file. Save/config persistence, node budgets, simulation and
+public match reporting are unchanged. Existing traces are retained, not deleted.
+DUNECITY_AI_TELEMETRY=0 remains an extra structured-capture opt-out; --showlog
+only controls the native output destination. See docs/diagnostic-logging.md.
+
+Both native build-714/bin/dunecity.app and browser build-714/emscripten/bin are
+1.0.722 with all earlier visual/performance changes. Browser checked in a fresh
+isolated origin: checkbox defaults off; opt-in survives reload; switching off
+survives reload. Native Settings rendered correctly at 640×480 and the menu
+probe checks the preference, Apply state, persistence and Advanced layout.
+All seven CTest suites, dependency and version checks pass. Two real-engine
+cities 3 runs (diagnostics off/on) each matched 41 checkpoints across 4,000 cycles
+and the same complete saved gameplay state as 721, excluding only release label.
+Disabled run created no events.jsonl, performance text or development mirror;
+the deliberate error-reporting check still reached stderr. Enabled run created
+both structured and performance captures. Timings overlapped build activity and
+are not a performance benchmark. Source checkpoint 065bca5 includes the test
+assertions. Logs/comparisons/manifest and desktop UI capture are in the parent
+workspace's outputs/browser-diagnostics-722/. No live game restart or publishing.
+
 ## 2026-09-19 — Same-save graphical stall reproduction, unified 1.0.721
 
 Stefan reported continuing whole-picture pauses with the OS pointer still moving,
