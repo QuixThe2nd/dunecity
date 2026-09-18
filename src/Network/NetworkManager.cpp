@@ -980,6 +980,10 @@ void NetworkManager::update()
                     PeerData* peerData = new PeerData(peer, PeerData::PeerState::WaitingForConnect);
                     peer->data = peerData;
 
+                    // Track the host peer for admission like the ENet client path,
+                    // so GAMEINFO acceptance promotes it into peerList (Established).
+                    awaitingConnectionList.push_back(peer);
+
                     NetworkPacketOStream packetStream(NETWORK_PACKET_FLAG_RELIABLE);
                     packetStream.writeUint32(NETWORKPACKET_SENDNAME);
                     packetStream.writeString(playerName);
