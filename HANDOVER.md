@@ -1,3 +1,38 @@
+## 2026-09-17 — Selectable DuneCity graphics skins on canonical main
+
+Ported the presentation-only SimCity/Dune2 skin system onto a clean worktree of
+`ggtothemax/dunecity` main at `52fe7aca`; the older QBot simulator was used only
+as the source of previously tested visual-integration changes. Campaign options
+and custom/multiplayer house slots now select and serialize skins independently.
+The Dune2 path mounts all currently authored zone and special-building Compacts,
+derives matching construction/detail portraits, preserves native SimCity art as
+the per-cell fallback, and suppresses the native R/C/I colour overlay only for
+Dune2-skinned houses. Complete-cell RGBA replacement prevents SimCity art from
+bleeding through transparent pixels. Skin-only alpha-aware, cell-isolated
+Scale2x/Scale3x leaves the classic indexed-palette scaler unchanged.
+
+The Android debug package uses DuneCity payload 1.0.707 and includes the full
+graphics-skin tree. This is a local playable integration build, not a release or
+version bump. Installed and exercised on the connected Armor 21: Dune2 zone
+Compacts replace (rather than alpha-overlay) native cells, the first eight
+residential occupants advance through the authored growth stages, and no native
+green/blue R/C/I background remains. Construction-list and selected-building
+portraits resolve against the active owning house and derive directly from the
+accepted Compact named by `zone.ini`; the native 15x8 SimCity atlas layout is
+not used to crop a 4x4 authored skin. Portrait creation also does not require a
+per-house native atlas surface: non-Harkonnen houses normally palette-map the
+single native base atlas, while their Dune2 portraits must load their own
+manifest Compacts independently. A future authored `icon.png` remains the
+highest-priority override. Nothing was pushed or deployed.
+
+Skirmish and multiplayer use the same per-house path: the lobby's Skin dropdown
+emits `ChangeGraphicsSkin`, hosts mirror it to the matching slot, MOD3 settings
+serialize one value per `HouseInfo`, and match initialization applies those
+values before construction/detail portraits are requested. Campaign applies its
+single selection to every participating house. Live Android verification covers
+the three campaign houses; the custom/network serialization path was inspected
+but has not yet been exercised with a second connected client.
+
 ## 2026-09-18 — Release 1.0.707 preparation
 
 Stefan authorized rebuilding and deploying the commercial-demand fix remotely,
