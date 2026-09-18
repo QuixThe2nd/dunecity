@@ -5744,3 +5744,10 @@ use numbered `frame_*` slots, falling back to `default` only when no numbered fr
 exists. Legacy default-only zone masters (currently Rebels Industrial) are reported
 and skipped instead of entering the transactional staging pass and aborting all
 otherwise valid packages. Regression coverage reproduces that legacy manifest shape.
+
+The 2026-09-18 all-assets test deployment synchronized 20 packages (16 zones and
+4 special buildings). All 256 populated zone cells are 128x128 RGBA sources with
+`PixelsPerTile=64` while retaining their 2x2 logical engine footprint. Windows and
+Android builds completed from that package tree; the Android APK assembled as
+version 0.2.26 with DuneCity payload 1.0.708. ADB had no authorized device at the
+end of the run, so installation was skipped without invalidating either build.
