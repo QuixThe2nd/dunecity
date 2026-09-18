@@ -186,6 +186,12 @@ public:
         bool            wasdCamera = false;
         bool            leftClickOrders = false;
         bool            showMovementPaths = true;
+#ifdef __EMSCRIPTEN__
+        static constexpr bool defaultDiagnosticLogs = false;
+#else
+        static constexpr bool defaultDiagnosticLogs = true;
+#endif
+        bool            diagnosticLogs = defaultDiagnosticLogs;
         bool            multiplePlayersPerHouse = false; ///< Custom game lobby: allow two players per house (remembered across games)
     } general;
 

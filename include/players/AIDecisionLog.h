@@ -73,7 +73,7 @@ private:
 };
 
 DecisionLog& log();
-void startGame(const Record& metadata);
+void startGame(const Record& metadata, bool diagnosticsEnabled);
 
 class PerformanceScope {
 public:

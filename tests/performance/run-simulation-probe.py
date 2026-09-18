@@ -12,6 +12,7 @@ import struct
 import shutil
 import plistlib
 import os
+import configparser
 from pathlib import Path
 import shlex
 import subprocess
@@ -22,6 +23,7 @@ parser.add_argument('--build-dir', type=Path, default=root / 'build')
 parser.add_argument('--output-dir', type=Path, required=True)
 parser.add_argument('--save', type=Path, required=True)
 parser.add_argument('--cycles', type=int, default=2000)
+parser.add_argument('--diagnostics', choices=('on','off'), help='Override the diagnostic logging setting in the private profile')
 parser.add_argument('--render-seconds', type=int, default=0, help='Run the ordinary graphical game loop for this many seconds')
 parser.add_argument('--profile-from', type=Path, help='Copy display/audio settings and active city mod from this profile')
 parser.add_argument('--compare-dir', type=Path, help='Previous probe output; require matching checkpoints and saved state')
@@ -77,6 +79,12 @@ if args.profile_from:
     for mod in ('dunecity','vanilla'):
         shutil.copytree(args.profile_from/'mods'/mod,profile/'mods'/mod)
     (profile/'mods/active_mod.txt').write_text('dunecity')
+if args.diagnostics:
+    config=configparser.ConfigParser(interpolation=None,strict=False)
+    config.read(profile/'Dune City.ini')
+    if not config.has_section('General'): config.add_section('General')
+    config.set('General','Diagnostic Logs','true' if args.diagnostics=='on' else 'false')
+    with (profile/'Dune City.ini').open('w') as handle: config.write(handle)
 env = dict(os.environ, DUNECITY_USERDIR=str(profile), SIM_PROBE_SAVE=str(args.save.resolve()), SIM_PROBE_CYCLES=str(args.cycles), SIM_PROBE_OUTPUT=str(out/'final.dls'))
 if args.render_seconds:
     env['SIM_PROBE_RENDER_SECONDS']=str(args.render_seconds)
@@ -86,6 +94,9 @@ with (out/'run.log').open('w') as log:
     subprocess.run([str(binary),'--window','--showlog'], cwd=out, env=env, stdout=log, stderr=subprocess.STDOUT, check=True, timeout=max(300,args.render_seconds+120))
 results = [line for line in (out/'run.log').read_text().splitlines() if 'SIM_PROBE_' in line]
 if not any('SIM_PROBE_PASS:' in line for line in results): raise RuntimeError('Missing probe result')
+if args.diagnostics=='off':
+    if list(profile.rglob('events.jsonl')) or list(profile.rglob('DuneCity-Performance.log')) or (out/'dunecity-crash.log').exists():
+        raise RuntimeError('Disabled diagnostics still wrote a trace file')
 print('\n'.join(results))
 
 if args.compare_dir:

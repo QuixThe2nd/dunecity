@@ -403,6 +403,15 @@ OptionsMenu::OptionsMenu() : MenuBase()
     pages[4].addWidget(&networkMetaServerHBox, 32);
     pages[4].addWidget(VSpacer::create(6));
 
+    diagnosticLogsCheckbox.setText(_("Diagnostic logs (development)"));
+    diagnosticLogsCheckbox.setChecked(settings.general.diagnosticLogs);
+    diagnosticLogsCheckbox.setOnClick(std::bind(&OptionsMenu::onChangeOption, this, true));
+    diagnosticLogsHBox.addWidget(Spacer::create(), 0.5);
+    diagnosticLogsHBox.addWidget(&diagnosticLogsCheckbox, 480);
+    diagnosticLogsHBox.addWidget(Spacer::create(), 0.5);
+    pages[4].addWidget(&diagnosticLogsHBox, 32);
+    pages[4].addWidget(VSpacer::create(6));
+
     restoreDefaultsHBox.addWidget(Spacer::create(), 0.5);
     restoreDefaultsButton.setText(_("Restore Config Defaults"));
     restoreDefaultsButton.setOnClick(std::bind(&OptionsMenu::onRestoreDefaults, this));
@@ -462,6 +471,7 @@ void OptionsMenu::onChangeOption(bool bInteractive) {
     bChanged |= settings.general.wasdCamera != wasdCameraCheckbox.isChecked();
     bChanged |= settings.general.leftClickOrders != leftClickOrdersCheckbox.isChecked();
     bChanged |= settings.general.showMovementPaths != movementPathsCheckbox.isChecked();
+    bChanged |= settings.general.diagnosticLogs != diagnosticLogsCheckbox.isChecked();
     bChanged |= settings.video.interfaceHeight != interfaceSizeDropDownBox.getSelectedEntryIntData();
 #if defined(__ANDROID__) || defined(__EMSCRIPTEN__)
     bChanged |= (settings.video.width * 3 > settings.video.height * 4) != (aspectDropDownBox.getSelectedEntryIntData() == 1);
@@ -528,6 +538,7 @@ void OptionsMenu::onOptionsOK() {
     settings.general.wasdCamera=wasdCameraCheckbox.isChecked();
     settings.general.leftClickOrders=leftClickOrdersCheckbox.isChecked();
     settings.general.showMovementPaths=movementPathsCheckbox.isChecked();
+    settings.general.diagnosticLogs=diagnosticLogsCheckbox.isChecked();
     settings.general.playerName = playername;
     std::string languageFilename = (languageDropDownBox.getSelectedEntryIntData() < 0) ? "English.en.po" : availLanguages[languageDropDownBox.getSelectedEntryIntData()];
     settings.general.language = languageFilename.substr(languageFilename.size()-5,2);
@@ -662,6 +673,7 @@ void OptionsMenu::saveConfiguration2File() {
     myINIFile.setBoolValue("General","WASD Camera",settings.general.wasdCamera);
     myINIFile.setBoolValue("General","Left Click Orders",settings.general.leftClickOrders);
     myINIFile.setBoolValue("General","Movement Paths",settings.general.showMovementPaths);
+    myINIFile.setBoolValue("General","Diagnostic Logs",settings.general.diagnosticLogs);
     myINIFile.setBoolValue("General","Play Intro",settings.general.playIntro);
     myINIFile.setBoolValue("General","Show Tutorial Hints",settings.general.showTutorialHints);
     myINIFile.setBoolValue("General","Multiple Players Per House",settings.general.multiplePlayersPerHouse);

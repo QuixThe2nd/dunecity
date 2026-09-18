@@ -5,6 +5,23 @@
 #include <sstream>
 #include <cstdlib>
 
+TEST_CASE("Disabled diagnostics close structured capture and skip subsequent records", "[ai][telemetry]") {
+    const auto root=std::filesystem::temp_directory_path()/("dunecity-disabled-"+
+        std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+    auto& writer=AITelemetry::log();
+    REQUIRE(writer.start(root.string(),AITelemetry::Record()));
+    const auto file=writer.path();
+    AITelemetry::startGame(AITelemetry::Record(),false);
+    REQUIRE_FALSE(writer.enabled());
+    const auto size=std::filesystem::file_size(file);
+    REQUIRE(writer.write(1,0,0,"decision",AITelemetry::Record())==0);
+    writer.frameStall(1,200000,AITelemetry::Record());
+    writer.performance(1,0,"frame",200000);
+    writer.flushPerformance(1,true);
+    REQUIRE(std::filesystem::file_size(file)==size);
+    std::filesystem::remove_all(root);
+}
+
 TEST_CASE("AI telemetry escapes text and preserves numeric/nested fields", "[ai][telemetry]") {
     const auto row = AITelemetry::Record().set("reason", "a\"b\n\\c\t")
         .set("demand", -300).set("state", AITelemetry::Record().set("credits", 17922)).json();

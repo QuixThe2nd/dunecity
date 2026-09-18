@@ -22,7 +22,7 @@ int runSimulationProbe() {
         const auto title="DuneCity - lag reproduction: "+std::filesystem::path(std::getenv("SIM_PROBE_SAVE")).stem().string();
         SDL_SetWindowTitle(window,title.c_str());
         game->bPause=false;
-        SDL_Log("SIM_PROBE_RENDER_BEGIN: save=%s seconds=%d tick_ms=%d start_cycle=%u",
+        std::fprintf(stderr,"SIM_PROBE_RENDER_BEGIN: save=%s seconds=%d tick_ms=%d start_cycle=%u\n",
             std::getenv("SIM_PROBE_SAVE"),seconds,game->getGameSpeed(),game->getGameCycleCount());
         const SDL_TimerID timer=SDL_AddTimer(seconds*1000,[](Uint32,void*) -> Uint32 {
             SDL_Event quit{};quit.type=SDL_QUIT;SDL_PushEvent(&quit);return 0;
@@ -30,7 +30,7 @@ int runSimulationProbe() {
         if (!timer) throw std::runtime_error("Cannot schedule probe exit");
         game->runMainLoop(); // Identical input, presentation, pacing and simulation loop.
         SDL_RemoveTimer(timer);
-        SDL_Log("SIM_PROBE_PASS: rendered=1 end_cycle=%u",game->getGameCycleCount());
+        std::fprintf(stderr,"SIM_PROBE_PASS: rendered=1 end_cycle=%u\n",game->getGameCycleCount());
         game.reset();currentGame=nullptr;pLocalPlayer=nullptr;
         return MENU_QUIT_DEFAULT;
     }
@@ -40,7 +40,7 @@ int runSimulationProbe() {
     if (cycles <= 0) throw std::runtime_error("Cycle count must be positive");
     std::vector<double> times;
     using Clock = std::chrono::steady_clock;
-    SDL_Log("SIM_PROBE_STATE: %s", GameStateDigest::describe(game->computeStateDigest()).c_str());
+    std::fprintf(stderr,"SIM_PROBE_STATE: %s\n", GameStateDigest::describe(game->computeStateDigest()).c_str());
     for (int i=0; i<cycles; ++i) {
         const auto begin = Clock::now();
         const auto cycle=game->getGameCycleCount();
@@ -49,12 +49,12 @@ int runSimulationProbe() {
         times.push_back(std::chrono::duration<double,std::milli>(Clock::now()-begin).count());
         AITelemetry::log().flushPerformance(game->getGameCycleCount());
         if ((i+1)%100 == 0)
-            SDL_Log("SIM_PROBE_STATE: %s", GameStateDigest::describe(game->computeStateDigest()).c_str());
+            std::fprintf(stderr,"SIM_PROBE_STATE: %s\n", GameStateDigest::describe(game->computeStateDigest()).c_str());
     }
     if (!game->saveGame(std::getenv("SIM_PROBE_OUTPUT"))) throw std::runtime_error("Save failed");
     std::sort(times.begin(),times.end());
     double total=0; for (double t:times) total+=t;
-    SDL_Log("SIM_PROBE_PASS: cycles=%d total_ms=%.3f mean_ms=%.3f p99_ms=%.3f max_ms=%.3f",cycles,total,total/cycles,times[(times.size()-1)*99/100],times.back());
+    std::fprintf(stderr,"SIM_PROBE_PASS: cycles=%d total_ms=%.3f mean_ms=%.3f p99_ms=%.3f max_ms=%.3f\n",cycles,total,total/cycles,times[(times.size()-1)*99/100],times.back());
     game.reset(); currentGame=nullptr; pLocalPlayer=nullptr;
     return MENU_QUIT_DEFAULT;
 }

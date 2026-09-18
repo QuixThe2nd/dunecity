@@ -417,6 +417,7 @@ Game::~Game() {
 }
 
 void Game::initPerformanceLog() {
+    if (!settings.general.diagnosticLogs) return;
     std::lock_guard<std::mutex> lock(performanceLogMutex);
     
     if(performanceLogFile.is_open()) {
@@ -459,6 +460,7 @@ void Game::closePerformanceLog() {
 }
 
 void Game::logPerformance(const char* format, ...) {
+    if (!settings.general.diagnosticLogs) return;
     AITelemetry::PerformanceScope perfScope("telemetry.text_flush",gameCycleCount);
     std::lock_guard<std::mutex> lock(performanceLogMutex);
     
@@ -607,7 +609,7 @@ void Game::initGame(const GameInitSettings& newGameInitSettings) {
             .set("immortal_human_player", gameInitSettings.getGameOptions().immortalHumanPlayer)
             .set("harvester_limit_override", gameInitSettings.getGameOptions().maximumNumberOfHarvestersOverride))
         .set("map_width", currentGameMap ? currentGameMap->getSizeX() : 0)
-        .set("map_height", currentGameMap ? currentGameMap->getSizeY() : 0));
+        .set("map_height", currentGameMap ? currentGameMap->getSizeY() : 0), settings.general.diagnosticLogs);
     startMatchAnalytics();
 }
 

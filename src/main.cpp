@@ -666,6 +666,7 @@ void createDefaultConfigFile(const std::string& configfilepath, const std::strin
             // Set user-specific defaults
             templateINI.setStringValue("General", "Player Name", getDefaultPlayerName());
             templateINI.setStringValue("General", "Language", language);
+            templateINI.setBoolValue("General", "Diagnostic Logs", SettingsClass::GeneralClass::defaultDiagnosticLogs);
             
             if (templateINI.saveChangesTo(configfilepath)) {
                 SDL_Log("User config file created from template successfully");
@@ -688,6 +689,11 @@ void createDefaultConfigFile(const std::string& configfilepath, const std::strin
     }
 
     const char configfile[] =   "[General]\n"
+#ifdef __EMSCRIPTEN__
+                                "Diagnostic Logs = false     # Enable development diagnostics in Settings > Advanced\n"
+#else
+                                "Diagnostic Logs = true      # Enable development diagnostics in Settings > Advanced\n"
+#endif
                                 "Play Intro = false          # Play the intro when starting the game?\n"
                                 "Player Name = %s            # The name of the player\n"
                                 "Language = %s               # en = English, fr = French, de = German\n"
@@ -771,6 +777,10 @@ void logOutputFunction(void *userdata, int category, SDL_LogPriority priority, c
     */
     fprintf(stderr, "%s\n", message);
     fflush(stderr);
+
+    // Keep warnings/errors on stderr with diagnostics disabled, without
+    // maintaining the additional development trace file.
+    if (!settings.general.diagnosticLogs) return;
 
     // DuneCity 1.0.501: mirror all SDL logs to dunecity-crash.log next to the
     // executable. On Windows release builds stderr isn't visible, so a silent
@@ -874,8 +884,8 @@ int main(int argc, char *argv[]) {
     }
 #endif
     SDL_LogSetOutputFunction(logOutputFunction, nullptr);
+    // Do not create a development trace before the persisted preference is read.
     SDL_LogSetAllPriority(SDL_LOG_PRIORITY_WARN);
-    SDL_LogSetPriority(SDL_LOG_CATEGORY_APPLICATION, SDL_LOG_PRIORITY_VERBOSE);
 
     SDL_SetHint(SDL_HINT_MOUSE_FOCUS_CLICKTHROUGH, "1");
     SDL_SetHint(SDL_HINT_TOUCH_MOUSE_EVENTS, "1");
@@ -988,6 +998,19 @@ int main(int argc, char *argv[]) {
             }
         }
 
+        // Read an existing preference before redirecting/logging startup output.
+        // Missing keys use the platform default, including older browser profiles.
+        if (existsFile(getConfigFilepath())) {
+            INIFile earlyConfig(getConfigFilepath());
+            settings.general.diagnosticLogs = earlyConfig.getBoolValue("General", "Diagnostic Logs",
+                SettingsClass::GeneralClass::defaultDiagnosticLogs);
+        }
+        SDL_LogSetPriority(SDL_LOG_CATEGORY_APPLICATION, settings.general.diagnosticLogs
+            ? SDL_LOG_PRIORITY_VERBOSE : SDL_LOG_PRIORITY_WARN);
+
+#ifndef __EMSCRIPTEN__
+        // Browser errors stay in the console; avoid a growing persistent stdout
+        // file. Opted-in development capture also has AI/performance trace files.
         if(bShowDebugLog == false) {
             // get utf8-encoded log file path
             std::string logfilePath = getLogFilepath();
@@ -1042,6 +1065,8 @@ int main(int argc, char *argv[]) {
 
             #endif
         }
+
+        #endif
 
         // Install crash handlers early, after logging is set up
 #ifndef __EMSCRIPTEN__
@@ -1105,6 +1130,10 @@ int main(int argc, char *argv[]) {
             settings.general.wasdCamera = myINIFile.getBoolValue("General","WASD Camera",false);
             settings.general.leftClickOrders = myINIFile.getBoolValue("General","Left Click Orders",false);
             settings.general.showMovementPaths = myINIFile.getBoolValue("General","Movement Paths",true);
+            settings.general.diagnosticLogs = myINIFile.getBoolValue("General","Diagnostic Logs",
+                SettingsClass::GeneralClass::defaultDiagnosticLogs);
+            SDL_LogSetPriority(SDL_LOG_CATEGORY_APPLICATION, settings.general.diagnosticLogs
+                ? SDL_LOG_PRIORITY_VERBOSE : SDL_LOG_PRIORITY_WARN);
             settings.general.showTutorialHints = myINIFile.getBoolValue("General","Show Tutorial Hints",true);
             settings.general.multiplePlayersPerHouse = myINIFile.getBoolValue("General","Multiple Players Per House",false);
             settings.video.width = myINIFile.getIntValue("Video","Width",640);
@@ -1629,6 +1658,7 @@ int main(int argc, char *argv[]) {
         }
     } catch(const std::exception& e) {
         std::string message = std::string("An unhandled exception of type \'") + demangleSymbol(typeid(e).name()) + std::string("\' was thrown:\n\n") + e.what() + std::string("\n\nDuneCity will now be terminated!");
+        SDL_LogCritical(SDL_LOG_CATEGORY_APPLICATION, "%s", message.c_str());
         SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "DuneCity: Unrecoverable error", message.c_str(), nullptr);
 
         return EXIT_FAILURE;

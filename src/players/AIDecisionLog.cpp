@@ -190,8 +190,9 @@ Record DecisionLog::economyTotals(int house) const {
     return result;
 }
 DecisionLog& log() { static DecisionLog instance; return instance; }
-void startGame(const Record& metadata) {
+void startGame(const Record& metadata, bool diagnosticsEnabled) {
     log().stop();
+    if (!diagnosticsEnabled) return;
     const char* enabled = std::getenv("DUNECITY_AI_TELEMETRY");
     if (enabled && std::string(enabled) == "0") return;
     char root[FILENAME_MAX];

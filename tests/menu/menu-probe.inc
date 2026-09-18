@@ -302,6 +302,12 @@ int runMenuProbe() {
         for(int page=0;page<5;++page) { menu.showPage(page); menuCapture(menu,"settings-"+std::to_string(page)); }
         menuRequire(menu.interfaceSizeDropDownBox.getParent()==&menu.interfaceHBox,"Interface size missing from Settings");
         menuRequire(menu.pages[1].getMinimumSize().y <= menu.pages[1].getSize().y,"Graphics controls overflow");
+        menuRequire(menu.pages[4].getMinimumSize().y <= menu.pages[4].getSize().y,"Advanced controls overflow");
+        menuRequire(menu.diagnosticLogsCheckbox.isChecked()==settings.general.diagnosticLogs,"Diagnostic preference not reflected in Settings");
+        menu.diagnosticLogsCheckbox.setChecked(!settings.general.diagnosticLogs);
+        menu.onChangeOption(true);
+        menuRequire(menu.acceptButton.isEnabled(),"Diagnostic preference change cannot be applied");
+        const bool diagnostics=menu.diagnosticLogsCheckbox.isChecked();
         menu.showPage(2);
         settings.network.metaServer=""; menu.metaServerTextBox.setText("");
         menu.playSFXCheckbox.setChecked(!settings.audio.playSFX);
@@ -311,6 +317,8 @@ int runMenuProbe() {
         menu.onOptionsOK();
         menuRequire(settings.general.wasdCamera && settings.general.leftClickOrders && !settings.general.showMovementPaths,"Input options not applied");
         INIFile savedOptions(getConfigFilepath());
+        menuRequire(settings.general.diagnosticLogs==diagnostics
+            && savedOptions.getBoolValue("General","Diagnostic Logs",!diagnostics)==diagnostics,"Diagnostic preference not applied/persisted");
         menuRequire(savedOptions.getBoolValue("General","WASD Camera",false)
             && savedOptions.getBoolValue("General","Left Click Orders",false)
             && !savedOptions.getBoolValue("General","Movement Paths",true),"Input options not persisted");
