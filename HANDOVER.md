@@ -1,3 +1,23 @@
+## 2026-09-19 — Cheaper A* searches, local 1.0.719
+
+Stefan requested pathfinding optimization without changing the node budget.
+Searches now cache passability per tile for one synchronous search, skip closed
+neighbours before occupancy/cost work, and calculate parent direction once per
+expanded node. Node budgets, expansion limit, queue order, heuristic and heap
+ordering are unchanged. Tile-buffer reset clears the cache between searches.
+
+The real-engine differential probe compared 3,815 queries across 11 ground-unit
+types, repeated three times with an obstacle added/restored between rounds.
+Every route and expanded-node count matched the pre-change implementation.
+Search time fell from 6,625.871 to 4,804.240 ms (27.5%); this is a pathfinding
+benchmark, not a measured full-game FPS gain. Clean native Release, seven CTest
+suites, dependency/version checks and Emscripten A* compilation passed before
+integration. See docs/pathfinding-performance.md and the reusable
+`tests/pathfinding/run-pathfinding-probe.py` for method and evidence.
+
+The change is integrated over the 1.0.718 sidebar work. The usual build-714 app
+is rebuilt as 1.0.719 without restarting the running match. No push or release.
+
 ## 2026-09-19 — Readable building sidebar and live zone previews, local 1.0.718
 
 Stefan requested readable selected-building text and an icon matching the selected

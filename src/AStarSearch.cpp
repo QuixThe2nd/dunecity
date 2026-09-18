@@ -150,10 +150,23 @@ AStarSearch::AStarSearch(Map* pMap, UnitBase* pUnit, Coord start, Coord destinat
             }
 
             if (numNodesChecked < MAX_NODES_CHECKED) {
+                // Parent direction is identical for all eight neighbours.
+                const auto& current = getMapData(currentCoord);
+                const bool hasParent = current.parentCoord.isValid();
+                const int parentAngle = hasParent
+                    ? currentGameMap->getPosAngle(current.parentCoord, currentCoord) : 0;
                 //push a node for each direction we could go
                 for (int angle=0; angle<=7; angle++) {
                     Coord nextCoord = pMap->getMapPos(angle, currentCoord);
-                    if(pUnit->canPass(nextCoord.x, nextCoord.y)) {
+                    if (!pMap->tileExists(nextCoord)) continue;
+                    auto& next = getMapData(nextCoord);
+                    // Closed nodes cannot be improved. Avoid object lookups
+                    // and terrain/turn calculations for them altogether.
+                    if (next.bClosed) continue;
+                    if (next.passability == 0) {
+                        next.passability = pUnit->canPass(nextCoord.x, nextCoord.y) ? 2 : 1;
+                    }
+                    if(next.passability == 2) {
                         Tile& nextTile = *(pMap->getTile(nextCoord));
                         FixPoint g = getMapData(currentCoord).g;
 
@@ -170,17 +183,14 @@ AStarSearch::AStarSearch(Map* pMap, UnitBase* pUnit, Coord start, Coord destinat
                             }
                         }
 
-                        if(getMapData(currentCoord).parentCoord.isValid())  {
+                        if(hasParent)  {
                             //add cost of turning time
-                            int posAngle = currentGameMap->getPosAngle(getMapData(currentCoord).parentCoord, currentCoord);
-                            g += angleDiff(angle,posAngle) * rotationSpeed;
+                            g += angleDiff(angle,parentAngle) * rotationSpeed;
                         }
 
                         FixPoint h = blockDistance(nextCoord, destination);
 
-                        if(getMapData(nextCoord).bClosed == false) {
-                            putOnOpenListIfBetter(nextCoord, currentCoord, g, h);
-                        }
+                        putOnOpenListIfBetter(nextCoord, currentCoord, g, h);
                     }
 
                 }
