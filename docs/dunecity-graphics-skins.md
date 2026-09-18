@@ -32,8 +32,9 @@ Compact pixels. Missing factions, assets, and individual cells therefore remain
 native SimCity graphics.
 
 `scripts/package-dunecity-skin.py` accepts only Oathkeeper's `processed.png`
-(the approved Compact output). It never silently downsizes the large source
-sprite. A size correction, if needed, uses nearest-neighbour interpolation.
+(the approved Compact output). It never silently substitutes the large source
+sprite. The selected Compact dimensions are retained as high-detail source
+pixels while the manifest separately records the immutable logical footprint.
 
 At runtime, DuneCity Dune2 skin PNGs use a dedicated alpha-aware RGBA Scale2x
 and Scale3x implementation. It normalizes fully transparent pixels and scales
@@ -57,6 +58,31 @@ Special-building packages live below:
 The package may contain several authored activity frames. The current engine
 mounts as many as its native atlas exposes and repeats frame zero for missing
 native slots, so a partial test package never leaves transparent holes.
+
+## Automated local play-test deployment
+
+`scripts/sync-dunecity-skins.py` scans Oathkeeper's DuneCity unit manifests,
+derives faction, zone item ID or special-building object picture, and stages all
+selected packages before replacing the live Dune2 skin tree. Existing authored
+`icon.png` files are preserved. Unsupported or source-less units are reported
+without guessing an engine mapping; an accepted but unsupported unit stops the
+deployment before any live package is replaced.
+
+The normal Windows-host workflow is one command:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\deploy-dunecity-skin-test.ps1 `
+  -Scope all -InstallAndroidIfConnected
+```
+
+Use `-Scope current -Unit "DuneCity Harkonnen Stadium"` to deploy one unit.
+The wrapper waits for synchronization, the `build-windows-skins` game target,
+and the native Android/APK build in order. It installs the resulting APK when
+ADB has an authorized device, or leaves the successfully built APK in place
+when no phone is attached. `-InstallAndroid` is the strict variant that treats
+a missing device as an error. `-SkipWindows` and `-SkipAndroid` are available
+for deliberate platform-specific iteration. `-PlanOnly` validates every current
+manifest-to-engine mapping without changing packages or starting either build.
 
 ## Icon sprites
 

@@ -17,6 +17,15 @@ atlas round trip. Native SimCity compatibility atlases and UI portraits remain
 available and fixed to their existing slots. The bot-side `Compact All` modal
 selects 1x-4x (16-64 source pixels per tile) and current-unit/all-DuneCity scope.
 
+Successful Compact All batches now feed a repeatable local play-test pipeline.
+`sync-dunecity-skins.py` discovers Oathkeeper manifests, transactionally replaces
+supported zone/building packages, and preserves authored icons.
+`deploy-dunecity-skin-test.ps1` then waits for the Windows and Android builds and
+installs the APK when ADB has an authorized device. Oathkeeper streams stage
+progress into its config panel and distinguishes Compact failures from later
+packaging/build failures. The same wrapper is the manual recovery path; no
+hand-copied per-unit filename list is required.
+
 ## 2026-09-17 — Selectable DuneCity graphics skins on canonical main
 
 Ported the presentation-only SimCity/Dune2 skin system onto a clean worktree of
