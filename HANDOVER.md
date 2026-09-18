@@ -1,3 +1,41 @@
+## 2026-09-19 — Same-save graphical stall reproduction, unified 1.0.721
+
+Stefan reported continuing whole-picture pauses with the OS pointer still moving,
+and explicitly requested testing the same game. Loaded his actual `cities 3.dls`
+at cycle 329538 with copied 1440×900 settings/mod overrides and 4 ms game speed
+in a private profile. The normal graphical/input/pacing loop ran for 60 seconds
+before and after the change. The rendered city was visually checked. The baseline
+reproduced a 298 ms frame at cycle 331600, also seen in the live user's match:
+275 ms was AI work. We did not capture the estimated one-second freeze.
+
+Source 64fe4aa reuses identical building-placement searches across equivalent
+construction yards within a single AI pass. Reservation exclusions are part of
+the cache context; geometry, reservation and production-mode changes invalidate
+results. No AI cadence, pathfinding node budget, scoring or simulation changes.
+All earlier UI/zone-preview/menu/A* improvements remain in the same build.
+Observed graphical maximum fell 298.460→157.497 ms; frames over 100 ms fell
+51/1877→32/2000 in sequential one-minute runs. Live-game CPU contention varies,
+and shorter stalls remain. Do not describe this as eliminating all freezes.
+
+New `frame_stall` events record every frame of at least 100 ms, including smaller
+consecutive stalls, with session wall timestamps, input/command and phase timing,
+menu/focus state, and separate between-frame gaps. All 32 candidate stalls were
+captured individually. AI build evaluation/orders and cache hits have own metrics.
+Logs remain under the user profile's `ai-decisions/<session>/events.jsonl`.
+See docs/cyclic-stall-performance.md for details and reproduction commands.
+
+Both native and browser builds are 1.0.721 from source 64fe4aa. Native remains
+build-714/bin/dunecity.app (build symlink unchanged), browser remains
+build-714/emscripten/bin on port 8714; browser home version visually verified.
+All seven CTest suites and native dependency/version checks pass. The packaged
+engine matches the frozen 720 engine across 4,000 cycles, all 41 checkpoints,
+and all saved gameplay bytes except the release label. That final correctness
+run overlapped browser compilation and is not a timing benchmark.
+Artifacts, live samples, graphical logs, fixed comparisons and build manifest
+are under the parent projects workspace's outputs/game-cyclic-lag-720/.
+No live-match restart, save overwrite, push or public release. Save and restart
+the canonical app to use this combined build.
+
 ## 2026-09-19 — Reduced periodic planning pauses, unified 1.0.720
 
 Stefan reported regular pauses in the running 1.0.719 match. Live telemetry

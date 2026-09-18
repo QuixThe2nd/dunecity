@@ -60,10 +60,13 @@ are still 100–157 ms frames. All 32 candidate frames above 100 ms had individu
 stall records. The longest between-frame gap was 0.588 ms; telemetry write and
 text-flush maxima were 2.224 ms and 0.378 ms, respectively.
 
-The deterministic 2,000-cycle comparison matched all 21 state checkpoints and
-the complete saved gameplay state. Only the release label is ignored by the
+The deterministic 2,000-cycle candidate comparison matched all 21 checkpoints.
+The packaged 1.0.721 engine also matched the 1.0.720 baseline across 4,000 cycles
+(329538–333538), all 41 checkpoints and the complete saved gameplay state. Only the release label is ignored by the
 cross-version comparator; save format, mod checksum, RNG and gameplay bytes are
 included. All seven CTest suites passed, including a new consecutive-stall test.
+The final 4,000-cycle run overlapped browser compilation; its timings are excluded
+from the graphical comparison above.
 
 ## Reproduction
 
