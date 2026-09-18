@@ -97,6 +97,11 @@ if not any('SIM_PROBE_PASS:' in line for line in results): raise RuntimeError('M
 if args.diagnostics=='off':
     if list(profile.rglob('events.jsonl')) or list(profile.rglob('DuneCity-Performance.log')) or (out/'dunecity-crash.log').exists():
         raise RuntimeError('Disabled diagnostics still wrote a trace file')
+    if 'SIM_PROBE_ERROR_REPORTING_CHECK:' not in (out/'run.log').read_text():
+        raise RuntimeError('Disabled diagnostics suppressed error reporting')
+elif args.diagnostics=='on':
+    if not list(profile.rglob('events.jsonl')) or not list(profile.rglob('DuneCity-Performance.log')):
+        raise RuntimeError('Enabled diagnostics did not capture the game')
 print('\n'.join(results))
 
 if args.compare_dir:

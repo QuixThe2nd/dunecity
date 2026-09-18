@@ -10,6 +10,8 @@
 #include <filesystem>
 
 int runSimulationProbe() {
+    if (!settings.general.diagnosticLogs)
+        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION,"SIM_PROBE_ERROR_REPORTING_CHECK: diagnostics disabled, errors retained");
     ModManager::instance().setActiveMod("dunecity");
     auto game = std::make_unique<Game>();
     currentGame = game.get();
