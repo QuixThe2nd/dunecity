@@ -1,3 +1,32 @@
+## 2026-09-19 — Preserve selected campaign AI partner, local 1.0.708
+
+Stefan reported choosing full QuantBot while the running purple Sardaukar army
+did not defend. Native 707 capture `1789745328908274-0` (SCENS022.INI,
+seed 1180012387) identifies its controller as AI Support Brutal (`support=1`),
+which intentionally does not command combat units. That runtime state is not
+evidence that Stefan selected Support. The two preceding Neutral campaigns
+in the same launch had full QuantBot Hard (`support=0`).
+
+Reproduced a setup failure against the unmodified 707 objects: a list selection
+within 200 ms of the previous click changed the chosen row but suppressed the
+selection callback as a double click, even across different rows and in dropdowns
+with no double-click action. Selecting full QuantBot could therefore leave the
+campaign's cached partner set to Support. The original user's click sequence was
+not captured; this is a verified failure path, not proof of that exact sequence.
+ListBox now treats different-row clicks as selections and only invokes a real
+double-click action on the same row. Campaign Start also reads the live partner,
+enemy and level widgets before returning its setup. Support combat policy is unchanged.
+
+Regression covers the real dropdown overlay, every partner choice, stale setup
+at Start, rapid different-row clicks and ordinary same-row double-click activation.
+The 707 reproduction fails with `Full AI selection left campaign launch set to
+economy-only Support`; the 708 probe passes at 640, 854 and 1280 pixels. Clean
+native build, 7/7 CTest groups, pre/post dependency checks, version consistency
+and app signature verification pass. Logs: `/tmp/dunecity-708-{ctest,menu-after}.log`
+and `/tmp/dunecity-708-overlay-before/run-640.log`.
+Local app: `build-708/bin/dunecity.app`. Existing 707 match and binary remain;
+no restart, installation, push or public deployment was performed.
+
 ## 2026-09-18 — Release 1.0.707 published
 
 Stefan authorized rebuilding and deploying the commercial-demand fix remotely,

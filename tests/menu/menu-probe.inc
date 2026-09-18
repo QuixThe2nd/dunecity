@@ -35,6 +35,60 @@ int runMenuProbe() {
     ModManager::instance().setActiveMod("vanilla");
     effectiveGameOptions = ModManager::instance().loadEffectiveGameOptions(settings.gameOptions);
     {
+        HouseChoiceMenu menu;
+        menu.supportBotDropDown.setSelectedItem(4);
+        menuRequire(HouseChoiceMenu::getSupportBotIndex()==4,"Support setup fixture failed");
+        auto& list=menu.supportBotDropDown.listBox;
+        // A rapid second selection must notify the campaign setup even when
+        // it falls within the list widget's double-click interval.
+        list.scrollbar.setCurrentValue(3);
+        menu.supportBotDropDown.onOpenListBoxButton();
+        menuCapture(menu,"ai-partner-selection");
+        list.lastClickTime=SDL_GetTicks();
+        const int row=8-list.firstVisibleElement;
+        const int rowY=1+row*GUIStyle::getInstance().getListBoxEntryHeight()+2;
+        const int overlayY=rowY+(menu.supportBotDropDown.bListBoxAbove
+            ? -list.getSize().y : menu.supportBotDropDown.getSize().y);
+        menu.supportBotDropDown.handleMouseLeftOverlay(10,overlayY,true);
+        menuRequire(menu.supportBotDropDown.getSelectedEntryIntData()==8,"Full AI selection fixture missed its row");
+        menuRequire(HouseChoiceMenu::getSupportBotIndex()==8,"Full AI selection left campaign launch set to economy-only Support");
+        menuRequire(!menu.supportBotDropDown.bShowListBox,"AI dropdown did not close after selection");
+        for(int option=0;option<10;++option) {
+            menu.supportBotDropDown.setSelectedItem(option);
+            menuRequire(HouseChoiceMenu::getSupportBotIndex()==option,"AI partner choice mapping changed");
+        }
+        menu.supportBotDropDown.setSelectedItem(8);
+        menu.enemyAIDropDown.setSelectedItem(2);
+        menu.startLevelDropDown.setSelectedItem(6);
+        // A stale cached callback result must never override the live widgets
+        // when the player presses Start.
+        HouseChoiceMenu::s_supportBotIndex=4;
+        HouseChoiceMenu::s_enemyAIIndex=0;
+        HouseChoiceMenu::s_startLevel=1;
+        menu.hostCoopButton.handleMouseLeft(10,10,true);
+        menu.hostCoopButton.handleMouseLeft(10,10,false);
+        menuRequire(menu.isQuiting() && HouseChoiceMenu::getSupportBotIndex()==8
+            && HouseChoiceMenu::getEnemyAIIndex()==2 && HouseChoiceMenu::getStartLevel()==7,
+            "Start launched stale AI or mission choices");
+    }
+    {
+        ListBox list;
+        list.addEntry("First");list.addEntry("Second");
+        list.resize(200,100);
+        int selections=0,doubleClicks=0;
+        list.setOnSelectionChange([&](bool){++selections;});
+        list.setOnDoubleClick([&](){++doubleClicks;});
+        list.lastClickTime=SDL_GetTicks();
+        list.handleMouseLeft(10,3,true);
+        menuRequire(selections==1 && doubleClicks==0,"First row click incorrectly counted as a double click");
+        list.lastClickTime=SDL_GetTicks();
+        list.handleMouseLeft(10,GUIStyle::getInstance().getListBoxEntryHeight()+3,true);
+        menuRequire(selections==2 && doubleClicks==0,"Rapid different-row selection triggered double click");
+        list.lastClickTime=SDL_GetTicks();
+        list.handleMouseLeft(10,GUIStyle::getInstance().getListBoxEntryHeight()+3,true);
+        menuRequire(selections==2 && doubleClicks==1,"Same-row double click stopped activating the row");
+    }
+    {
         MainMenu menu;
         menuRequire(menu.campaignButton.isVisible() && menu.customButton.isVisible() && menu.onlineButton.isVisible(), "Home play actions missing");
         menuRequire(!menu.displayButton.isVisible(),"Duplicate Display entry remains");
