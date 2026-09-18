@@ -1,3 +1,23 @@
+## 2026-09-19 — SourceForge outstanding issue review (no game change)
+
+Reviewed the public REST inventory: 185 total bug/feature/support tickets, 89
+not closed. Full triage with links is in
+`docs/sourceforge-issue-review-2026-09-19.md`, against local 1.0.713 / 386ca05.
+Three defects remain demonstrable: bug 105 Ctrl+0 selection iterator invalidation
+(SIGSEGV), bug 86 screenshot logical/output buffer mismatch (guarded SDL read
+wrote 678,656 bytes beyond nominal logical allocation), and bug 113 unconditional
+cancellation of another yard's palace queue with onlyOnePalace=false.
+Bug 88 Stop shortcut is absent; feature 62 T select-same-type remains a no-op.
+Mentat help 115 passed a real topic/click/update test. Many older reports have
+later-version success comments or specific code guards; unresolved old crashes
+were not declared fixed just from their age. Useful remaining features include
+hover-intent cursors, accessible friend/foe colors, attack-move and queued orders.
+
+Diagnostic evidence: `/tmp/dunecity-sourceforge-probe-713{,b,c}`; API snapshot
+`/tmp/dunecity-sourceforge-details-20260919.json`. The diagnostic used isolated
+profiles and existing build objects; user matches were not touched. This was
+assessment only: no engine changes or ticket comments/closures, no push/release.
+
 ## 2026-09-19 — Harvest elsewhere after danger, local 1.0.713
 
 Stefan reported harvesters evacuating to base and then returning to the same
