@@ -1,3 +1,30 @@
+## 2026-09-19 — Reduced periodic planning pauses, unified 1.0.720
+
+Stefan reported regular pauses in the running 1.0.719 match. Live telemetry
+identified AI construction planning as the largest spike (235 ms of a 260 ms
+frame, versus 14 ms pathfinding). Commit 4350ce7 reduces local access-check
+allocation/work, repeated city-neighbour scans and per-cycle tax map scans.
+Node budgets, AI cadence, city growth/effect cadence and payment timing are
+unchanged. All earlier menu, sidebar/zone-preview and pathfinding changes remain.
+
+The real-engine test ran the same large city for 2,000 cycles. Three baseline
+and three optimized runs matched all 21 checkpoints and byte-identical final
+saves. Median p99 simulation-cycle time fell 124.49→66.18 ms; wall-clock results
+varied with the live match still running, and occasional longer pauses remain.
+This is not an FPS claim. Exhaustive access-graph comparisons and distance-field
+oracle tests pass; all seven CTest suites pass in the final native build.
+The final 720 engine also matched the baseline save except its release label.
+See docs/periodic-pause-performance.md for measurements and reproduction.
+
+Both native and full browser builds now come from source 4350ce7 at 1.0.720.
+Desktop: build-714/bin/dunecity.app (build remains a symlink to build-714).
+Browser: build-714/emscripten/bin, preview port 8714; home-screen version 1.0.720
+visually verified. Native dependency and version checks passed. Artifact hashes,
+logs and comparisons are in the parent projects workspace's
+outputs/game-pauses-719/unified-build-manifest.json and neighbouring files.
+The packaged-engine comparison ran alongside the browser compiler; its timing
+is excluded from the benchmark table. No live game restart, push or release.
+
 ## 2026-09-19 — Cheaper A* searches, local 1.0.719
 
 Follow-up: Stefan requested one build containing all changes. Both native and
