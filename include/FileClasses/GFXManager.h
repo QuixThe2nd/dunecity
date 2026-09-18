@@ -676,7 +676,8 @@ public:
     bool             drawDuneCityZone(int itemID, int house, unsigned int z,
                                       int density, int valueTier,
                                       DuneCityZoneActivity activity,
-                                      Uint32 elapsedMs, int anchorX, int anchorY);
+                                      Uint32 elapsedMs, int anchorX, int anchorY,
+                                      const SDL_Rect* previewBounds = nullptr);
     Uint8            getDune2RVisualBlend();
     bool             isDune2RVisualsEnabled();
     void             setDune2RVisualsEnabled(bool enabled);

@@ -1,3 +1,32 @@
+## 2026-09-19 — Readable building sidebar and live zone previews, local 1.0.718
+
+Stefan requested readable selected-building text and an icon matching the selected
+building. Structure sidebars now draw an opaque shared dark panel. City stats use
+light text with no shadow (zones 14px, other structures 12px), larger row spacing,
+and zone labels use 14px. Zones omit the redundant Role row and population-level
+suffix because name/density are already shown above. Zone names wrap deliberately;
+civic replacements are identified as Hospital or Church.
+
+The zone sidebar hides the generic construction icon and draws its current map
+sprite. ZoneStructure::drawPreview uses the live atlas/frame, owner colour and
+aspect ratio, including vacant lots, developed zones and civic overlays; fogged
+objects use the remembered frame. It refreshes textures through GFXManager to
+avoid stale pointers after mod/cache changes. The optional Dune2 zone skin uses
+the same skin-selection path with UI destination bounds. This is presentation
+only; no city simulation, saves or commands changed. Other structures retain
+their existing detail portraits.
+
+Native Release and Emscripten builds and all seven CTest suites passed. Real controls probe at
+/tmp/dunecity-sidebar-718-probe passed and compares preview pixels with the actual
+selected atlas frame, verifies a changed preview after growth, and checks hospital/
+church previews and names. Vacant/developed/civic sidebar captures were inspected
+at 640x480. Desktop build remains build-714/bin/dunecity.app (build symlink), now
+1.0.718; browser output remains build-714/emscripten/bin on port 8714. Restart or
+reload to use it. No push/release or running-match restart.
+
+Concurrent AStarSearch edits and tests/pathfinding belong to another task; they
+are not part of this sidebar change.
+
 ## 2026-09-19 — Home menu colour and focus, local 1.0.717
 
 Stefan reported Campaign always outlined even with the pointer elsewhere and

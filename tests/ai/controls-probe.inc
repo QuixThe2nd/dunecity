@@ -6,6 +6,7 @@
 #include <ScreenBorder.h>
 #include <GameInterface.h>
 #include <GUI/ObjectInterfaces/UnitInterface.h>
+#include <GUI/ObjectInterfaces/ZoneStructureInterface.h>
 #include <GUI/ObjectInterfaces/MultiUnitInterface.h>
 void runControlsProbe(Game& game) {
     auto require=[](bool ok,const char* why) { if(!ok){SDL_Log("CONTROLS_FAIL: %s",why);throw std::runtime_error(why);} };
@@ -140,6 +141,48 @@ void runControlsProbe(Game& game) {
                 "Budget window exceeds the renderer");
     }
     game.pInGameMenu.reset();game.bMenu=false;game.resumeGame();
+    if(game.isCitySimEnabled()) {
+        const Coord site=origin+Coord(5,0);
+        for(int dy=0;dy<2;++dy) for(int dx=0;dx<2;++dx)
+            currentGameMap->getTile(site.x+dx,site.y+dy)->setType(Terrain_Rock);
+        auto* zone=dynamic_cast<ZoneStructure*>(pLocalHouse->placeStructure(NONE_ID,Structure_ZoneResidential,site.x,site.y,false,true));
+        require(zone,"Missing selected-zone fixture");
+        game.unselectAll(game.selectedList);game.selectedList={zone->getObjectID()};zone->setSelected(true);
+        auto showZone=[&](const char* name) {
+            zone->updateStructureSpecificStuff();
+            game.pInterface->updateObjectInterface();game.pInterface->updateObjectInterface();
+            capture(name);
+        };
+        auto previewPixels=[&](bool expected) {
+            SDL_SetRenderDrawColor(renderer,0,0,0,255);SDL_RenderClear(renderer);
+            SDL_Rect bounds{0,0,64,64};
+            if(expected) {
+                auto* texture=pGFXManager->getObjPic(zone->graphicID,pLocalHouse->getHouseID())[1];
+                auto source=calcSpriteSourceRect(texture,zone->curAnimFrame%zone->numImagesX,zone->numImagesX,
+                                                zone->curAnimFrame/zone->numImagesX,zone->numImagesY);
+                SDL_RenderCopy(renderer,texture,&source,&bounds);
+            } else zone->drawPreview(bounds);
+            std::vector<Uint32> pixels(64*64);
+            require(SDL_RenderReadPixels(renderer,&bounds,SDL_PIXELFORMAT_ARGB8888,pixels.data(),64*4)==0,"Preview capture failed");
+            return pixels;
+        };
+        showZone("zone-vacant.bmp");const auto vacant=previewPixels(false);
+        zone->setResidentialPopulation(40);showZone("zone-developed.bmp");
+        const auto developed=previewPixels(false);
+        require(developed!=vacant,"Sidebar preview did not follow zone development");
+        require(developed==previewPixels(true),"Sidebar preview differs from the selected map sprite");
+        auto* panel=dynamic_cast<ZoneStructureInterface*>(game.pInterface->pObjectContainer);
+        require(panel && !panel->objPicture.isVisible(),"Generic zone construction icon is still displayed");
+        require(panel->zoneNameLabel.getTextFontSize()==14 && panel->cityStats_.populationLabel_.getText()==" Pop: 40",
+                "Zone statistics remain small or repeat the density");
+        for(auto overlay:{ZoneStructure::CivicOverlay::Hospital,ZoneStructure::CivicOverlay::Church}) {
+            zone->setCivicOverlay(overlay);showZone(overlay==ZoneStructure::CivicOverlay::Hospital ? "zone-hospital.bmp" : "zone-church.bmp");
+            require(previewPixels(false)==previewPixels(true),"Civic preview does not match the selected hospital/church sprite");
+            require(panel->zoneNameLabel.getText()==(overlay==ZoneStructure::CivicOverlay::Hospital ? " Hospital" : " Church"),
+                    "Civic building still has the generic residential label");
+        }
+        game.unselectAll(game.selectedList);zone->demolish();game.pInterface->updateObjectInterface();
+    }
     game.onSkipMission();
     auto* menu=dynamic_cast<InGameMenu*>(game.pInGameMenu.get());require(menu,"Missing pause menu");menu->processChildWindowOpenCloses();
     auto* question=dynamic_cast<QstBox*>(menu->pChildWindow);

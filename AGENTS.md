@@ -25,7 +25,7 @@ Run tests through `ctest`, never `./build/bin/dunelegacy_tests` directly — cte
 `DUNE_CITY_SOURCE_DIR` and `DUNECITY_DATADIR`, without which ~50 tests silently misbehave.
 Legacy `build2/`, `build_phase4/`, `build.bad/`, and `buildtests/` artifacts were
 removed from tracking; keep generated build trees out of git. On this Mac,
-`build` currently links to `build-714`, whose cache now holds native 1.0.717.
+`build` currently links to `build-714`, whose cache now holds native 1.0.718.
 Do not relocate a configured CMake tree or a running app; their paths matter.
 
 Run `python3 scripts/check-build-deps.py build` before and after incremental builds.

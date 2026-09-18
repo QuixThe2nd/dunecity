@@ -7206,7 +7206,7 @@ bool GFXManager::drawEnhancedBuilding(int itemID, int house, unsigned int z,
 bool GFXManager::drawDuneCityZone(int itemID, int house, unsigned int z,
                                   int density, int valueTier,
                                   DuneCityZoneActivity activity,
-                                  Uint32 elapsedMs, int anchorX, int anchorY) {
+                                  Uint32 elapsedMs, int anchorX, int anchorY, const SDL_Rect* previewBounds) {
     if(z >= NUM_ZOOMLEVEL) {
         return false;
     }
@@ -7276,11 +7276,18 @@ bool GFXManager::drawDuneCityZone(int itemID, int house, unsigned int z,
         selectedAnimation->frameWidth,
         selectedAnimation->frameHeight
     };
-    const SDL_Rect destination = calcEnhancedBuildingDrawingRect(
+    SDL_Rect destination = calcEnhancedBuildingDrawingRect(
         selectedDefinition->footprintWidth, z,
         {selectedAnimation->frameWidth, selectedAnimation->frameHeight},
         {selectedAnimation->anchorX, selectedAnimation->anchorY},
         {anchorX, anchorY});
+    if(previewBounds) {
+        const double scale = std::min(double(previewBounds->w)/source.w, double(previewBounds->h)/source.h);
+        destination.w = int(source.w*scale);
+        destination.h = int(source.h*scale);
+        destination.x = previewBounds->x + (previewBounds->w-destination.w)/2;
+        destination.y = previewBounds->y + (previewBounds->h-destination.h)/2;
+    }
     SDL_SetTextureBlendMode(texture, SDL_BLENDMODE_BLEND);
     SDL_RenderCopy(renderer, texture, &source, &destination);
 

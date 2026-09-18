@@ -48,23 +48,16 @@ public:
         // Do not allocate empty rows or display invented city statistics.
         if (!currentGame || !currentGame->isCitySimEnabled()) return;
 
-        roleLabel_     .setTextFontSize(11);
-        populationLabel_.setTextFontSize(11);
-        landValueLabel_.setTextFontSize(11);
-        pollutionLabel_.setTextFontSize(11);
-        emissionsLabel_.setTextFontSize(11);
-        crimeLabel_    .setTextFontSize(11);
-
-        roleLabel_     .setTextColor(color);
-        populationLabel_.setTextColor(color);
-        landValueLabel_.setTextColor(color);
-        pollutionLabel_.setTextColor(color);
-        emissionsLabel_.setTextColor(color);
+        for(auto* label : {&roleLabel_, &populationLabel_, &landValueLabel_,
+                           &pollutionLabel_, &emissionsLabel_, &crimeLabel_}) {
+            label->setTextFontSize(isZone ? 14 : 12);
+            label->setTextColor(COLOR_WHITE, COLOR_TRANSPARENT);
+        }
         emissionsLabel_.setVisible(false);
-        crimeLabel_    .setTextColor(color);
 
-        const Sint32 lineH = 20;
-        parent.addWidget(&roleLabel_, lineH);
+        const Sint32 lineH = isZone ? 32 : 24;
+        // The zone name above already identifies its role.
+        if(!isZone) parent.addWidget(&roleLabel_, lineH);
         parent.addWidget(&populationLabel_, lineH);
         parent.addWidget(&landValueLabel_, lineH);
         if (showEmissions) parent.addWidget(&emissionsLabel_, lineH);
@@ -120,7 +113,7 @@ public:
                 const int pop = DuneCity::getStructurePopulation(pStructure, level);
                 text = " Pop: " + std::to_string(pop);
             }
-            if (maxLevel > 0 && !(pZone && pZone->getZoneType() == DuneCity::ZoneType::Residential && pZone->getResidentialPopulation() <= 8)) {
+            if (maxLevel > 0 && !pZone) {
                 text += " (lvl " + std::to_string(level) + "/" + std::to_string(maxLevel) + ")";
             }
             populationLabel_.setText(text);
