@@ -1,3 +1,30 @@
+## 2026-09-19 — Actual browser logging on/off benchmark, 1.0.722
+
+Stefan requested measured browser performance with logging disabled. Tested the
+shipped 722 JS/Wasm/data in Chromium 152 using the actual cities 3 save and copied
+1440×900/4 ms settings/mods. Four sequential on/off/off/on runs, 10 s warmup plus
+120 s measured each, fresh private profiles, four periodic storage flushes each,
+all visible. Test-only RAM probe counts complete presentation intervals: SDL
+swap and game loop each yield once; counting every yield incorrectly doubles
+FPS. First eight stacks verify alternating call sites in every accepted run.
+
+Median FPS 13.26 on → 13.54 off (+2.1%); p99 frame 225.35 → 217.05 ms (-3.7%).
+Both modes averaged 217 frames >100 ms per run. Worst observed frame across each
+mode: 321.1 ms on, 338.1 ms off. No >500 ms frames reproduced. Off created zero
+diagnostic files versus 26.2–26.7 MB on per run including warmup. This supports
+keeping browser diagnostics off by default but does not establish logging as
+the main stall cause. Small differences have limited precision with two runs
+per mode and the user's desktop game/background apps still running.
+
+On-run internal telemetry attributes 52.4% of accumulated frame time to paths,
+with individual AI frames up to 253 ms and city phases up to 125 ms. Those
+windows include warmup; not exactly the browser comparison interval. No new
+optimization or path-budget change was made. See docs/browser-logging-performance.md
+and tests/performance/*browser-logging-benchmark* for method/reproduction.
+Raw data/manifests: ../outputs/browser-logging-performance-722/; calibration files
+excluded. All four results pass visibility, timing-callsite, file-state and
+storage-sync validation. Test tabs/server closed; original match untouched.
+
 ## 2026-09-19 — Settings-driven diagnostics, unified 1.0.722
 
 Stefan requested diagnostic logs for development, off by default in browsers.
