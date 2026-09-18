@@ -11,6 +11,8 @@ pass; all seven CTest suites and real-engine regressions pass (Vanilla and
 DuneCity). See HANDOVER.md for evidence and behavior. New shortcuts: S Stop
 (Shift+S with WASD), T matching types on screen, Ctrl+T matching types on the
 map, Shift+T timer. Hover intent and a flashing target outline address feature 45.
+Follow-up preference: ordinary movement retains the arrow; only the Move button
+or M activates the move icon. Attack/harvester-return hover cues remain.
 
 Two corrections to the assessment: T previously toggled the timer, rather than
 being a no-op; the original palace diagnostic also used an unavailable campaign

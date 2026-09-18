@@ -1,3 +1,17 @@
+## 2026-09-19 — Move cursor only for explicit orders (1.0.714 follow-up)
+
+Stefan requested that the move icon appear only after clicking Move or pressing M.
+Ordinary ground/friendly-unit hover now retains the pointer. Contextual attack
+and harvester-return cursors remain. Desktop and browser use the same cursor
+selection code; explicit Move mode already maps to the move icon on both.
+The existing real-engine regression now checks the pointer on ordinary terrain,
+M and the actual sidebar Move button, plus hidden-enemy pointer behavior.
+Native Release and Emscripten builds passed; real-engine regression passed at
+`/tmp/dunecity-explicit-move-714`. Native dependency and version checks passed.
+The existing 1.0.714 local builds were refreshed; restart the desktop app or
+reload the 8714 browser preview to pick up this follow-up. No running match
+was restarted, and no release or push was performed.
+
 ## 2026-09-19 — SourceForge fixes, local 1.0.714
 
 Implemented bugs 105 (Ctrl+0), 86 (screenshots), 113 (palace queue cancellation),

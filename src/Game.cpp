@@ -5630,7 +5630,6 @@ CursorAppearance::Action Game::getHoverCursorAction() const {
         return Action::Pointer;
     const int x=screenborder->screen2MapX(drawnMouseX),y=screenborder->screen2MapY(drawnMouseY);
     if(!currentGameMap->tileExists(x,y)) return Action::Pointer;
-    Action action=Action::Pointer;
     for(Uint32 id:selectedList) {
         const auto* unit=dynamic_cast<const UnitBase*>(objectManager.getObject(id));
         if(!unit || unit->getOwner()!=pLocalHouse || !unit->isRespondable()) continue;
@@ -5642,10 +5641,10 @@ CursorAppearance::Action Game::getHoverCursorAction() const {
             const auto* structure=dynamic_cast<const StructureBase*>(target);
             if(isHarvesterLikeUnit(unit->getItemID()) && structure && structure->getOwner()==pLocalHouse
                 && structure->acceptsHarvesterDropoff()) return Action::Return;
-            action=Action::Move;
         }
     }
-    return action;
+    // The move symbol is reserved for the explicit Move button / M mode.
+    return Action::Pointer;
 }
 
 bool Game::handleSelectedObjectsActionClick(int xPos, int yPos) {
