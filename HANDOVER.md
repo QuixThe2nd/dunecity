@@ -5734,3 +5734,13 @@ interrupted one parallel review worker; this is limited review, not full securit
 certification. Existing production/watchdog gates remain. Browser match logs
 advanced beyond31500 cycles with a tested movement order and no reported state
 digest mismatch; host and guest continued exchanging performance reports.
+
+## 2026-09-18 — DuneCity skin synchronization eligibility
+
+The automated DuneCity skin synchronizer now counts only Compact slots that its
+selected engine packager can consume. Zone packages require `building_idle/d*_v*`
+atlas cells within the manifest's declared density/value bounds; special buildings
+use numbered `frame_*` slots, falling back to `default` only when no numbered frame
+exists. Legacy default-only zone masters (currently Rebels Industrial) are reported
+and skipped instead of entering the transactional staging pass and aborting all
+otherwise valid packages. Regression coverage reproduces that legacy manifest shape.

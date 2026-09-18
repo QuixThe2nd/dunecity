@@ -186,6 +186,37 @@ class DuneCitySkinPackagingTests(unittest.TestCase):
             }
             (building / "unit.json").write_text(json.dumps(building_manifest), encoding="utf-8")
 
+            legacy_zone = source / "units" / "dunecity_rebels_industrial_zone"
+            legacy_compact = (
+                legacy_zone / "categories" / "building_idle" / "states" / "default" / "processed.png"
+            )
+            legacy_compact.parent.mkdir(parents=True)
+            Image.new("RGBA", (32, 32), (70, 80, 90, 255)).save(legacy_compact)
+            legacy_manifest = {
+                "target_game": "dunecity",
+                "name": "DuneCity Rebels Industrial Zone",
+                "slug": legacy_zone.name,
+                "asset_class": "industrial",
+                "dunecity": {
+                    "asset_class": "industrial",
+                    "faction": "rebels",
+                    "source_asset": "Industrial Zone",
+                    "zone_atlas": {"density_columns": 4, "value_tier_rows": 2},
+                },
+                "categories": {
+                    "building_idle": {
+                        "states": {
+                            "default": {
+                                "assets": {
+                                    "processed": {"file": legacy_compact.relative_to(source).as_posix()}
+                                }
+                            }
+                        }
+                    }
+                },
+            }
+            (legacy_zone / "unit.json").write_text(json.dumps(legacy_manifest), encoding="utf-8")
+
             old_building = skin_root / "buildings" / building.name
             old_building.mkdir(parents=True)
             Image.new("RGBA", (91, 55), (1, 2, 3, 255)).save(old_building / "icon.png")

@@ -84,7 +84,25 @@ def _read_existing_package(path: Path, section: str) -> configparser.SectionProx
     return parser[section] if parser.has_section(section) else None
 
 
+def _processed_path(state: Any, asset_root: Path) -> Path | None:
+    if not isinstance(state, dict):
+        return None
+    assets = state.get("assets")
+    processed = assets.get("processed") if isinstance(assets, dict) else None
+    relative = processed.get("file") if isinstance(processed, dict) else None
+    if not isinstance(relative, str) or not relative.strip():
+        return None
+    candidate = (asset_root / relative).resolve()
+    try:
+        candidate.relative_to(asset_root)
+    except ValueError:
+        raise ValueError(f"Compact path escapes the Oathkeeper asset root: {relative}")
+    return candidate if candidate.is_file() else None
+
+
 def _accepted_compacts(manifest: dict[str, Any], asset_root: Path) -> list[Path]:
+    """Return every accepted Compact, including slots unsupported by a packager."""
+
     accepted: list[Path] = []
     categories = manifest.get("categories")
     if not isinstance(categories, dict):
@@ -96,20 +114,52 @@ def _accepted_compacts(manifest: dict[str, Any], asset_root: Path) -> list[Path]
         if not isinstance(states, dict):
             continue
         for state in states.values():
-            if not isinstance(state, dict):
-                continue
-            assets = state.get("assets")
-            processed = assets.get("processed") if isinstance(assets, dict) else None
-            relative = processed.get("file") if isinstance(processed, dict) else None
-            if isinstance(relative, str) and relative.strip():
-                candidate = (asset_root / relative).resolve()
-                try:
-                    candidate.relative_to(asset_root)
-                except ValueError:
-                    raise ValueError(f"Compact path escapes the Oathkeeper asset root: {relative}")
-                if candidate.is_file():
-                    accepted.append(candidate)
+            candidate = _processed_path(state, asset_root)
+            if candidate is not None:
+                accepted.append(candidate)
     return accepted
+
+
+def _packageable_compacts(
+    manifest: dict[str, Any], asset_root: Path, kind: str
+) -> list[Path]:
+    """Mirror the exact slot selection performed by the zone/building packagers."""
+
+    categories = manifest.get("categories")
+    idle = categories.get("building_idle") if isinstance(categories, dict) else None
+    states = idle.get("states") if isinstance(idle, dict) else None
+    if not isinstance(states, dict):
+        return []
+
+    selected: list[Any] = []
+    if kind == "zone":
+        city = manifest.get("dunecity") if isinstance(manifest.get("dunecity"), dict) else {}
+        atlas = city.get("zone_atlas") if isinstance(city.get("zone_atlas"), dict) else {}
+        density_columns = max(1, min(4, int(atlas.get("density_columns", 1))))
+        value_rows = max(1, min(4, int(atlas.get("value_tier_rows", 1))))
+        selected = [
+            states.get(f"d{density}_v{value}")
+            for value in range(value_rows)
+            for density in range(density_columns)
+        ]
+    else:
+        numbered = sorted(
+            (
+                (int(key.removeprefix("frame_")), value)
+                for key, value in states.items()
+                if key.startswith("frame_") and key.removeprefix("frame_").isdigit()
+            ),
+            key=lambda item: item[0],
+        )
+        selected = [value for _number, value in numbered]
+        if not selected and "default" in states:
+            selected = [states["default"]]
+
+    return [
+        candidate
+        for state in selected
+        if (candidate := _processed_path(state, asset_root)) is not None
+    ]
 
 
 def _unit_matches(manifest: dict[str, Any], unit_dir: Path, requested: str | None) -> bool:
@@ -204,8 +254,13 @@ def synchronize(
             unsupported.append(unit_dir.name)
             print(f"[SYNC SKIP] {unit_dir.name}: no engine package mapping", flush=True)
             continue
+        packageable = _packageable_compacts(manifest, asset_root, plan.kind)
+        if not packageable:
+            label = "density/value cells" if plan.kind == "zone" else "building frames"
+            print(f"[SYNC SKIP] {unit_dir.name}: no package-eligible {label}", flush=True)
+            continue
         _assert_under(plan.destination, skin_root)
-        candidates.append((plan, len(accepted)))
+        candidates.append((plan, len(packageable)))
 
     if requested_unit and matched == 0:
         raise ValueError(f"No DuneCity unit matched {requested_unit!r}")
