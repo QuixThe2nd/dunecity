@@ -63,6 +63,14 @@ InGameMenu::InGameMenu(bool bMultiplayer, int color)
     resumeButton.setTextColor(color);
     resumeButton.setOnClick(std::bind(&InGameMenu::onResume, this));
     mainVBox.addWidget(&resumeButton);
+    if(currentGame->canSkipMission()) {
+        mainVBox.addWidget(VSpacer::create(3));
+        skipMissionButton.setText(_("Skip mission..."));
+        skipMissionButton.setTextColor(color);
+        skipMissionButton.setOnClick(std::bind(&InGameMenu::onSkipMission,this));
+        mainVBox.addWidget(&skipMissionButton);
+    }
+
 
     mainVBox.addWidget(VSpacer::create(3));
 
@@ -172,6 +180,9 @@ void InGameMenu::onChildWindowClose(Window* pChildWindow) {
                 if(pQstBox->getText() == _("Do you really want to quit this game?")) {
                     // quit
                     currentGame->quitGame();
+                } else if (pQstBox->getText()==_("Skip this mission and continue to the next level?")) {
+                    currentGame->confirmSkipMission();
+                    currentGame->resumeGame();
                 } else {
                     // restart
                     // set new current init settings as init info for next game
@@ -234,4 +245,12 @@ void InGameMenu::onQuit()
     pQstBox->setTextColor(color);
 
     openWindow(pQstBox);
+}
+
+void InGameMenu::onSkipMission() {
+    if(!currentGame->canSkipMission())return;
+    auto* confirmation=QstBox::create(_("Skip this mission and continue to the next level?"),
+        _("Skip mission"),_("Cancel"),QSTBOX_BUTTON2);
+    confirmation->setTextColor(color);
+    openWindow(confirmation);
 }

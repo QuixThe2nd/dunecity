@@ -134,7 +134,6 @@ private:
 
     ChatManager         chatManager;            ///< Manages chat manages shown overlayed with the main map
     TextButton          feedbackButton;
-    TextButton          skipMissionButton;
     TextButton          autoRepairButton;
     TextButton          landValueOverlayButton;
     TextButton          crimeOverlayButton;

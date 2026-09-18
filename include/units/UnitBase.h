@@ -178,6 +178,7 @@ public:
     bool isInWeaponRange(const ObjectBase* object) const;
 
     void setAngle(int newAngle);
+    const std::list<Coord>& getPlannedPath() const { return pathList; }
 
     void setTarget(const ObjectBase* newTarget) override;
 

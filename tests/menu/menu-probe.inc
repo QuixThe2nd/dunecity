@@ -241,6 +241,13 @@ int runMenuProbe() {
         menuCapture(menu,"custom-bonus-colors");
         ModManager::instance().setActiveMod("vanilla");
     }
+    for(const auto& mod : {std::string("vanilla"),std::string("dunecity")}) {
+        menuRequire(ModManager::instance().setActiveMod(mod), "City status fixture unavailable");
+        CustomGamePlayers menu(init,true);
+        menuRequire(menu.mapPropertyCity.getText()==(mod=="dunecity" ? _("On") : _("Off")), "Lobby city status disagrees with mod");
+        menuCapture(menu,"city-status-"+mod);
+    }
+    ModManager::instance().setActiveMod("vanilla");
     setup.players=original;
     {
         CrossplayMenu menu;
@@ -281,7 +288,15 @@ int runMenuProbe() {
         menu.showPage(2);
         settings.network.metaServer=""; menu.metaServerTextBox.setText("");
         menu.playSFXCheckbox.setChecked(!settings.audio.playSFX);
+        menu.wasdCameraCheckbox.setChecked(true);
+        menu.leftClickOrdersCheckbox.setChecked(true);
+        menu.movementPathsCheckbox.setChecked(false);
         menu.onOptionsOK();
+        menuRequire(settings.general.wasdCamera && settings.general.leftClickOrders && !settings.general.showMovementPaths,"Input options not applied");
+        INIFile savedOptions(getConfigFilepath());
+        menuRequire(savedOptions.getBoolValue("General","WASD Camera",false)
+            && savedOptions.getBoolValue("General","Left Click Orders",false)
+            && !savedOptions.getBoolValue("General","Movement Paths",true),"Input options not persisted");
         menuRequire(menu.isQuiting(),"Unchanged legacy network field blocked audio apply");
     }
     SDL_Log("MENU_PROBE_PASS: home, campaign retry, mission ranges, custom roster, online transition, settings validation and rendering");

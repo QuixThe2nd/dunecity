@@ -11,6 +11,7 @@ root = Path(__file__).resolve().parents[2]
 parser = argparse.ArgumentParser(description="Render real menus and check setup state in an isolated profile.")
 parser.add_argument('--build-dir', type=Path, default=root / 'build')
 parser.add_argument('--output-dir', type=Path, required=True)
+parser.add_argument('--audio-failure', action='store_true', help='Verify startup recovery when the audio driver cannot open')
 args = parser.parse_args()
 build, out = args.build_dir.resolve(), args.output_dir.resolve()
 out.mkdir(parents=True, exist_ok=True)
@@ -59,10 +60,14 @@ for width, height in ((640, 480), (854, 480), (1280, 720)):
     profile = out / ('profile-' + str(width))
     profile.mkdir(exist_ok=True)
     (profile/'Dune City.ini').write_text('[Video]\nPhysical Width = '+str(width)+'\nPhysical Height = '+str(height)+'\nWidth = '+str(width)+'\nHeight = '+str(height)+'\nInterface Height = '+str(height)+'\nFullscreen = false\n[General]\nPlay Intro = false\nPlayer Name = Menu tester\n')
-    env = dict(os.environ, DUNECITY_USERDIR=str(profile), SDL_VIDEODRIVER='dummy', SDL_AUDIODRIVER='dummy', MENU_PROBE_OUT=str(out), MENU_PROBE_WIDTH=str(width), MENU_PROBE_HEIGHT=str(height))
+    env = dict(os.environ, DUNECITY_USERDIR=str(profile), SDL_VIDEODRIVER='dummy', SDL_AUDIODRIVER='unavailable-test-driver' if args.audio_failure else 'dummy', MENU_PROBE_OUT=str(out), MENU_PROBE_WIDTH=str(width), MENU_PROBE_HEIGHT=str(height))
     logpath = out / ('run-' + str(width) + '.log')
     with logpath.open('w') as log:
         subprocess.run([str(binary), '--window', '--showlog'], cwd=out, env=env, stdout=log, stderr=subprocess.STDOUT, check=True, timeout=120)
     results = [line for line in logpath.read_text().splitlines() if 'MENU_PROBE_PASS:' in line]
     if len(results) != 1: raise RuntimeError('Missing menu test result; see '+str(logpath))
+    if args.audio_failure:
+        text = logpath.read_text()
+        if 'Continuing with silent audio' not in text or 'Audio driver: dummy' not in text:
+            raise RuntimeError('Missing silent audio recovery evidence; see '+str(logpath))
     print(results[0])

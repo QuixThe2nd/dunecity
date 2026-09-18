@@ -1,3 +1,50 @@
+## 2026-09-19 — Feature requests and shared cursors, local 1.0.711
+
+Implemented #50/#55: one SDL platform cursor path, shared by desktop and web,
+with black vector shapes, a smooth white border, 1.5x default size, and matching
+pointer, force move, attack, capture, carryall drop and heal icons. The old game
+frame overlay and duplicate platform-sprite cache were removed. Menu/modal
+frames use the normal pointer; gameplay supplies the current action. Hidden
+mode never installs a new visible action cursor. Resources are released before
+SDL shutdown, including menu-only sessions. Geometry and hotspots live in
+`include/misc/CursorAppearance.h`; no browser-specific icon set is maintained.
+Stefan rejected the first white raster arrow/double-outline design. The black
+second pointer in his screenshot was Codex's pointer, not evidence of a game
+cursor bug; the original #55 report remains the motivation for single ownership.
+
+Settings > Controls now offers optional WASD camera (Shift+A attack, Shift+D
+carryall drop), optional left-click orders (drag/Shift/friendly clicks still
+select; right-click cancels), and selected-unit movement paths. Keyboard options
+are local preferences, not simulation/network state. #29 moved Skip mission to
+the pause menu, with Cancel focused by default and eligibility rechecked before
+queuing the existing campaign command. #5 adds an explicit City sim On/Off lobby
+row and updates it on host mod changes/downloads. #54 preserves audio errors and
+falls back to SDL's silent mixer if the device cannot open, without overwriting
+music/SFX preferences; Audio settings explains that restart retries the device.
+
+Validation: native Release and pinned Emscripten 4.0.14 builds; seven CTest suites;
+real menu rendering at 640x480, 854x480, 1280x720 with unavailable audio driver;
+real campaign controls probe covering default/left move, left attack, drag/Shift/
+friendly selection, right cancel, shifted attack, path renderer state, skip
+cancel/confirm/replay guard. Native Cocoa accepted all 30 cursor action/scale
+combinations and visibility changes. Browser SDL emits a 33x33 PNG CSS cursor
+with explicit hotspot at default scale. No Windows/Linux hardware run is claimed.
+Evidence: `/tmp/dunecity-711-tests.log`, `/tmp/dunecity-menus-711`,
+`/tmp/dunecity-controls-711d`, `/tmp/dunecity-711-web-build4.log`.
+
+Older #14: source already includes dual-mono default, mixer format logging and
+channel-safe ADL callback from 365272c; no reproduced distortion, so keep open.
+#16: inspected original 1.0.86 Windows attachment; unsymbolized SIGSEGV addresses,
+no save, small auto.rpl, and a misleading "game not initialized" crash diagnostic
+while match telemetry was active. Cannot establish a current fix; keep open.
+#12/#13 still include obsolete 3x3 specifications that conflict with the settled
+2x2 architecture; do not change that architecture silently. Spacing Guild and
+fire services explicitly excluded by Stefan. No related implementation added.
+
+`build` points to `build-711`; the user's running 708 process was not restarted.
+This is local work only: no push, PR or deployment. GitHub closure comments must
+say implemented locally, pending release, and must not imply a deployed fix.
+
 ## 2026-09-19 — Keep reactors behind the fighting, local 1.0.710
 
 Stefan reported Fremen repeatedly building nuclear plants beside the enemy.

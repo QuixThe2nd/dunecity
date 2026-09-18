@@ -51,6 +51,7 @@ public:
     void onSave();
     void onRestart();
     void onQuit();
+    void onSkipMission();
 
 private:
     bool bMultiplayer;
@@ -66,6 +67,7 @@ private:
     TextButton  saveGameButton;
     TextButton  loadGameButton;
     TextButton  quitButton;
+    TextButton  skipMissionButton;
 };
 
 

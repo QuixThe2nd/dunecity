@@ -1955,6 +1955,8 @@ void Game::drawScreen()
                 screenborder->world2screenY(t.getLocation().y*TILESIZE));
         });
 
+    if(settings.general.showMovementPaths)drawMovementPaths();
+
     // draw the gathering point line if a structure is selected
     if(selectedList.size() == 1) {
         StructureBase *pStructure = dynamic_cast<StructureBase*>(getObjectManager().getObject(*selectedList.begin()));
@@ -2557,6 +2559,8 @@ case CursorMode_Heal: {
                             if(currentCursorMode != CursorMode_Normal) {
                                 //cancel special cursor mode
                                 setCursorMode(CursorMode_Normal);
+                            } else if(settings.general.leftClickOrders) {
+                                unselectAll(selectedList); selectedList.clear(); selectionMode=false;
                             } else if((!selectedList.empty()
                                             && (((objectManager.getObject(*selectedList.begin()))->getOwner() == pLocalHouse))
                                             && (((objectManager.getObject(*selectedList.begin()))->isRespondable())) ) )
@@ -2600,6 +2604,20 @@ case CursorMode_Heal: {
                         break;
                     }
 
+                    if(selectionMode && mouse->button==SDL_BUTTON_LEFT && settings.general.leftClickOrders
+                        && currentCursorMode==CursorMode_Normal && !(SDL_GetModState() & KMOD_SHIFT)
+                        && std::abs(mouse->x-screenborder->world2screenX(selectionRect.x))<=4
+                        && std::abs(mouse->y-screenborder->world2screenY(selectionRect.y))<=4
+                        && screenborder->isScreenCoordInsideMap(mouse->x,mouse->y)) {
+                        const Coord target(screenborder->screen2MapX(mouse->x),screenborder->screen2MapY(mouse->y));
+                        const auto* tile=currentGameMap->getTile(target);
+                        const auto* object=tile ? tile->getObjectAt(screenborder->screen2worldX(mouse->x),screenborder->screen2worldY(mouse->y)) : nullptr;
+                        if((!object || object->getOwner()!=pLocalHouse) && handleSelectedObjectsActionClick(target.x,target.y)) {
+                            indicatorFrame=0;
+                            indicatorPosition=Coord(screenborder->screen2worldX(mouse->x),screenborder->screen2worldY(mouse->y));
+                            selectionMode=false;
+                        }
+                    }
                     if(selectionMode && (mouse->button == SDL_BUTTON_LEFT)) {
                         //this keeps the box on the map, and not over game bar
                         int finalMouseX = mouse->x;
@@ -2685,10 +2703,12 @@ case CursorMode_Heal: {
     if((pInGameMenu == nullptr) && (pInGameMentat == nullptr) && (pWaitingForOtherPlayers == nullptr) && (SDL_GetWindowFlags(window) & SDL_WINDOW_MOUSE_FOCUS)) {
 
         const Uint8 *keystate = SDL_GetKeyboardState(nullptr);
-        scrollDownMode =  (drawnMouseY >= getRendererHeight()-1-SCROLLBORDER) || keystate[SDL_SCANCODE_DOWN];
-        scrollLeftMode = (drawnMouseX <= SCROLLBORDER) || keystate[SDL_SCANCODE_LEFT];
-        scrollRightMode = (drawnMouseX >= getRendererWidth()-1-SCROLLBORDER) || keystate[SDL_SCANCODE_RIGHT];
-        scrollUpMode = (drawnMouseY <= SCROLLBORDER) || keystate[SDL_SCANCODE_UP];
+        const bool cameraKeys=!chatMode && !pInterface->hasChildWindow();
+        const bool wasd=cameraKeys && settings.general.wasdCamera && !(SDL_GetModState() & (KMOD_SHIFT|KMOD_CTRL|KMOD_ALT|KMOD_GUI));
+        scrollDownMode =  (drawnMouseY >= getRendererHeight()-1-SCROLLBORDER) || (cameraKeys && keystate[SDL_SCANCODE_DOWN]) || (wasd && keystate[SDL_SCANCODE_S]);
+        scrollLeftMode = (drawnMouseX <= SCROLLBORDER) || (cameraKeys && keystate[SDL_SCANCODE_LEFT]) || (wasd && keystate[SDL_SCANCODE_A]);
+        scrollRightMode = (drawnMouseX >= getRendererWidth()-1-SCROLLBORDER) || (cameraKeys && keystate[SDL_SCANCODE_RIGHT]) || (wasd && keystate[SDL_SCANCODE_D]);
+        scrollUpMode = (drawnMouseY <= SCROLLBORDER) || (cameraKeys && keystate[SDL_SCANCODE_UP]) || (wasd && keystate[SDL_SCANCODE_W]);
 
         if(scrollLeftMode && scrollRightMode) {
             // do nothing
@@ -3856,6 +3876,13 @@ bool Game::canSkipMission() const {
 }
 
 void Game::onSkipMission() {
+    if(!canSkipMission())return;
+    auto menu=std::make_unique<InGameMenu>(isNetworkGameType(gameType),COLOR_WHITE);
+    menu->onSkipMission();
+    pInGameMenu=std::move(menu); bMenu=true; pauseGame();
+}
+
+void Game::confirmSkipMission() {
     if(canSkipMission()) cmdManager.addCommand(Command(pLocalPlayer->getPlayerID(), CMD_CAMPAIGN_SKIP));
 }
 
@@ -5003,6 +5030,7 @@ void Game::handleKeyInput(SDL_KeyboardEvent& keyboardEvent) {
         } break;
 
         case SDLK_a: {
+            if(settings.general.wasdCamera && !(keyboardEvent.keysym.mod & KMOD_SHIFT))break;
             //set object to attack
             setCursorMode(CursorMode_Attack);
         } break;
@@ -5186,6 +5214,7 @@ void Game::handleKeyInput(SDL_KeyboardEvent& keyboardEvent) {
 
 
         case SDLK_d: {
+            if(settings.general.wasdCamera && !(keyboardEvent.keysym.mod & KMOD_SHIFT))break;
             setCursorMode(CursorMode_CarryallDrop);
         } break;
 
@@ -5552,7 +5581,7 @@ bool Game::handleSelectedObjectsActionClick(int xPos, int yPos) {
     ObjectBase  *pResponder = nullptr;
     for(Uint32 objectID : selectedList) {
         ObjectBase* pObject = objectManager.getObject(objectID);
-        if(pObject->getOwner() == pLocalHouse && pObject->isRespondable()) {
+        if(pObject && pObject->getOwner() == pLocalHouse && pObject->isRespondable()) {
             pObject->handleActionClick(xPos, yPos);
 
             //if this object obey the command
@@ -6213,4 +6242,36 @@ void Game::dumpCombatStats() {
     combatStats.launcherRocketsKillOrni = 0;
     combatStats.launcherRocketsExpired = 0;
     SDL_Log("[Combat Stats] ================================================================================");
+}
+
+void Game::drawMovementPaths() {
+    SDL_Rect previousClip{};
+    const bool clipped=SDL_RenderIsClipEnabled(renderer);
+    SDL_RenderGetClipRect(renderer,&previousClip);
+    SDL_Rect field{0,topBarPos.h,sideBarPos.x,getRendererHeight()-topBarPos.h};
+    if(clipped)SDL_IntersectRect(&field,&previousClip,&field);
+    SDL_RenderSetClipRect(renderer,&field);
+    Uint8 r,g,b,a; SDL_GetRenderDrawColor(renderer,&r,&g,&b,&a);
+    int count=0;
+    for(Uint32 id:selectedList) {
+        const auto* unit=dynamic_cast<const UnitBase*>(objectManager.getObject(id));
+        if(!unit || !unit->isActive() || unit->getOwner()!=pLocalHouse || unit->getDestination().isInvalid()
+            || unit->getDestination()==unit->getLocation())continue;
+        if(++count>64)break;
+        Coord previous(screenborder->world2screenX(unit->getRealX().lround()),screenborder->world2screenY(unit->getRealY().lround()));
+        auto segment=[&](Coord tile,bool pending) {
+            const Coord next(screenborder->world2screenX(tile.x*TILESIZE+TILESIZE/2),screenborder->world2screenY(tile.y*TILESIZE+TILESIZE/2));
+            SDL_SetRenderDrawColor(renderer,0,0,0,255);
+            SDL_RenderDrawLine(renderer,previous.x,previous.y+1,next.x,next.y+1);
+            SDL_SetRenderDrawColor(renderer,pending?180:80,230,255,255);
+            SDL_RenderDrawLine(renderer,previous.x,previous.y,next.x,next.y);
+            previous=next;
+        };
+        const auto& route=unit->getPlannedPath();
+        if(route.empty())segment(unit->getDestination(),true);
+        else { int steps=0; for(Coord tile:route) { if(++steps>512)break; segment(tile,false); } }
+        SDL_Rect marker{previous.x-2,previous.y-2,5,5};SDL_RenderDrawRect(renderer,&marker);
+    }
+    SDL_SetRenderDrawColor(renderer,r,g,b,a);
+    SDL_RenderSetClipRect(renderer,clipped ? &previousClip : nullptr);
 }

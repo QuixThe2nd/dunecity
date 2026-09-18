@@ -300,6 +300,8 @@ public:
     void onCityBudget();
     void onFeedback();
     void onSkipMission();
+    void confirmSkipMission();
+    void drawMovementPaths();
     bool canSkipMission() const;
 
     /**

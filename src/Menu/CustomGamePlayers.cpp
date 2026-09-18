@@ -297,7 +297,10 @@ CustomGamePlayers::CustomGamePlayers(const GameInitSettings& newGameInitSettings
     mapPropertyNamesVBox.addWidget(Label::create(_("Mod") + ":"));
     ModInfo activeModInfo = ModManager::instance().getModInfo(ModManager::instance().getActiveModName());
     mapPropertyMod.setText(activeModInfo.displayName);
+    mapPropertyCity.setText(activeModInfo.enablesCityMode ? _("On") : _("Off"));
     mapPropertyValuesVBox.addWidget(&mapPropertyMod);
+    mapPropertyNamesVBox.addWidget(Label::create(_("City sim") + ":"));
+    mapPropertyValuesVBox.addWidget(&mapPropertyCity);
     rightVBox.addWidget(Spacer::create());
 
     mainVBox.addWidget(Spacer::create(), 0.04);
@@ -1129,6 +1132,7 @@ void CustomGamePlayers::onReceiveModInfo(const std::string& modName, const std::
             // Update the mod label on screen
             ModInfo activeModInfo = ModManager::instance().getModInfo(modName);
             mapPropertyMod.setText(activeModInfo.displayName);
+            mapPropertyCity.setText(activeModInfo.enablesCityMode ? _("On") : _("Off"));
             
             // Reload effective game options for the new mod
             effectiveGameOptions = ModManager::instance().loadEffectiveGameOptions(settings.gameOptions);
@@ -1239,6 +1243,7 @@ void CustomGamePlayers::onModDownloadComplete(bool success, const std::string& d
             // Update the mod label on screen to show the new mod
             ModInfo activeModInfo = ModManager::instance().getModInfo(hostModName);
             mapPropertyMod.setText(activeModInfo.displayName);
+            mapPropertyCity.setText(activeModInfo.enablesCityMode ? _("On") : _("Off"));
             
             SDL_Log("CLIENT: Switched to mod '%s', new checksum: %s", hostModName.c_str(), newChecksum.c_str());
 

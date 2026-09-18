@@ -208,19 +208,6 @@ GameInterface::GameInterface() : Window(0,0,0,0) {
         "Show pollution: green is clean, purple is polluted. Click again to hide (Shift+4; Shift+1 off).",
         DuneCity::CityOverlayMode::Pollution, autoRepairY + 120);
 
-    // Build lists use the sidebar's full height; keep skip beside it.
-    const int skipWidth = std::max(ornithopterButtonWidth,
-        GUIStyle::getInstance().getMinimumButtonSize(_("Skip mission")).x);
-    skipMissionButton.setText(_("Skip mission"));
-    skipMissionButton.setTooltipText(_("Win this campaign mission and continue to the next level."));
-    skipMissionButton.setOnClick(std::bind(&Game::onSkipMission, currentGame));
-    const bool campaign = isCampaignGameType(currentGame->getGameInitSettings().getGameType());
-    skipMissionButton.setVisible(campaign);
-    skipMissionButton.setEnabled(currentGame->canSkipMission());
-    windowWidget.addWidget(&skipMissionButton,
-        Point(viewControlsRight - skipWidth, getRendererHeight() - 32),
-        Point(skipWidth, 28));
-
     // add chat manager
     windowWidget.addWidget(&chatManager, Point(20, 60), Point(getRendererWidth() - sideBar.getSize().x, 360));
 
@@ -448,7 +435,6 @@ void GameInterface::draw(Point position) {
 }
 
 void GameInterface::updateObjectInterface() {
-    skipMissionButton.setEnabled(currentGame->canSkipMission());
     const auto& selection = currentGame->getSelectedList();
 
     const std::string repairText = pLocalHouse && pLocalHouse->isAutoRepairEnabled()

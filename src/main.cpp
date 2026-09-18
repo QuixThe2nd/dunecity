@@ -1102,6 +1102,9 @@ int main(int argc, char *argv[]) {
             settings.general.playerName = myINIFile.getStringValue("General","Player Name","Player");
             settings.general.language = myINIFile.getStringValue("General","Language","en");
             settings.general.scrollSpeed = myINIFile.getIntValue("General","Scroll Speed",50);
+            settings.general.wasdCamera = myINIFile.getBoolValue("General","WASD Camera",false);
+            settings.general.leftClickOrders = myINIFile.getBoolValue("General","Left Click Orders",false);
+            settings.general.showMovementPaths = myINIFile.getBoolValue("General","Movement Paths",true);
             settings.general.showTutorialHints = myINIFile.getBoolValue("General","Show Tutorial Hints",true);
             settings.general.multiplePlayersPerHouse = myINIFile.getBoolValue("General","Multiple Players Per House",false);
             settings.video.width = myINIFile.getIntValue("Video","Width",640);
@@ -1361,9 +1364,13 @@ int main(int argc, char *argv[]) {
                 SDL_Log("Initializing audio...");
                 constexpr int AUDIO_BUFFER_FRAMES = 1024;
                 if( Mix_OpenAudio(AUDIO_FREQUENCY, AUDIO_S16SYS, 2, AUDIO_BUFFER_FRAMES) < 0 ) {
-                    SDL_Quit();
-                    THROW(sdl_error, "Couldn't set %d Hz 16-bit audio. Reason: %s!", AUDIO_FREQUENCY, SDL_GetError());
-                } else {
+                    const std::string audioError=Mix_GetError();
+                    SDL_LogWarn(SDL_LOG_CATEGORY_AUDIO,"Audio device unavailable: %s. Continuing with silent audio; restart to retry the device.",audioError.c_str());
+                    SDL_AudioQuit();
+                    if(SDL_AudioInit("dummy")<0 || Mix_OpenAudio(AUDIO_FREQUENCY,AUDIO_S16SYS,2,AUDIO_BUFFER_FRAMES)<0)
+                        THROW(sdl_error,"Audio device failed (%s); silent mixer also failed: %s",audioError.c_str(),Mix_GetError());
+                }
+                {
                     int actualFrequency = 0;
                     int actualChannels = 0;
                     Uint16 actualFormat = 0;
@@ -1589,6 +1596,7 @@ int main(int argc, char *argv[]) {
 
             pTextManager.reset();
             pSFXManager.reset();
+            releaseCursorResources();
             pGFXManager.reset();
             pFontManager.reset();
             pFileManager.reset();
