@@ -55,7 +55,9 @@ returned path; implementations use separate scratch pools in one process.
 
 Clean native Release build, dependency checks, version checks and all seven
 CTest suites passed. The changed A* translation unit also compiled with
-Emscripten; no browser runtime performance claim is made.
+Emscripten. The complete browser build was subsequently rebuilt from the same
+660d913 source as native 1.0.719, and its home screen/version were visually
+verified. No browser runtime performance claim is made.
 
 Local evidence is in
 `/Users/stefan/Documents/projects/outputs/game-performance-20260919/`, including

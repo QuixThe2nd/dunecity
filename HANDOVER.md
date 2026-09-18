@@ -1,5 +1,15 @@
 ## 2026-09-19 — Cheaper A* searches, local 1.0.719
 
+Follow-up: Stefan requested one build containing all changes. Both native and
+full Emscripten outputs now come from source commit 660d913 at version 1.0.719,
+including 717 menu fixes, 718 sidebar/previews and 719 pathfinding. The usual
+build-714/bin app and build-714/emscripten/bin preview on port 8714 are current.
+Browser startup was visually verified: v1.0.719, teal mod label, correct initial
+Campaign focus. Artifact hashes are recorded in
+`outputs/game-performance-20260919/unified-build-manifest.json` in the parent
+projects directory. The native build is up to date; the seven integrated CTest
+suites already passed. No restart, public publish or additional source change.
+
 Stefan requested pathfinding optimization without changing the node budget.
 Searches now cache passability per tile for one synchronous search, skip closed
 neighbours before occupancy/cost work, and calculate parent direction once per
