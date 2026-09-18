@@ -1,3 +1,16 @@
+## 2026-09-19 — Local build cleanup
+
+At Stefan's request, moved ten obsolete build directories (`build`, `build-692`,
+`build-705`, `build-706`, `build-707`, `build-web`, `build.bad`, `build2`,
+`build_phase4`, `buildtests`) into
+`~/.Trash/DuneCity-old-builds-20260919-015246`, with a restore-path manifest.
+`build-708` is self-contained and was left in place, including its running app.
+The usual `build` path is now a local ignored symlink to `build-708`. The stale
+generated artifacts previously committed under four legacy build directories
+are removed from tracking and explicitly ignored. Build scripts remain intact.
+Dependency audit, app signature check and `ninja -C build -n` pass; no work is due.
+Old historical build paths below refer to the builds as they existed at the time.
+
 ## 2026-09-19 — Preserve selected campaign AI partner, local 1.0.708
 
 Stefan reported choosing full QuantBot while the running purple Sardaukar army
