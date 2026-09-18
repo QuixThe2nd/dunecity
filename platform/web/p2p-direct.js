@@ -4,7 +4,7 @@
   var __defNormalProp = (obj, key, value) => key in obj ? __defProp(obj, key, { enumerable: true, configurable: true, writable: true, value }) : obj[key] = value;
   var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "symbol" ? key + "" : key, value);
 
-  // ../../platform/web/node_modules/p2pkit/dist/chunk-HQHLJTRF.js
+  // platform/web/node_modules/p2pkit/dist/chunk-HQHLJTRF.js
   var DEFAULT_MAX_PACKET_SIZE = 16e3;
   var CHUNK_LIMITS = Object.freeze({
     /** Maximum characters of payload per fragment (also the default `maxPacketSize`). */
@@ -140,7 +140,7 @@
     }
   };
 
-  // ../../platform/web/node_modules/p2pkit/dist/chunk-TZGXUDQM.js
+  // platform/web/node_modules/p2pkit/dist/chunk-TZGXUDQM.js
   var Emitter = class {
     constructor() {
       __publicField(this, "handlers", {});
@@ -193,7 +193,7 @@
     { urls: "stun:global.stun.twilio.com:3478" }
   ];
 
-  // ../../platform/web/node_modules/p2pkit/dist/chunk-FUPXCS3V.js
+  // platform/web/node_modules/p2pkit/dist/chunk-FUPXCS3V.js
   var RTC_SEND_QUEUE_FLUSH_THRESHOLD = 1 << 20;
   function utf8ByteLength(text) {
     let bytes = 0;
@@ -1169,7 +1169,7 @@
     }
   };
 
-  // ../../platform/web/src/dune-direct-bridge.ts
+  // platform/web/src/dune-direct-bridge.ts
   var State = { New: 0, Connecting: 1, Connected: 2, Failed: 3, Closed: 4 };
   var MAX_QUEUED_VALUES = 4096;
   var MAX_QUEUED_VALUE_BYTES = 4 * 1024 * 1024;
