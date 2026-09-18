@@ -1,4 +1,5 @@
 #include <dunecity/PowerRules.h>
+#include <dunecity/CityConstants.h>
 #include <players/AIDecisionLog.h>
 /*
  *  This file is part of Dune Legacy.
@@ -888,6 +889,20 @@ StructureBase* House::placeStructure(Uint32 builderID, int itemID, int xPos, int
        || xPos + requestedStructureSize.x > currentGameMap->getSizeX()
        || yPos + requestedStructureSize.y > currentGameMap->getSizeY()) {
         return nullptr;
+    }
+
+    // Recheck resource terrain when executing city placement, not only when
+    // previewing or planning it. The site can change before a queued command
+    // arrives. Keep authored scenario placement/load semantics unchanged.
+    if(!byScenario && DuneCity::isCityOnlyStructure(itemID)) {
+        for(int dy = 0; dy < requestedStructureSize.y; ++dy) {
+            for(int dx = 0; dx < requestedStructureSize.x; ++dx) {
+                const auto* tile = currentGameMap->getTile(xPos + dx, yPos + dy);
+                if(tile->isSpice() || tile->isSpiceBloom() || tile->isSpecialBloom()) {
+                    return nullptr;
+                }
+            }
+        }
     }
 
     BuilderBase* pBuilder = (builderID == NONE_ID) ? nullptr : dynamic_cast<BuilderBase*>(currentGame->getObjectManager().getObject(builderID));

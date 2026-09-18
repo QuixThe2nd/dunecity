@@ -1,3 +1,27 @@
+## 2026-09-19 — Protect spice from city placement, local 1.0.709
+
+Stefan requested that SimCity buildings cannot cover spice or spice blooms.
+Preview and AI planning already reject these terrains, but `House::placeStructure`
+only checked occupancy before creating/placing the object. A direct execution
+test against 708 reproduced a residential zone placed over spice. The final
+placement path now checks every city-only footprint tile before any mutation,
+including roads/power lines, all thin/thick spice colours and ordinary/coloured/
+special blooms. Even forced gameplay placement rejects resources. Authored
+scenario placement is preserved; save loading and the existing anchored plain
+sand zone rule are unchanged.
+
+`run-campaign-balance.py --mod dunecity --city-placement-probe` covers 450
+item/terrain/footprint combinations with normal and forced placement, confirms
+rejected commands preserve resources/object counts, and exercises real human
+and AI placement commands without consuming a finished zone or credits. Clearing
+the bloom to sand permits placement and consumes the queue once. Plain-sand
+R/C/I zones anchored on rock still succeed. Before/after evidence:
+`/tmp/dunecity-spice-before/run.log`, `/tmp/dunecity-spice-after-final/run.log`.
+All 7 CTest groups, clean native build, dependency audit, version agreement and
+signature verification pass (`/tmp/dunecity-709-ctest.log`).
+`build` now points to self-contained `build-709`; the running 708 app remains
+in place. No restart, remote push, installation or public deployment performed.
+
 ## 2026-09-19 — Local build cleanup
 
 At Stefan's request, moved ten obsolete build directories (`build`, `build-692`,

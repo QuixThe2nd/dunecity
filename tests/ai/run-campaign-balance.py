@@ -35,6 +35,7 @@ parser.add_argument('--partner-difficulty', choices=('easy','medium','hard','bru
 parser.add_argument('--enemy-ai', choices=('quantbot','ai-player'), default='quantbot', help='Enemy controller family; AI Player has Easy/Medium/Hard')
 parser.add_argument('--enemy-difficulty', choices=('easy','medium','hard','brutal'), default='easy')
 parser.add_argument('--shared-spending-probe', action='store_true')
+parser.add_argument('--city-placement-probe', action='store_true')
 parser.add_argument('--opening-economy-probe', action='store_true')
 parser.add_argument('--starport-probe', action='store_true', help='Exercise reserved cash with above-normal Starport prices')
 parser.add_argument('--helper-economy-probe', action='store_true', help='Verify advanced campaign helper worker investment and paid imports')
@@ -155,6 +156,7 @@ if args.custom_map:
     env['BALANCE_ROSTER'] = ','.join(f'{house}:{team}' for house, team in roster)
 (out/'setup.json').write_text(json.dumps({**vars(args), 'resolved_roster': roster}, default=str, indent=2)+'\n')
 if args.shared_spending_probe: env['BALANCE_SHARED_SPENDING_PROBE'] = '1'
+if args.city_placement_probe: env['BALANCE_CITY_PLACEMENT_PROBE'] = '1'
 if args.opening_economy_probe: env['BALANCE_OPENING_ECONOMY_PROBE'] = '1'
 if args.nuclear_probe: env['BALANCE_NUCLEAR_PROBE'] = '1'
 if args.radar_probe: env['BALANCE_RADAR_PROBE'] = '1'
