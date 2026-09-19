@@ -1,4 +1,4 @@
-## 2026-09-19 — Developer ID ready; first notarization awaits Air submission
+## 2026-09-19 — Developer ID signing and first notarization verified
 
 Stefan renewed his individual Developer Program membership through September 20,
 2027 (team 34X7AYJZ93). Developer ID Application certificate was matched to the
@@ -16,13 +16,21 @@ verification passed on both Macs. The running game/build bundle was unchanged.
 The signed ZIP is in session work/notarization-730 and on the Air under
 Documents/projects/outputs/DuneCity-730-Notarization. SHA256:
 8b06f0342bcc3a5745b7d8275dbb8b434d0170c854a659e416c003b95e5f409c.
-Stefan ran the credential setup shortcut, but the Air login keychain is locked
-over SSH, so remote notarytool cannot verify/use profile DuneCityNotarization.
-Air Desktop/DuneCity-Submit-to-Apple.command runs in his local Terminal, submits
-the ZIP, records submission.json/status.json/apple-log.json, then staples and
-validates only after Accepted. Retries reuse the submission ID. At this handoff
-no submission has been confirmed; inspect those files before claiming success.
-Final artifact is DuneCity-1.0.730-notarized.zip after successful completion.
+Stefan ran the credential setup and submission shortcuts in the Air's local
+Terminal using Keychain profile DuneCityNotarization. Apple accepted submission
+561fcf03-1554-4322-a9d3-93eeeaeab542 on September 19, 2026 with no issues.
+The Air login keychain remains locked over SSH; use the local Terminal shortcut
+for future authenticated submissions. Retries reuse the recorded submission ID.
+
+DuneCity-1.0.730-notarized.zip contains the stapled app. Ticket validation,
+strict deep signature verification and Gatekeeper assessment passed on the Air,
+and again on the mini after copying and extracting the final archive.
+Gatekeeper reports source=Notarized Developer ID. Final ZIP SHA256:
+32c3fe23378079ee1cb8c18db9a8af74735481b19b188bb422ddc3ffe48153f0.
+The final ZIP and submission.json/status.json/apple-log.json are on both Macs in
+the folders above. Mini extracted verification copy is under
+session work/notarization-730/verified/dunecity.app. Local signing/notarization
+setup is working; automated release signing remains separate work.
 No game push, public release, CI secret upload or CI signing change occurred.
 
 ## 2026-09-19 — Visible play approvals and shared control (unreleased 730)
