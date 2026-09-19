@@ -412,6 +412,7 @@ Game::~Game() {
         spatialGrid.reset();
     }
 
+    if(spectatorViewPlayer) { pLocalPlayer=nullptr; spectatorViewPlayer.reset(); }
     delete currentGameMap;
     currentGameMap = nullptr;
     delete screenborder;
@@ -597,6 +598,7 @@ void Game::initGame(const GameInitSettings& newGameInitSettings) {
         default: {
         } break;
     }
+    if(isSpectating() && !spectatorViewPlayer) setupSpectatorView();
     AITelemetry::startGame(AITelemetry::Record().set("version", VERSION)
         .set("mod", ModManager::instance().getActiveModName())
         .set("source", newGameInitSettings.getFilename()).set("seed", gameInitSettings.getRandomSeed())
@@ -1973,7 +1975,7 @@ void Game::drawScreen()
     /* draw selection rectangles */
     currentGameMap->for_each(x1, y1, x2, y2,
         [](Tile& t) {
-            if (debug || t.isExploredByTeam(pLocalHouse->getTeamID())) {
+            if (debug || currentGame->isSpectating() || t.isExploredByTeam(pLocalHouse->getTeamID())) {
                 t.blitSelectionRects(screenborder->world2screenX(t.getLocation().x*TILESIZE),
                     screenborder->world2screenY(t.getLocation().y*TILESIZE));
             }
@@ -1982,7 +1984,7 @@ void Game::drawScreen()
 
 //////////////////////////////draw unexplored/shade
 
-    if(debug == false) {
+    if(!debug && !isSpectating()) {
         SDL_Texture* hiddenTexZoomed = pGFXManager->getZoomedObjPic(ObjPic_Terrain_Hidden, currentZoomlevel);
         SDL_Texture* hiddenFogTexZoomed = pGFXManager->getZoomedObjPic(ObjPic_Terrain_HiddenFog, currentZoomlevel);
         int zoomedTileSize = world2zoomedWorld(TILESIZE);
@@ -2367,6 +2369,11 @@ void Game::drawScreen()
         pInGameMentat->draw();
     }
 
+    if(isSpectating()) {
+        if(!spectatorLabel) spectatorLabel=pFontManager->createTextureWithText("Spectating",COLOR_WHITE,18);
+        SDL_Rect rect=calcDrawingRect(spectatorLabel.get(),sideBarPos.x/2,topBarPos.h+8,HAlign::Center,VAlign::Top);
+        SDL_RenderCopy(renderer,spectatorLabel.get(),nullptr,&rect);
+    }
     // Update cursor
     updateCursor();
 }
@@ -3909,7 +3916,7 @@ void Game::onMentat()
 }
 
 bool Game::canSkipMission() const {
-    return !bReplay && !finished && !bQuitGame && pLocalPlayer && pLocalHouse
+    return !isSpectating() && !bReplay && !finished && !bQuitGame && pLocalPlayer && pLocalHouse
         && CampaignControls::maySkip(gameInitSettings.getGameType(), gameInitSettings.getHouseID(),
                                      pLocalHouse->getHouseID(), true);
 }
@@ -4314,6 +4321,7 @@ bool Game::loadSaveGame(InputStream& stream) {
         pLocalHouse = house[pLocalPlayer->getHouse()->getHouseID()].get();
     }
 
+    if(isSpectating()) setupSpectatorView();
     if(!pLocalPlayer || !pLocalHouse) THROW(std::runtime_error, "Cannot assign the local co-op player.");
 
     debug = stream.readBool();
@@ -4788,6 +4796,7 @@ void Game::onPeerDisconnected(const std::string& name, bool bHost, int cause) {
 }
 
 void Game::setGameWon() {
+    if(isSpectating()) return;
     if(!bQuitGame && !finished) {
         won = true;
         finished = true;
@@ -4798,6 +4807,7 @@ void Game::setGameWon() {
 
 
 void Game::setGameLost() {
+    if(isSpectating()) return;
     if(!bQuitGame && !finished) {
         won = false;
         finished = true;
@@ -4939,7 +4949,15 @@ void Game::handleChatInput(SDL_KeyboardEvent& keyboardEvent) {
 }
 
 
-void Game::handleKeyInput(SDL_KeyboardEvent& keyboardEvent) {
+void Game::handleKeyInput(SDL_KeyboardEvent& keyboardEvent)
+{
+    if(isSpectating()) {
+        switch(keyboardEvent.keysym.sym) {
+            case SDLK_ESCAPE: case SDLK_RETURN: case SDLK_LEFT: case SDLK_RIGHT:
+            case SDLK_UP: case SDLK_DOWN: case SDLK_TAB: break;
+            default: return;
+        }
+    }
     switch(keyboardEvent.keysym.sym) {
 
         case SDLK_0: {
@@ -6121,6 +6139,11 @@ bool Game::handleNetworkUpdates() {
         std::set<std::string> currentRequests;
         for(const auto& request : direct->joinRequests()) {
             currentRequests.insert(request.id);
+            if(request.spectator) {
+                if(!pNetworkManager->lateJoinPaused() && !direct->joinDecisionPending()
+                   && !acceptJoinRequest(request.id,request.name,{-1,-1,""},true)) direct->manageJoin("abort",request.id);
+                continue;
+            }
             if(!seenJoinRequests.count(request.id)) addToNewsTicker(request.name+" wants to join. Open Options > Join requests.");
         }
         seenJoinRequests=std::move(currentRequests);
@@ -6431,6 +6454,19 @@ void Game::toggleMovementPaths() {
     WebRuntime::syncPersistentFiles();
 }
 
+bool Game::isSpectating() const { return pNetworkManager && pNetworkManager->isSpectating(); }
+
+void Game::setupSpectatorView() {
+    // Observation has no simulation player, controller slot or ownership. The UI's
+    // legacy non-null HumanPlayer pointer uses a detached, unregistered view object.
+    pLocalHouse=nullptr;
+    for(const auto& h : house) if(h && !h->getPlayerList().empty()) { pLocalHouse=h.get(); break; }
+    if(!pLocalHouse) THROW(std::runtime_error,"There is no house to observe.");
+    spectatorViewPlayer=std::make_unique<HumanPlayer>(pLocalHouse,getLocalPlayerName());
+    pLocalPlayer=spectatorViewPlayer.get();
+}
+
+
 std::vector<Game::JoinSlot> Game::availableJoinSlots() const {
     std::vector<JoinSlot> result;
     const bool coop=isCoopGameType(gameType);
@@ -6452,10 +6488,10 @@ std::vector<Game::JoinSlot> Game::availableJoinSlots() const {
     return result;
 }
 
-bool Game::acceptJoinRequest(const std::string& request, const std::string& name, const JoinSlot& slot) {
+bool Game::acceptJoinRequest(const std::string& request, const std::string& name, const JoinSlot& slot, bool spectator) {
     if(!pNetworkManager || !pNetworkManager->isServer() || pNetworkManager->lateJoinPaused()) return false;
     const auto choices=availableJoinSlots();
-    if(std::none_of(choices.begin(),choices.end(),[&](const auto& s){return s.house==slot.house && s.controller==slot.controller;})) return false;
+    if(!spectator && std::none_of(choices.begin(),choices.end(),[&](const auto& s){return s.house==slot.house && s.controller==slot.controller;})) return false;
     try {
         OMemoryStream stream; stream.open(); saveGame(stream);
         auto snapshot=gameInitSettings.networkSnapshot(std::string(stream.getData(),stream.getDataLength()));
@@ -6466,13 +6502,13 @@ bool Game::acceptJoinRequest(const std::string& request, const std::string& name
             info.colorOfHouse=getHouseVisualHouse(h);
             int index=0;
             for(const auto& p : target->getPlayerList()) {
-                info.addPlayerInfo(GameInitSettings::PlayerInfo(h==slot.house && index==slot.controller ? name : p->getPlayername(),
-                    h==slot.house && index==slot.controller ? HUMANPLAYERCLASS : p->getPlayerclass()));
+                info.addPlayerInfo(GameInitSettings::PlayerInfo(!spectator && h==slot.house && index==slot.controller ? name : p->getPlayername(),
+                    !spectator && h==slot.house && index==slot.controller ? HUMANPLAYERCLASS : p->getPlayerclass()));
                 ++index;
             }
-            if(h==slot.house && slot.controller==index) info.addPlayerInfo(GameInitSettings::PlayerInfo(name,HUMANPLAYERCLASS));
+            if(!spectator && h==slot.house && slot.controller==index) info.addPlayerInfo(GameInitSettings::PlayerInfo(name,HUMANPLAYERCLASS));
             snapshot.addHouseInfo(info);
         }
-        return pNetworkManager->beginLateJoin(request,name,snapshot);
+        return pNetworkManager->beginLateJoin(request,name,snapshot,spectator);
     } catch(const std::exception& e) { addToNewsTicker(std::string("Could not prepare the join: ")+e.what()); return false; }
 }

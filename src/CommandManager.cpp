@@ -38,6 +38,7 @@ CommandManager::CommandManager() {
 CommandManager::~CommandManager() = default;
 
 void CommandManager::addCommand(const Command& cmd) {
+    if(pNetworkManager && pNetworkManager->isSpectating()) return;
     Uint32 CycleNumber = currentGame->getGameCycleCount();
 
     if(pNetworkManager != nullptr) {
@@ -117,7 +118,7 @@ void CommandManager::load(InputStream& stream) {
 }
 
 void CommandManager::update() {
-    if(pNetworkManager == nullptr) {
+    if(pNetworkManager == nullptr || pNetworkManager->isSpectating()) {
         return;
     }
 

@@ -19,12 +19,26 @@ bool NetworkManager::sendJoinSync(Uint32 operation, Uint32 offset, const std::st
     return sendPacketOverRelay(packet,0,bIsServer ? recipient : relayHostPeerId());
 }
 
-bool NetworkManager::beginLateJoin(const std::string& request, const std::string& name, const GameInitSettings& snapshot) {
+bool NetworkManager::beginLateJoin(const std::string& request, const std::string& name, const GameInitSettings& snapshot, bool spectator) {
     auto* direct=getDirectTransport();
     if(!direct || !bIsServer || !bGameInProgress || lateJoinPaused() || !direct->allowsLateJoin()) return false;
     std::string error;
     if(!GameInitSettingsPolicy::isAcceptableReceivedGameInitSettings(snapshot,error)) { joinStatus=error; return false; }
-    OMemoryStream stream; stream.open(); snapshot.save(stream);
+    joinAsSpectator=spectator;
+    joinSpectators=spectators;
+    // Retired observers must not accumulate across repeated visits.
+    for(auto it=joinSpectators.begin();it!=joinSpectators.end();) {
+        const bool present=*it==playerName || std::any_of(direct->peers().begin(),direct->peers().end(),[&](const auto& p){return p.name==*it;});
+        if(!present) it=joinSpectators.erase(it); else ++it;
+    }
+    if(spectator) joinSpectators.insert(name);
+    for(const auto& house : snapshot.getHouseInfoList()) for(const auto& p : house.playerInfoList) {
+        if(joinSpectators.count(p.playerName)) { joinStatus="That name already belongs to a game controller."; return false; }
+    }
+    OMemoryStream stream; stream.open();
+    stream.writeUint32(static_cast<Uint32>(joinSpectators.size()));
+    for(const auto& observer : joinSpectators) stream.writeString(observer);
+    snapshot.save(stream);
     if(stream.getDataLength()>maxSnapshot) { joinStatus="This game is too large to synchronize."; return false; }
     joinBytes.assign(stream.getData(),stream.getDataLength());
     joinSnapshot=std::make_unique<GameInitSettings>(snapshot);
@@ -68,7 +82,17 @@ void NetworkManager::receiveJoinSync(Uint32 peer, Uint32 operation, Uint32 trans
     if(joinBytes.size()==joinTotal) {
         try {
             IMemoryStream stream(joinBytes.data(),static_cast<int>(joinBytes.size()));
+            const auto count=stream.readUint32();
+            if(count>RoomRelay::Limits::kMaxPeersPerRoom) throw std::runtime_error("Too many spectators.");
+            std::set<std::string> observers;
+            for(Uint32 i=0;i<count;++i) {
+                const auto name=stream.readString();
+                if(!RoomRelay::isAcceptableDisplayName(name) || !observers.insert(name).second) throw std::runtime_error("Invalid spectator.");
+            }
             auto next=std::make_unique<GameInitSettings>(stream);
+            for(const auto& house : next->getHouseInfoList()) for(const auto& p : house.playerInfoList)
+                if(observers.count(p.playerName)) throw std::runtime_error("Spectator also controls a house.");
+            joinSpectators=std::move(observers);
             std::string error;
             if(stream.getRemainingLength()!=0 || !GameInitSettingsPolicy::isAcceptableReceivedGameInitSettings(*next,error)
                || (next->getGameType()!=GameType::LoadMultiplayer && next->getGameType()!=GameType::LoadCoop))
@@ -86,7 +110,7 @@ void NetworkManager::updateLateJoin() {
     if(!bIsServer) return;
     if(joinStage==JoinStage::Preparing) {
         for(auto id : joinOriginalPeers) if(joinAcks[id]!=prepareAck) return;
-        if(!direct->openJoinWindow(joinName) || !direct->manageJoin("approve",joinRequestId)) {
+        if(!direct->openJoinWindow(joinName) || !direct->manageJoin(joinAsSpectator ? "approve_spectator" : "approve",joinRequestId)) {
             abortLateJoin("The join request could not be approved."); return;
         }
         bGameInProgress=false; joinStage=JoinStage::Admission; return;
@@ -136,6 +160,8 @@ void NetworkManager::abortLateJoin(const std::string& reason) {
 std::unique_ptr<GameInitSettings> NetworkManager::takeLateJoin() {
     if(!lateJoinReady()) return {};
     auto next=std::move(joinSnapshot);
+    spectators=joinSpectators;
+    if(auto* direct=getDirectTransport()) direct->setSpectators(spectators);
     resumeSeed=joinTransaction; joinLoading=true; joinExpected=false;
     joinStage=JoinStage::Idle; joinBytes.clear(); joinName.clear();
     if(auto* direct=getDirectTransport()) direct->completeJoinWindow();

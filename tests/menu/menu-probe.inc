@@ -10,6 +10,7 @@
 #include <Menu/DisplayMenu.h>
 #include <GUI/dune/GameOptionsWindow.h>
 #include <GUI/MsgBox.h>
+#include <GUI/dune/JoinModeWindow.h>
 #include <Menu/PlaySetup.h>
 #include <mod/ModManager.h>
 #include <misc/FileSystem.h>
@@ -316,6 +317,19 @@ int runMenuProbe() {
         menuRequire(menu.publicGames.size()==1 && menu.publicGames[0].mode=="custom","Custom filter includes campaign games");
         menu.modeFilter.setSelectedItem(0); menu.refreshDirectory();
         menuCapture(menu,"join");
+        menu.directory.cancel(); menu.directoryPending=false;
+        // Use the installed current mod; these are local, deterministic UI checks.
+        menu.publicGames[1].modName="vanilla";
+        menu.publicGameList.setSelectedItem(1);
+        menu.joinPublicGame();
+        menu.processChildWindowOpenCloses();
+        auto* choice=dynamic_cast<JoinModeWindow*>(menu.pChildWindow);
+        menuRequire(choice && menu.stage==CrossplayMenu::Stage::ChoosingJoinMode,"Running join skips play/spectate prompt");
+        menuRequire(choice->getSize().x<=getRendererWidth(),"Spectate prompt exceeds screen");
+        menuCapture(menu,"join-mode");
+        choice->finish(JoinModeWindow::Choice::Cancel); menu.processChildWindowOpenCloses();
+        menuRequire(menu.stage==CrossplayMenu::Stage::Choosing && menu.joinTicket.empty(),"Cancelling choice requests admission");
+
         for(bool hotJoin : {false,true}) {
             menu.stage=CrossplayMenu::Stage::Requesting;
             menu.joiningRunning=hotJoin;

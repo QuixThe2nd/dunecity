@@ -16,7 +16,7 @@ parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('--build-dir', type=Path, default=root / 'build')
 parser.add_argument('--output-dir', type=Path)
 parser.add_argument('--browser',action='store_true',help='Use the browser game as Newcomer; connect using browser.json, then create browser-observed after inspection.')
-parser.add_argument('--mode', choices=['replace','share_ai','share_human','abort'],default='replace')
+parser.add_argument('--mode', choices=['replace','share_ai','share_human','abort','spectate','reject_spectate'],default='replace')
 args = parser.parse_args()
 build = args.build_dir.resolve()
 out = args.output_dir.resolve() if args.output_dir else Path(tempfile.mkdtemp(prefix='dunecity-late-join-probe-'))
@@ -111,8 +111,12 @@ try:
             values=[(out/(role+'-digest')).read_text() for role in compared]
             if len(set(values))!=1: raise RuntimeError('State mismatch: '+str(values))
             if args.browser and not (out/'browser-observed').exists(): time.sleep(.2); continue
+            if args.mode in ('spectate','reject_spectate') and not args.browser:
+                after=[out/(role+'-after-leave') for role in ('Host','Partner')]
+                if not all(p.exists() for p in after): time.sleep(.2); continue
+                if len({p.read_text() for p in after})!=1: raise RuntimeError('State diverged after spectator left')
             (out/'done').write_text('yes'); break
-        if any(p.poll() is not None and not (args.mode=='abort' and i==2 and (out/'Newcomer-cancelled').exists()) for i,p in enumerate(processes)): raise RuntimeError('Probe process ended early; inspect logs in '+str(out))
+        if any(p.poll() is not None and not (i==2 and ((args.mode=='abort' and (out/'Newcomer-cancelled').exists()) or (args.mode in ('spectate','reject_spectate') and (out/'Newcomer-left').exists()))) for i,p in enumerate(processes)): raise RuntimeError('Probe process ended early; inspect logs in '+str(out))
         time.sleep(.2)
     else: raise RuntimeError('Join probe timed out')
     for p in processes:

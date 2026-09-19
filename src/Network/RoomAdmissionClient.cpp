@@ -62,6 +62,7 @@ std::string buildFormBody(const AdmissionRequest& request) {
         body += "&room=" + RoomAdmission::encodeFormValue(request.roomCode);
         body += "&name=" + RoomAdmission::hexText(request.displayName);
         body += request.publicOnly ? "&publicOnly=1" : "&publicOnly=0";
+        body += request.spectate ? "&spectate=1" : "&spectate=0";
     } else if(request.operation == AdmissionOperation::JoinStatus) {
         body += "&request=" + RoomAdmission::encodeFormValue(request.requestTicket);
         body += request.cancelJoinRequest ? "&cancel=1" : "&cancel=0";

@@ -194,6 +194,7 @@ public:
     bool openJoinWindow(const std::string& name);
     void abortJoinWindow();
     void completeJoinWindow() { joinName_.clear(); }
+    void setSpectators(const std::set<std::string>& names) { spectators_=names; }
 
     std::size_t queuedEventCount() const { return events_.size(); }
 
@@ -342,6 +343,7 @@ private:
     bool startCallbackAccepted_ = false;
     bool leaveQueued_ = false;
     std::vector<std::uint32_t> frozenRoster_;
+    std::set<std::string> spectators_;
     /// The phase the host still owes the service, and when it stopped being worth retrying.
     bool           phaseUpdatePending_ = false;
     RoomRelay::Phase pendingPhase_   = RoomRelay::Phase::Lobby;

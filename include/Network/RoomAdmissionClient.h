@@ -513,7 +513,7 @@ struct AdmissionRequest {
     bool        listing = false;
     bool        allMods = false;
     bool        presence = false;
-    bool details = false, allowLateJoin = false, cancelJoinRequest = false;
+    bool details = false, allowLateJoin = false, cancelJoinRequest = false, spectate = false;
     std::string mapName, requestTicket;
     std::string modName;
     unsigned    listOffset = 0;

@@ -1148,6 +1148,10 @@ void NetworkManager::updateRelaySession() {
             } break;
 
             case RoomSessionTransport::Event::Type::PeerLeft: {
+                if(isSpectator(event.name)) {
+                    if(lateJoinPaused()) abortLateJoin("A spectator left during synchronization. Please try joining again.");
+                    spectators.erase(event.name); break;
+                }
                 if(event.name==joinName && event.role!=RoomRelay::Role::Host) {
                     if(lateJoinPaused()) abortLateJoin("The new player disconnected.");
                     break;
@@ -1259,6 +1263,8 @@ void NetworkManager::handleRelayGamePayload(std::uint32_t peerId,
 
     try {
         const Uint32 packetType = packetStream.readUint32();
+        if(isSpectator(peerName) && (packetType==NETWORKPACKET_COMMANDLIST || packetType==NETWORKPACKET_SELECTIONLIST
+            || packetType==NETWORKPACKET_CLIENTSTATS || packetType==NETWORKPACKET_SETPATHBUDGET)) return;
         if(lateJoinPaused() && (packetType==NETWORKPACKET_COMMANDLIST || packetType==NETWORKPACKET_SELECTIONLIST
             || packetType==NETWORKPACKET_CLIENTSTATS || packetType==NETWORKPACKET_SETPATHBUDGET)) return;
 
@@ -2212,6 +2218,7 @@ bool NetworkManager::sendStartGame(unsigned int timeLeft) {
 }
 
 void NetworkManager::sendCommandList(const CommandList& commandList) {
+    if(isSpectating()) return;
     ENetPacketOStream packetStream(ENET_PACKET_FLAG_UNSEQUENCED);
     packetStream.writeUint32(NETWORKPACKET_COMMANDLIST);
     packetStream.writeUint32(simulationSeed);
@@ -2221,6 +2228,7 @@ void NetworkManager::sendCommandList(const CommandList& commandList) {
 }
 
 void NetworkManager::sendSelectedList(const std::set<Uint32>& selectedList, int groupListIndex) {
+    if(isSpectating()) return;
     ENetPacketOStream packetStream(ENET_PACKET_FLAG_RELIABLE);
     packetStream.writeUint32(NETWORKPACKET_SELECTIONLIST);
     packetStream.writeUint32(simulationSeed);
@@ -2266,6 +2274,7 @@ void NetworkManager::debugNetwork(const char* fmt, ...) {
 }
 
 void NetworkManager::sendClientStats(float avgFps, float simMsAvg, Uint32 queueDepth, Uint32 currentBudget, Uint32 gameCycle) {
+    if(isSpectating()) return;
     // Client → Host: Send performance stats (including simulation timing for post-vsync throttling)
     if(bIsServer) {
         SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "NetworkManager: Host trying to send client stats (should only be called by clients)");

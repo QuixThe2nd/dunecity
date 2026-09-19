@@ -222,7 +222,7 @@ public:
         transfers, stop being accepted from this point on.
         \param  seed    the shared simulation seed
     */
-    bool beginLateJoin(const std::string& requestId, const std::string& name, const GameInitSettings& snapshot);
+    bool beginLateJoin(const std::string& requestId, const std::string& name, const GameInitSettings& snapshot, bool spectator = false);
     bool canCancelLateJoin() const { return bIsServer && lateJoinPaused() && joinStage!=JoinStage::Starting && joinStage!=JoinStage::Ready; }
     void cancelLateJoin() { if(canCancelLateJoin()) abortLateJoin("The host cancelled the join request."); }
     bool lateJoinPaused() const { return joinStage != JoinStage::Idle; }
@@ -231,6 +231,8 @@ public:
     const std::string& lateJoinStatus() const { return joinStatus; }
     std::unique_ptr<GameInitSettings> takeLateJoin();
     void expectLateJoin() { joinExpected=true; }
+    bool isSpectator(const std::string& name) const { return spectators.count(name)!=0; }
+    bool isSpectating() const { return isSpectator(playerName); }
     void beginSimulation(Uint32 seed);
     void sendCommandList(const CommandList& commandList);
 
@@ -448,7 +450,8 @@ private:
     enum class JoinStage { Idle, Preparing, Admission, Connecting, Sending, Receiving, Starting, Ready };
     JoinStage joinStage = JoinStage::Idle;
     Uint32 joinTotal = 0, joinTransaction = 0, joinDeadline = 0, joinOffset = 0, joinNextOffset = 0, resumeSeed = 0;
-    bool joinExpected = false, joinLoading = false;
+    bool joinExpected = false, joinLoading = false, joinAsSpectator = false;
+    std::set<std::string> spectators, joinSpectators;
     std::string joinRequestId, joinName, joinBytes, joinStatus;
     std::vector<Uint32> joinOriginalPeers;
     std::map<Uint32,Uint32> joinAcks;

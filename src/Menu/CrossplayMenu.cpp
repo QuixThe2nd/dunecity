@@ -16,6 +16,7 @@
  */
 
 #include <Menu/CrossplayMenu.h>
+#include <GUI/dune/JoinModeWindow.h>
 #include <mod/ModManager.h>
 #include <Menu/PlaySetup.h>
 #include <Menu/SinglePlayerMenu.h>
@@ -306,7 +307,7 @@ void CrossplayMenu::refreshControls() {
             + (game.running ? std::to_string(game.elapsedSeconds/60)+_(" minutes played") : _("Waiting to start"))
             + " | " + std::to_string(game.players)+_(" players"));
     } else selectedGameDetails.setText(_("Select a game to see its details."));
-    joinPublicButton.setText(selected>=0 && static_cast<size_t>(selected)<publicGames.size() && publicGames[selected].running ? _("Request to join") : _("Join Game"));
+    joinPublicButton.setText(_("Join Game"));
     joinPublicButton.setEnabled(idle && selected >= 0
         && static_cast<std::size_t>(selected) < publicGames.size());
 
@@ -389,7 +390,21 @@ void CrossplayMenu::joinPublicGame() {
             setStatus(_("This game's mod files differ from your installed copy.")); return;
         }
     }
-    beginAdmission(false, true);
+    joiningAsSpectator=false;
+    if(game.running) {
+        stage=Stage::ChoosingJoinMode;
+        refreshControls();
+        openWindow(JoinModeWindow::create());
+    } else beginAdmission(false,true);
+}
+
+void CrossplayMenu::onChildWindowClose(Window* window) {
+    if(auto* choice=dynamic_cast<JoinModeWindow*>(window)) {
+        stage=Stage::Choosing;
+        joiningAsSpectator=choice->choice==JoinModeWindow::Choice::Spectate;
+        if(choice->choice!=JoinModeWindow::Choice::Cancel) beginAdmission(false,true);
+        else refreshControls();
+    }
 }
 
 AdmissionRequest CrossplayMenu::lobbyRequest() const {
@@ -603,7 +618,7 @@ void CrossplayMenu::beginAdmission(bool hosting, bool publicJoin) {
     }
 
     joiningRunning = !hosting && publicJoin && publicGames[publicGameList.getSelectedIndex()].running;
-    if(joiningRunning) { request.operation=AdmissionOperation::JoinRequest; request.displayName=settings.general.playerName; }
+    if(joiningRunning) { request.operation=AdmissionOperation::JoinRequest; request.displayName=settings.general.playerName; request.spectate=joiningAsSpectator; }
     pendingHosting = hosting;
     directory.cancel();
     directoryPending = false;
@@ -783,7 +798,7 @@ void CrossplayMenu::update() {
                 if(joiningRunning) {
                     joinTicket=admission.response().requestTicket;
                     admission.cancel(); stage=Stage::WaitingForApproval; nextJoinPoll=0; joinPollPending=false; joinRequestDeadline=SDL_GetTicks()+180000;
-                    setStatus(_("Join requested. Waiting for the host to choose your slot..."));
+                    setStatus(joiningAsSpectator ? _("Connecting as a spectator...") : _("Waiting for a player slot. If rejected, you will spectate."));
                     refreshControls(); break;
                 }
                 grantedRoom = admission.response();

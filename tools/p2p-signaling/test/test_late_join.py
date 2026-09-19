@@ -6,8 +6,8 @@ from test_signaling import SignalingTestCase, claims, APP_VERSION
 
 class LateJoinTests(SignalingTestCase):
     def running(self, **fields):
-        a=self.service.request('POST','/v1/admission/host',claims(visibility='public',maxPeers=4,mode='custom',allowLateJoin=1,map='Test map'.encode().hex(),**fields))
-        h=self.session(a.fields['grant'],'Host')
+        a=self.service.request('POST','/v1/admission/host',claims(**dict(dict(visibility='public',maxPeers=4,mode='custom',allowLateJoin=1,map='Test map'.encode().hex()),**fields)))
+        h=self.session(a.fields['grant'],'Host',**{k:v for k,v in fields.items() if k in ('gameProtocol','appVersion','contentHash')})
         self.assertEqual(200,self.phase(h.fields['session'],'match').status)
         return a,h
     def request(self,a,name='Guest',**fields):
@@ -56,7 +56,8 @@ class LateJoinTests(SignalingTestCase):
         self.assertEqual('cancelled',self.status(r.fields['request'],cancel=1).fields['requestState'])
         r=self.request(a,'Another'); request=self.manage(h).multi['request'][0].split('|')[0]
         self.manage(h,'decline',request)
-        self.assertEqual('declined',self.status(r.fields['request']).fields['requestState'])
+        self.assertEqual('pending',self.status(r.fields['request']).fields['requestState'])
+        self.assertTrue(self.manage(h).multi['request'][0].endswith('|spectator'))
     def test_waiting_polls_do_not_spend_the_small_admission_allowance(self):
         a,h=self.running(); r=self.request(a)
         for _ in range(30): self.assertEqual(200,self.status(r.fields["request"]).status)
@@ -74,5 +75,45 @@ class LateJoinTests(SignalingTestCase):
         self.assertEqual(200,guest.status); self.assertEqual(200,self.manage(h,'abort',request).status)
         self.assertEqual(200,self.service.request('POST','/v1/p2p/poll',dict(cursor=0),headers={'X-Dune-Session':h.fields['session']}).status)
         self.assertNotEqual(200,self.service.request('POST','/v1/p2p/poll',dict(cursor=0),headers={'X-Dune-Session':guest.fields['session']}).status)
+
+    def test_spectator_request_is_role_bound_and_uses_no_controller_assignment(self):
+        a,h=self.running(); r=self.request(a,spectate=1)
+        queue=self.manage(h).multi['request'][0]
+        self.assertTrue(queue.endswith('|spectator'))
+        request=queue.split('|')[0]
+        self.assertEqual(200,self.manage(h,'approve_spectator',request).status)
+        approved=self.status(r.fields['request'])
+        self.assertEqual('approved',approved.fields['requestState'])
+        self.assertEqual(200,self.session(approved.fields['grant'],'Guest').status)
+        self.assertNotIn('request',self.manage(h).multi)
+        self.assertEqual(200,self.phase(h.fields['session'],'match').status)
+
+    def test_rejected_player_can_be_synchronized_as_a_spectator(self):
+        a,h=self.running(); r=self.request(a)
+        request=self.manage(h).multi['request'][0].split('|')[0]
+        self.manage(h,'decline',request)
+        self.assertTrue(self.manage(h).multi['request'][0].endswith('|spectator'))
+        self.assertEqual(200,self.manage(h,'approve_spectator',request).status)
+        self.assertEqual(200,self.session(self.status(r.fields['request']).fields['grant'],'Guest').status)
+
+    def test_full_two_controller_game_remains_visible_for_spectators(self):
+        a,h=self.running(mode='coop',maxPeers=2)
+        for name in ('First','Second'):
+            r=self.request(a,name,spectate=1)
+            self.assertEqual(200,r.status)
+            request=self.manage(h).multi['request'][0].split('|')[0]
+            self.assertEqual(200,self.manage(h,'approve_spectator',request).status)
+            self.assertEqual(200,self.session(self.status(r.fields['request']).fields['grant'],name).status)
+            self.phase(h.fields['session'],'match')
+        page=self.service.request('POST','/v1/admission/list',claims(offset=0,allMods=1,details=1))
+        self.assertIn('game',page.multi)
+
+    def test_old_protocol_hosts_keep_original_queue_and_decline(self):
+        a,h=self.running(gameProtocol=6)
+        r=self.request(a,gameProtocol=6)
+        queue=self.manage(h).multi['request'][0]
+        self.assertEqual(2,len(queue.split('|')))
+        self.manage(h,'decline',queue.split('|')[0])
+        self.assertEqual('declined',self.status(r.fields['request'],gameProtocol=6).fields['requestState'])
 
 if __name__=='__main__': unittest.main()

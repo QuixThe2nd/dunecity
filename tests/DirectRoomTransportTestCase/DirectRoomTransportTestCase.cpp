@@ -1181,3 +1181,19 @@ TEST_CASE("A guest accepts exactly one committed start after matching preparatio
     while(h.transport->pollEvent(e)) REQUIRE(e.type!=RoomSessionTransport::Event::Type::GamePayload);
     REQUIRE_FALSE(h.transport->acceptStartCallback());
 }
+
+TEST_CASE("Spectators can leave a frozen match without closing player connections", "[direct][spectator]") {
+    Harness harness;
+    harness.join();
+    harness.deliverPoll("status=ok\nphase=lobby\n" + peerRecord(2,"client","Observer","browser")
+        + fingerprintRecord(2,kFingerprintA) + "cursor=0\n");
+    harness.channels[0]->current=DirectPeerConnection::State::Connected;
+    harness.pump(1,100);
+    harness.transport->setSpectators({"Observer"});
+    REQUIRE(harness.transport->setRoomPhase(RoomRelay::Phase::Match));
+    harness.drain();
+    harness.channels[0]->current=DirectPeerConnection::State::Failed;
+    harness.pump(1,100);
+    REQUIRE(harness.transport->isJoined());
+    REQUIRE(harness.transport->peers().empty());
+}

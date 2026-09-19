@@ -4,7 +4,7 @@
 #include <sstream>
 #include <set>
 namespace LateJoinPolicy {
-struct Request { std::string id, name; };
+struct Request { std::string id, name; bool spectator = false; };
 inline bool parseQueue(const std::string& body,std::vector<Request>& result) {
     if(body.empty() || body.size()>4096) return false;
     bool status=false, protocol=false;
@@ -20,7 +20,11 @@ inline bool parseQueue(const std::string& body,std::vector<Request>& result) {
             const auto split=line.find('|',8);
             if(split!=72 || parsed.size()>=8) return false;
             Request item{line.substr(8,64),{}};
-            if(!RoomRelay::isLowercaseHex(item.id) || !RoomAdmission::decodeHexText(line.substr(73),64,item.name)
+            const auto roleAt=line.find('|',73);
+            const auto role=roleAt==std::string::npos ? "player" : line.substr(roleAt+1);
+            if(role!="player" && role!="spectator") return false;
+            item.spectator=role=="spectator";
+            if(!RoomRelay::isLowercaseHex(item.id) || !RoomAdmission::decodeHexText(line.substr(73,roleAt==std::string::npos ? roleAt : roleAt-73),64,item.name)
                || !RoomRelay::isAcceptableDisplayName(item.name) || !ids.insert(item.id).second || !names.insert(item.name).second) return false;
             parsed.push_back(std::move(item));
         } else return false;

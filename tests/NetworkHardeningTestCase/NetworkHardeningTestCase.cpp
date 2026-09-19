@@ -1707,6 +1707,12 @@ TEST_CASE("Late join request queues are bounded and require a complete unique en
     REQUIRE(LateJoinPolicy::parseQueue("status=ok\nprotocol=1\n"+entry,result));
     REQUIRE(result.size()==1);
     REQUIRE(result[0].name=="New player");
+    REQUIRE_FALSE(result[0].spectator);
+    const auto prefix="status=ok\nprotocol=1\nrequest="+std::string(64,'b')+"|"+RoomAdmission::hexText("Observer");
+    REQUIRE(LateJoinPolicy::parseQueue(prefix+"|spectator\n",result));
+    REQUIRE(result[0].spectator);
+    REQUIRE_FALSE(LateJoinPolicy::parseQueue(prefix+"|admin\n",result));
+    REQUIRE_FALSE(LateJoinPolicy::parseQueue(prefix+"|spectator|player\n",result));
     REQUIRE_FALSE(LateJoinPolicy::parseQueue("status=ok\n"+entry,result));
     REQUIRE_FALSE(LateJoinPolicy::parseQueue("status=ok\nprotocol=1\n"+entry+entry,result));
     REQUIRE_FALSE(LateJoinPolicy::parseQueue("status=ok\nprotocol=1\nstatus=ok\n",result));

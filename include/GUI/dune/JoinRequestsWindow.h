@@ -25,6 +25,7 @@ private:
         title.setText("Join requests"); title.setTextFontSize(22); box.addWidget(&title,36);
         help.setText("Choose a player and the house they will control."); box.addWidget(&help,36);
         if(pNetworkManager && pNetworkManager->getDirectTransport()) pending=pNetworkManager->getDirectTransport()->joinRequests();
+        pending.erase(std::remove_if(pending.begin(),pending.end(),[](const auto& r){return r.spectator;}),pending.end());
         choices=currentGame->availableJoinSlots();
         for(const auto& p : pending) requests.addEntry(p.name);
         for(const auto& s : choices) slots.addEntry(s.label);
@@ -38,7 +39,7 @@ private:
             if(currentGame->acceptJoinRequest(pending[p].id,pending[p].name,choices[s])) currentGame->resumeGame();
             else help.setText(pNetworkManager->lateJoinStatus());
         });
-        decline.setText("Decline request"); decline.setEnabled(!pending.empty());
+        decline.setText("Reject join - allow spectating"); decline.setEnabled(!pending.empty());
         decline.setOnClick([this]() {
             const int p=requests.getSelectedIndex(); if(p<0) return;
             pNetworkManager->getDirectTransport()->manageJoin("decline",pending[p].id);

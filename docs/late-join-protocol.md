@@ -78,3 +78,36 @@ PHP/WebRTC. Modes cover AI replacement, human sharing, AI sharing and abort;
 matching simulation digests are required after resumption. `--browser` provides
 a local service/static origin for an actual browser newcomer. Nothing in the
 probe changes production objects or uses the user's settings/saves.
+
+## Spectators (1.0.728, protocol 7)
+
+Selecting Join Game for a running public entry opens Request to play / Spectate /
+Cancel. A spectator request is automatically synchronized by the host; the host
+does not select or give up a controller slot. Reject join converts a pending
+player request to a spectator request, which follows the same automatic path.
+Both paths retain exact application-version/content compatibility and the
+host's Allow hot join opt-in. The connection cap is eight people, including
+spectators; a started co-op game's two controller slots do not prevent watching.
+
+The host's existing checkpoint transaction carries a bounded spectator-name set
+before the unchanged GameInitSettings serialization. It is authenticated by the
+host-only snapshot packet and is committed with the new simulation epoch. Names
+cannot simultaneously occur in the controller roster. The game save format is
+unchanged. Older protocol rooms keep their original request queue and decline
+behavior when served by the updated metaserver.
+
+Spectators have no registered Player and never enter a house's controller list.
+A detached HumanPlayer exists only to satisfy legacy local UI pointers. Local
+commands, selections and performance-budget reports are suppressed; receivers
+also reject those packets from spectator identities. Rendering reveals the map
+without modifying exploration, fog, visibility or AI targeting rules. Spectators
+can move the camera, chat and leave. A spectator connection loss removes that
+observer without ending the players' match; loss during synchronization cancels
+the pending transfer so the original match can resume. Active-player loss keeps
+the existing fail-closed behavior. Joining still pauses for checkpoint transfer;
+spectating is not a separate video stream or an unlimited-capacity broadcast.
+
+The real-peer probe modes `spectate` and `reject_spectate` verify identical state,
+unchanged human/AI controllers, blocked local commands, and matching continued
+state after the spectator disconnects. Service tests cover role conversion,
+name-bound grants, two-controller co-op observation and old-protocol behavior.

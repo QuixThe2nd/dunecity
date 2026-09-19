@@ -219,7 +219,9 @@ public:
     std::set<std::string> seenJoinRequests;
     std::string lastJoinStatus;
     std::vector<JoinSlot> availableJoinSlots() const;
-    bool acceptJoinRequest(const std::string& request, const std::string& name, const JoinSlot& slot);
+    bool acceptJoinRequest(const std::string& request, const std::string& name, const JoinSlot& slot, bool spectator = false);
+    bool isSpectating() const;
+    void setupSpectatorView();
 
     /**
         This method starts the game. Will return when the game is finished or aborted.
@@ -445,7 +447,8 @@ public:
         \param  player
     */
     void unregisterPlayer(Player* player) {
-        playerID2Player.erase(player->getPlayerID());
+        auto id=playerID2Player.find(player->getPlayerID());
+        if(id!=playerID2Player.end() && id->second==player) playerID2Player.erase(id);
 
         for(auto iter = playerName2Player.begin(); iter != playerName2Player.end(); ++iter) {
                 if(iter->second == player) {
@@ -903,6 +906,8 @@ private:
     bool    bQuitGame = false;                  ///< Should the game be quited after this game quit
     bool    bPause = false;                     ///< Is the game currently halted
     bool    bMenu = false;                      ///< Is there currently a menu shown (options or mentat menu)
+    std::unique_ptr<HumanPlayer> spectatorViewPlayer; // UI identity only; never registered or saved.
+    sdl2::texture_ptr spectatorLabel;
     bool    bReplay = false;                    ///< Is this game actually a replay
 
     bool    bShowFPS = false;                   ///< Show the FPS

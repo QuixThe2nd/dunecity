@@ -1354,7 +1354,7 @@ void DirectRoomTransport::dropLink(std::uint32_t peerId, const std::string& reas
                    : reason);
         return;
     }
-    if((matchStarted_ || !joinName_.empty()) && isFrozenMember(peerId)) {
+    if((matchStarted_ || !joinName_.empty()) && isFrozenMember(peerId) && !spectators_.count(name)) {
         finish(RoomRelay::Close::Normal,
                name.empty() ? "A player left, so the match cannot continue."
                             : name + " left, so the match cannot continue.");
@@ -1364,6 +1364,7 @@ void DirectRoomTransport::dropLink(std::uint32_t peerId, const std::string& reas
         finish(RoomRelay::Close::HostLeft, reason);
         return;
     }
+    frozenRoster_.erase(std::remove(frozenRoster_.begin(),frozenRoster_.end(),peerId),frozenRoster_.end());
     readinessDirty_ = true;
     for(auto& link : links_) {
         link->reportedReadiness = false;
@@ -1533,7 +1534,7 @@ void DirectRoomTransport::abortJoinWindow() {
 }
 
 bool DirectRoomTransport::manageJoin(const std::string& action, const std::string& request) {
-    if(!isHost() || !isJoined() || (action!="approve" && action!="decline" && action!="abort")
+    if(!isHost() || !isJoined() || (action!="approve" && action!="approve_spectator" && action!="decline" && action!="abort")
        || request.size()!=64 || !RoomRelay::isLowercaseHex(request)) return false;
     if(!joinAction_.empty() && joinAction_!="list" && action!="abort") return false;
     if(!joinHttp_) joinHttp_=dependencies_.httpFactory();
@@ -1554,8 +1555,8 @@ void DirectRoomTransport::pumpJoinRequests(std::uint32_t nowMs) {
     if(joinHttp_->poll(result)) {
         std::vector<JoinRequest> requests;
         const bool valid=result.httpStatus==200 && LateJoinPolicy::parseQueue(result.body,requests);
-        if(joinAction_=="list") { if(valid) joinRequests_=std::move(requests); }
-        else joinDecisionOK_=valid;
+        if(valid) joinRequests_=std::move(requests);
+        if(joinAction_!="list") joinDecisionOK_=valid;
         joinAction_.clear(); nextJoinPoll_=nowMs+3000;
     }
     if(joinAction_.empty() && matchStarted_ && SDL_TICKS_PASSED(nowMs,nextJoinPoll_)) {

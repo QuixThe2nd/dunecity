@@ -56,10 +56,12 @@ public:
     ~CrossplayMenu() override;
 
     void update() override;
+    void onChildWindowClose(Window* window) override;
 
 private:
     enum class Stage {
         Choosing,       ///< nothing in flight
+        ChoosingJoinMode,
         WaitingForApproval,
         Requesting,     ///< waiting for the game service to answer
         Connecting,     ///< opening the game connection
@@ -102,7 +104,7 @@ private:
 
     std::unique_ptr<GameInitSettings> preparedGame;
     ChangeEventList preparedPlayers;
-    bool allowLateJoin = true, joiningRunning = false;
+    bool allowLateJoin = true, joiningRunning = false, joiningAsSpectator = false;
     std::string joinTicket;
     bool joinPollPending = false;
     Uint32 nextJoinPoll = 0, joinRequestDeadline = 0;
