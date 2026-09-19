@@ -1,3 +1,22 @@
+## 2026-09-19 — Live Request to Play needs the matching service update
+
+Stefan's Air successfully spectates but clicking Request to Play closes its menu
+without a request appearing on the Chrome host. The live service still has 729's
+action allowlist. A read-only play_status probe using the host's own session
+returned HTTP 400, bad_request, "The 'action' field is missing or not valid."
+The host's normal queue polling returns HTTP 200 with an empty queue. No host
+approval occurred; do not claim the player was promoted or ask him to keep retrying.
+
+The website checkout /Users/stefan/Documents/projects/dunelegacy.com now has local
+branch fix/spectator-play-requests-730 with the candidate service packaged from
+game commit 2697bf1f. Only p2p-service/{SOURCE.json,public/index.php,src/LateJoin.php}
+change. All 190 real-HTTP service tests, the atomic installer/config-preservation
+test and website security/artifact checks pass. Publication is awaiting explicit
+user authorization; no push, PR or live service change has occurred. Once deployed,
+verify play_status is recognized, then have Stefan request play and approve him
+through the still-running host's UI. The live host is the Chrome tab 1889836980;
+verify its current state before acting. No client rebuild is needed for this step.
+
 ## 2026-09-19 — Slow spectator checkpoint transfer (unreleased 730)
 
 The Air's native 730 joined the mini's Chrome 730 Twin Cities host but disconnected
