@@ -1,3 +1,35 @@
+## 2026-09-19 — Updater edition 731 signed and notarized on the mini
+
+Stefan completed the mini credential shortcut. DuneCityNotarization in the
+dedicated DuneCity-Signing keychain now authenticates successfully; no further
+Mac credential setup is pending. Native dependency audits, version check and
+incremental build pass; a fresh cmake install produced the portable bundle.
+
+The first real packaging run exposed two script-only validation bugs, now fixed:
+file(1) descriptions of bundled data can contain non-UTF-8 bytes, and otool emits
+an absolute filename header for each slice of a universal binary. Detection now
+checks the Mach-O marker as bytes and inspects only indented dependency lines.
+The full signing/notarization run then succeeded without manual intervention.
+
+Apple accepted the app submission 5ecdeea2-e3f3-41f5-a84e-11eb4cc30916 and the
+DMG submission 1efa22f4-29fc-46a5-ad7f-5ab7d6c2bb7e. Both are stapled and pass
+Gatekeeper as Notarized Developer ID. Extracting the final ZIP independently
+passes strict deep signature verification, ticket validation and Gatekeeper.
+The final DMG also passes scripts/verify-macos-dmg.sh. Output and submission
+evidence live in this task's work/notarization-731 directory:
+
+- DuneCity-1.0.731-macOS.dmg SHA256:
+  9f56cf3bc7f8dde3d9bcb49fcbbd13206437ca50af167e81e06f108ee09fb002
+- DuneCity-1.0.731-macOS.zip SHA256:
+  e2ffa0d08d8b1868c36f2939c210bcab57f5b0f351916c88d04beefcc0047727
+
+The local update-feeds subfolder contains the signed Mac manifest and appcast.
+Both Ed25519 signatures and the final archive size/hash were independently
+verified using only the committed public key. Their future release URL has not
+been published. No push, release, application replacement or Air transfer took
+place. Real old-to-new updater/relaunch tests on each OS remain outstanding;
+successful package notarization does not establish those runtime results.
+
 ## 2026-09-19 — Cross-platform desktop updater (unreleased 731)
 
 Implemented main-menu update checks, Install/Later confirmation, signed Ed25519

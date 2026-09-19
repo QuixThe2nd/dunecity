@@ -53,10 +53,14 @@ def main():
         binaries = []
         for p in app.rglob("*"):
             if p.is_file() and not p.is_symlink():
-                kind = subprocess.check_output(["file", "-b", str(p)], text=True)
-                if "Mach-O" in kind:
-                    linked = subprocess.check_output(["otool", "-L", str(p)], text=True).splitlines()[1:]
-                    if any(line.strip().startswith(("/Users/", "/opt/homebrew/", "/usr/local/")) for line in linked):
+                # Some bundled data produces non-UTF-8 descriptions from file(1).
+                # Only the ASCII Mach-O marker is relevant to signing.
+                kind = subprocess.check_output(["file", "-b", str(p)])
+                if b"Mach-O" in kind:
+                    linked = subprocess.check_output(["otool", "-L", str(p)], text=True).splitlines()
+                    # Universal binaries have a separate unindented filename
+                    # header for every architecture; those are not dependencies.
+                    if any(line.startswith("\t") and line.strip().startswith(("/Users/", "/opt/homebrew/", "/usr/local/")) for line in linked):
                         raise ValueError("App contains non-portable libraries: " + str(p))
                     binaries.append(p)
         sign = ["codesign", "--force", "--sign", args.identity, "--keychain", args.signing_keychain,
