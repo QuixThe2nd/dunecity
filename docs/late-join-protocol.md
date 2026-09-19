@@ -139,7 +139,10 @@ These messages use the shared GamePayloadRouter and authenticated packets 21/22:
 | 15 | Host | Attributed forwarded chat |
 
 Every message carries the simulation epoch. Snapshot chunks and tick payloads are
-at most 48 KiB. Host catch-up history is bounded to 1,500 ticks and 4 MiB, with at
+at most 48 KiB. Snapshot delivery permits four unacknowledged chunks (192 KiB),
+with cumulative ACKs accepted only at sent chunk boundaries or the exact end.
+This avoids a full round trip per chunk without changing the receiver wire format.
+Host catch-up history is bounded to 1,500 ticks and 4 MiB, with at
 most 16 unconsumed ticks in flight per observer. Fair rotating delivery admits at
 most eight messages and 64 KiB per update across all observers. Transfer/ACK
 timeouts affect only the viewer; an idle, caught-up viewer does not time out merely

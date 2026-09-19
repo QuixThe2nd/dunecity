@@ -1,3 +1,29 @@
+## 2026-09-19 — Slow spectator checkpoint transfer (unreleased 730)
+
+The Air's native 730 joined the mini's Chrome 730 Twin Cities host but disconnected
+while loading. A bounded temporary browser trace captured 4,816,896 acknowledged
+bytes of a 6,144,474-byte snapshot before the host closed the stream. Individual
+chunk acknowledgements often took 200–300 ms; stop-and-wait delivery exhausted
+the 1,500-cycle catch-up history before loading finished. No manual pause is needed.
+
+Snapshot sends now allow four 48 KiB chunks in flight. Cumulative acknowledgements
+must advance within sent data and land at a chunk boundary or the exact end.
+The global 64 KiB/update allowance, 8 MiB snapshot cap, bounded history and timeouts
+are unchanged. The wire format remains compatible with the Air's existing 730.
+Host logs record snapshot start/load and expired-transfer byte/cycle frontiers.
+
+The real WebRTC probe accepts JOIN_SNAPSHOT_POLL_MS and JOIN_VERIFY_CYCLE. With
+300 ms receiver polling and a 3,000-cycle target, the old ObserverStream object
+reproduced a disconnect after about 40 seconds; the fixed peers matched at cycle
+3,000 (seed 4d1cbac9, 225 objects, digest 858fbdebd8b01bf3/f1e24626c740fa65), then
+the spectator left without stopping the host. Unit coverage rejects duplicate,
+backward, unsent, unaligned and pre-header ACKs. Seven CTest suites, native build,
+before/after dependency audits and the pinned browser build pass.
+
+Evidence: session work/twin-slow-old-3000, twin-slow-fixed, snapshot-window-*.
+The old 1,800-cycle probe target could stop the host just before history eviction;
+the longer target is necessary for this regression. No release or push occurred.
+
 ## 2026-09-19 — Twin Cities live spectator checkpoint fixes (unreleased 730)
 
 Stefan hosted Twin Cities in downloaded 729 as ggtothemax. Both the downloaded

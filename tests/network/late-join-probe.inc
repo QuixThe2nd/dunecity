@@ -28,6 +28,7 @@ int runLateJoinProbe() {
     const bool promotion=mode=="promote";
     const bool observer=mode=="spectate" || mode=="reject_spectate" || promotion;
     Uint32 verifyCycle=observer ? 1800 : 150;
+    if(std::getenv("JOIN_VERIFY_CYCLE")) verifyCycle=std::stoul(std::getenv("JOIN_VERIFY_CYCLE"));
     const bool browserPromotion=promotion && std::getenv("JOIN_BROWSER");
     bool promotionCommitted=false;
     settings.general.playerName=role;
@@ -102,7 +103,11 @@ int runLateJoinProbe() {
         bool sent=false;
         wait([&](){ network.update(); if(host && !sent && network.getConnectedPeers().size()==(solo ? 0u : 1u) && network.isMeshReady()) {sent=network.sendStartGame(0); if(!sent) throw std::runtime_error("start refused");} return start; });
     } else {
-        wait([&](){ network.update(); return network.lateJoinReady() || cancelled; });
+        // Model a distant/slow receiver while the host keeps its normal simulation
+        // cadence. Several queued snapshot chunks can arrive in each read window.
+        const Uint32 snapshotPollMs=std::getenv("JOIN_SNAPSHOT_POLL_MS")
+            ? std::stoul(std::getenv("JOIN_SNAPSHOT_POLL_MS")) : 0;
+        wait([&](){ if(snapshotPollMs) SDL_Delay(snapshotPollMs); network.update(); return network.lateJoinReady() || cancelled; });
         if(cancelled && mode=="abort") { joinWrite(out+"/Newcomer-cancelled","yes"); network.setOnPeerDisconnected({}); pNetworkManager.reset(); return MENU_QUIT_DEFAULT; }
         if(observer) {
             joinWrite(out+"/observer-delaying",std::to_string(network.observerFrontier()));
