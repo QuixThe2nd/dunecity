@@ -1,3 +1,56 @@
+## 2026-09-19 — Unreleased 1.0.730 checkpoint; move interactive testing to Mac mini
+
+Stefan asks for browser/native testing on the Mac mini so agents do not control
+his laptop browser. Stop laptop UI interaction. SSH alias `claw` is reachable as
+`/Users/stefan`; Codex CLI 0.153.4 is installed. No Codex/ChatGPT desktop app was
+found in /Applications on the mini. An SSH project alone does not relocate this
+session's local computer-use tools. Prepare a separate checkout and explicit
+handover before resuming there; do not overwrite another agent's checkout.
+
+Current changes are NOT released. Candidate 730/protocol 9 adds spectator-first
+public running-game admission, an in-game request/cancel-to-play button, automatic
+host request popup, decline preserving observation, and promotion using the
+existing controller checkpoint barrier. An authenticated service roster change
+and host prepare packet are both required before a viewer becomes a controller.
+Promotion must discover original controllers, not just its previously known host.
+Native dependency audits and all seven CTest suites pass. The real three-peer
+promotion probe passes decline, retry, host popup and matching cycle-1800 state;
+190 real-HTTP service tests and 18 browser transport tests pass. Browser 730 has
+not been built or inspected yet; protocol documentation and final review remain.
+Evidence under ../outputs: spectator-730-promote3.log, spectator-730-tests2.log,
+spectator-730-service-all.log and spectator-730-web-transport.log.
+
+The user's actual installed 729/native and published 729/Brave spectator failure
+is UNRESOLVED, in both directions. Local Homebrew native host + Brave worked on
+the same Ergsun-Odenkirk map, but that does not verify the downloaded static-vcpkg
+app. A real public Brave room was created at Stefan's request: gg, Dune City,
+4P - 128x128 - Ergsun-Odenkirk, shared hard AI plus three hard AI opponents. The
+installed native ggtothemax was admitted, then reported direct connection lost
+before loading the map. Native evidence: ../outputs/spectator-730-installed-browser-host-failure.log.
+The host's Brave console later stopped accepting input for both Stefan and CUA;
+no host-side root cause was captured. Do not blame a firewall without evidence.
+The new rare failure diagnostics are not yet in published 729. The browser room
+was left running; do not claim its continuing health without checking.
+
+Continue's apparent freeze was a different observed state: the installed app
+rendered ~60 fps but paused at cycle 329556 after advancing 18 cycles from load,
+with no menu open. Pause origin remains unverified. Exact saved telemetry:
+~/Library/Application Support/Dune City/ai-decisions/1789796530698464-0/events.jsonl.
+Captured stack/log: ../outputs/spectator-730-installed-freeze.{txt,log}.
+No save files changed; no fix claimed. Current laptop app was restarted at the
+menu earlier and subsequently used by Stefan for the failed spectator attempt.
+
+Gatekeeper remains an unsigned-distribution issue: installed 729 is ad-hoc signed,
+no Apple signing identities were available on laptop or mini, and Stefan confirmed
+he has no Apple Developer account yet. No notarization/signing pipeline changes
+have been made. Do not remove quarantine or disable Gatekeeper. CUA selecting the
+mounted DMG previously launched the wrong copy and caused a warning; never use
+that path to attach the installed app.
+
+Owned isolated remote test directories still need cleanup after testing:
+/var/www/html/play-test-730-city and /var/www/data/dunecity-test-730-city.
+They currently serve protocol-8 staging; production has not been changed here.
+
 ## 2026-09-19 — Combined 1.0.729 published and verified
 
 PR 57 merged as 8416d26c; stable tag v1.0.729 points to that commit. All builds

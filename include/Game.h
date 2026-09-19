@@ -217,6 +217,7 @@ public:
     void saveGame(OutputStream& stream);
     struct JoinSlot { int house, controller; std::string label; };
     std::set<std::string> seenJoinRequests;
+    std::string lastPlayRequestState;
     std::string lastJoinStatus;
     std::vector<JoinSlot> availableJoinSlots() const;
     bool acceptJoinRequest(const std::string& request, const std::string& name, const JoinSlot& slot, bool spectator = false);

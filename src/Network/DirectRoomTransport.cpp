@@ -215,6 +215,7 @@ void DirectRoomTransport::update() {
     pumpSignaling(nowMs);
     pumpConnections(nowMs);
     pumpJoinRequests(nowMs);
+    pumpPlayRequest(nowMs);
     if(status_ == Status::Joined && startStage_ != StartStage::Idle && startStage_ != StartStage::Committed
        && SDL_TICKS_PASSED(nowMs, startDeadline_)) {
         finish(RoomRelay::Close::Timeout, "The players could not confirm the start. Please host a new game.");
@@ -463,6 +464,14 @@ void DirectRoomTransport::handlePollResult(const BoundedHttpClient::Result& resu
     }
 
     const std::uint32_t nowMs = now();
+    // Promotion needs both a host-authenticated prepare packet and the service's
+    // authenticated roster update. Neither alone grants a spectator control.
+    if(localSpectator_ && promotionPrepared_) {
+        for(const auto& member : response.members) if(member.id==localPeerId_ && !member.spectator
+            && member.name==config_.displayName && member.role==localRole_) {
+            localSpectator_=false; readinessDirty_=true;
+        }
+    }
     for(const P2PSignal::RoomMember& member : response.members) {
         // Applying one record can end the session - the host being renamed, for instance - and
         // nothing after that belongs to a session that no longer exists.
@@ -490,7 +499,10 @@ void DirectRoomTransport::handlePollResult(const BoundedHttpClient::Result& resu
                 }
                 continue;
             }
-            if(!member.spectator && !joinName_.empty() && member.name!=joinName_ && !isFrozenMember(member.id)) continue;
+            // The promoted viewer previously knew only the host. Like a fresh
+            // newcomer it must discover all controllers before joining their mesh.
+            if(!member.spectator && !joinName_.empty() && joinName_!=config_.displayName
+               && member.name!=joinName_ && !isFrozenMember(member.id)) continue;
             Peer peer;
             peer.id      = member.id;
             peer.role    = member.role;
@@ -504,6 +516,10 @@ void DirectRoomTransport::handlePollResult(const BoundedHttpClient::Result& resu
                 if(!member.spectator) existingLink->reportedReadiness = false;
             }
             openLink(member.id, nowMs);
+        } else if(existing->spectator && !member.spectator && !joinName_.empty() && member.name==joinName_
+                  && existing->name==member.name && existing->role==member.role && existing->runtime==member.runtime) {
+            existing->spectator=false; spectators_.erase(member.name); readinessDirty_=true;
+            for(auto& connection : links_) connection->reportedReadiness=false;
         } else if(existing->role != member.role || existing->name != member.name
                   || existing->runtime != member.runtime || existing->spectator != member.spectator) {
             // A player's id, role and name are fixed for the life of the room. Letting the
@@ -804,11 +820,21 @@ void DirectRoomTransport::pumpConnections(std::uint32_t nowMs) {
             const Peer* peer = findPeer(peerId);
             const std::string name = peer != nullptr && !peer->name.empty()
                                          ? peer->name : std::string("another player");
-            // There is no fallback to fall back to, on purpose, so the player is told plainly.
+            // A failed handshake does not establish that the network blocked it.
+            // Keep this rare failure visible even when performance diagnostics are off;
+            // log only locally generated state and categories, never SDP or credentials.
+            const auto& detail=link->connection->lastError();
+            const char* category=detail.empty() ? "no_backend_reason" : "backend_error";
+            for(const auto* known : {"ICE", "ice", "fingerprint", "queue", "backlog", "channel", "WebRTC"})
+                if(detail.find(known)!=std::string::npos) { category=known; break; }
+            SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
+                "Direct connection failed: state=%d connected=%d timeout=%d elapsed_ms=%u local_spectator=%d remote_spectator=%d cause=%s",
+                static_cast<int>(state), link->connected, deadlineMissed,
+                static_cast<unsigned>(nowMs-link->startedMs), localSpectator_, peer && peer->spectator, category);
             const std::string reason = link->connected
                 ? "The direct connection to " + name + " was lost."
                 : "Could not open a direct connection to " + name
-                      + ". Your network blocked the peer-to-peer link.";
+                      + ". The connection failed before the game could load.";
             dropLink(peerId, reason);
             continue;       // dropLink erased this entry
         }
@@ -1578,4 +1604,45 @@ void DirectRoomTransport::pumpJoinRequests(std::uint32_t nowMs) {
 bool DirectRoomTransport::peerConnected(std::uint32_t id) const {
     for(const auto& link : links_) if(link->peerId==id) return link->connected;
     return false;
+}
+
+
+bool DirectRoomTransport::requestToPlay(bool cancel) {
+    if(!isJoined() || !localSpectator_ || promotionPrepared_ || config_.gameProtocolVersion<9
+       || !playAction_.empty()) return false;
+    if(!playHttp_) playHttp_=dependencies_.httpFactory();
+    if(!playHttp_) return false;
+    playAction_=cancel ? "cancel_play" : "request_play";
+    auto request=signalingRequest(); request.url=endpoint("/v1/p2p/join-requests");
+    request.sessionToken=sessionToken_; request.body="action="+playAction_; request.maxResponseBytes=256;
+    playHttp_->begin(request);
+    if(!cancel) playRequestState_="pending"; // Host approval can beat the HTTP response.
+    return true;
+}
+
+bool DirectRoomTransport::prepareSpectatorPromotion() {
+    if(!localSpectator_ || promotionPrepared_ || (playRequestState_!="pending" && playRequestState_!="approved")) return false;
+    if(!openJoinWindow(config_.displayName)) return false;
+    promotionPrepared_=true;
+    return true;
+}
+
+void DirectRoomTransport::pumpPlayRequest(std::uint32_t nowMs) {
+    if(!playHttp_ || !isJoined()) return;
+    playHttp_->update();
+    BoundedHttpClient::Result result;
+    if(playHttp_->poll(result)) {
+        bool valid=false;
+        for(const auto* state : {"none","pending","approved","declined","cancelled"}) {
+            const auto expected=std::string("status=ok\nprotocol=")+std::to_string(RoomRelay::kProtocolVersion)+"\nplayRequest="+state+"\n";
+            if(result.httpStatus==200 && result.body==expected) { playRequestState_=state; valid=true; break; }
+        }
+        if(!valid && playAction_!="play_status") playRequestState_="error";
+        playAction_.clear(); nextPlayPoll_=nowMs+3000;
+    }
+    if(localSpectator_ && playRequestState_=="pending" && playAction_.empty() && SDL_TICKS_PASSED(nowMs,nextPlayPoll_)) {
+        auto request=signalingRequest(); request.url=endpoint("/v1/p2p/join-requests");
+        request.sessionToken=sessionToken_; request.body="action=play_status"; request.maxResponseBytes=256;
+        playAction_="play_status"; playHttp_->begin(request);
+    }
 }

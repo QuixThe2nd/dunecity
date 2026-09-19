@@ -190,6 +190,9 @@ public:
     bool manageJoin(const std::string& action, const std::string& request);
     bool joinDecisionPending() const { return !joinAction_.empty(); }
     bool joinDecisionSucceeded() const { return joinDecisionOK_; }
+    bool requestToPlay(bool cancel = false);
+    const std::string& playRequestState() const { return playRequestState_; }
+    bool prepareSpectatorPromotion();
     bool allowsLateJoin() const { return config_.allowLateJoin; }
     // Only the authenticated host's synchronization packet may call this on a client.
     bool openJoinWindow(const std::string& name);
@@ -301,6 +304,11 @@ private:
     BoundedHttpClient::Request signalingRequest() const;
 
     void pumpJoinRequests(std::uint32_t nowMs);
+    void pumpPlayRequest(std::uint32_t nowMs);
+    std::unique_ptr<BoundedHttpClient> playHttp_;
+    std::string playRequestState_ = "none", playAction_;
+    std::uint32_t nextPlayPoll_ = 0;
+    bool promotionPrepared_ = false;
     std::unique_ptr<BoundedHttpClient> joinHttp_;
     std::vector<JoinRequest> joinRequests_;
     std::string joinAction_, joinRequestId_, joinName_;

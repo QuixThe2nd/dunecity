@@ -10,7 +10,6 @@
 #include <Menu/DisplayMenu.h>
 #include <GUI/dune/GameOptionsWindow.h>
 #include <GUI/MsgBox.h>
-#include <GUI/dune/JoinModeWindow.h>
 #include <Menu/PlaySetup.h>
 #include <mod/ModManager.h>
 #include <misc/FileSystem.h>
@@ -321,14 +320,16 @@ int runMenuProbe() {
         // Use the installed current mod; these are local, deterministic UI checks.
         menu.publicGames[1].modName="vanilla";
         menu.publicGameList.setSelectedItem(1);
+        settings.network.directDevelopmentEndpoint="http://127.0.0.1:1";
         menu.joinPublicGame();
         menu.processChildWindowOpenCloses();
-        auto* choice=dynamic_cast<JoinModeWindow*>(menu.pChildWindow);
-        menuRequire(choice && menu.stage==CrossplayMenu::Stage::ChoosingJoinMode,"Running join skips play/spectate prompt");
-        menuRequire(choice->getSize().x<=getRendererWidth(),"Spectate prompt exceeds screen");
-        menuCapture(menu,"join-mode");
-        choice->finish(JoinModeWindow::Choice::Cancel); menu.processChildWindowOpenCloses();
-        menuRequire(menu.stage==CrossplayMenu::Stage::Choosing && menu.joinTicket.empty(),"Cancelling choice requests admission");
+        menuRequire(menu.pChildWindow==nullptr && menu.stage==CrossplayMenu::Stage::Requesting,
+            "Running join should request admission without a mode prompt");
+        menuRequire(menu.joiningRunning && menu.joiningAsSpectator,
+            "Running join must enter as a passive spectator");
+        menu.admission.cancel();
+        menu.stage=CrossplayMenu::Stage::Choosing;
+        settings.network.directDevelopmentEndpoint="";
 
         menu.joiningRunning=true;
         menu.onReceiveGameInfo(init,ChangeEventList());

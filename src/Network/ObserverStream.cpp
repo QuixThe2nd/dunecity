@@ -24,7 +24,7 @@ std::vector<Uint32> NetworkManager::observersNeedingSnapshot() const {
     const auto* direct=getDirectTransport();
     if(!direct || !bIsServer || !bGameInProgress || lateJoinPaused()) return result;
     for(const auto& peer : direct->peers())
-        if(peer.spectator && direct->peerConnected(peer.id) && !observerTransfers.count(peer.id)) result.push_back(peer.id);
+        if(peer.spectator && peer.name!=joinName && direct->peerConnected(peer.id) && !observerTransfers.count(peer.id)) result.push_back(peer.id);
     return result;
 }
 

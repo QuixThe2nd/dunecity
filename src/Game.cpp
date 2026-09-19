@@ -18,6 +18,7 @@
 #include <Game.h>
 #include <misc/OMemoryStream.h>
 #include <GUI/dune/JoinProgressWindow.h>
+#include <GUI/dune/JoinRequestsWindow.h>
 #include <GUI/dune/FeedbackWindow.h>
 #include <misc/CampaignControls.h>
 #include <main.h>
@@ -6163,9 +6164,26 @@ bool Game::handleNetworkUpdates() {
                    && !direct->manageJoin("approve_spectator",request.id)) direct->manageJoin("abort",request.id);
                 continue;
             }
-            if(!seenJoinRequests.count(request.id)) addToNewsTicker(request.name+" wants to join. Open Options > Join requests.");
+            if(!seenJoinRequests.count(request.id) && !pInGameMenu && !pInGameMentat
+               && !pNetworkManager->lateJoinPaused()) {
+                pInGameMenu=std::make_unique<JoinRequestsWindow>();
+                bMenu=true; // Online simulation continues while the host chooses a slot.
+                for(const auto& pending : direct->joinRequests()) if(!pending.spectator) seenJoinRequests.insert(pending.id);
+            }
         }
-        seenJoinRequests=std::move(currentRequests);
+        for(auto it=seenJoinRequests.begin();it!=seenJoinRequests.end();) {
+            if(!currentRequests.count(*it)) it=seenJoinRequests.erase(it); else ++it;
+        }
+    }
+    if(auto* direct=pNetworkManager->getDirectTransport(); direct && isSpectating()) {
+        const auto& state=direct->playRequestState();
+        if(state!=lastPlayRequestState) {
+            lastPlayRequestState=state;
+            if(state=="pending") addToNewsTicker("Request sent. You can keep spectating while the host chooses.");
+            else if(state=="declined") addToNewsTicker("The host declined your request. You can keep spectating.");
+            else if(state=="cancelled") addToNewsTicker("Request to play cancelled. You are still spectating.");
+            else if(state=="error") addToNewsTicker("Could not send the request to play. Please try again.");
+        }
     }
     if(!pNetworkManager->lateJoinStatus().empty() && lastJoinStatus!=pNetworkManager->lateJoinStatus()) {
         lastJoinStatus=pNetworkManager->lateJoinStatus(); addToNewsTicker(lastJoinStatus);
