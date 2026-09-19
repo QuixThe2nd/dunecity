@@ -131,7 +131,7 @@ MainMenu::MainMenu()
     continueButton.setOnClick([this]() { continueRecentGame(); canContinue = hasRecentGame(); });
     customButton.setText(_("Custom Game"));
     customButton.setOnClick([this]() { playCustomGame(); canContinue = hasRecentGame(); });
-    onlineButton.setText(_("Join Online"));
+    onlineButton.setText(_("Play Online"));
     onlineButton.setOnClick([]() { CrossplayMenu().showMenu(); });
     loadButton.setText(_("Load Game"));
     loadButton.setOnClick([this]() { showGameLibrary(); canContinue = hasRecentGame(); });
@@ -184,7 +184,7 @@ MainMenu::MainMenu()
 
     }
     // Only visible destinations participate in keyboard navigation, in screen order.
-    TextButton* allButtons[] = {&continueButton, &campaignButton, &customButton, &onlineButton,
+    TextButton* allButtons[] = {&continueButton, &onlineButton, &campaignButton, &customButton,
                                 &loadButton, &optionsButton, &modesButton, &quitButton};
     for(TextButton* button : allButtons) {
         button->setKeyboardFocusVisible(false);
@@ -209,7 +209,7 @@ MainMenu::MainMenu()
         windowWidget.addWidget(&modVersionLabel, Point(12, getSize().y - 58), Point(220, 50));
     }
     if(canContinue) continueButton.setActive();
-    else campaignButton.setActive();
+    else onlineButton.setActive();
 }
 
 void MainMenu::handleInput(SDL_Event& event)
@@ -217,7 +217,7 @@ void MainMenu::handleInput(SDL_Event& event)
     if(!pChildWindow && (event.type == SDL_KEYDOWN || event.type == SDL_MOUSEMOTION
                        || event.type == SDL_MOUSEBUTTONDOWN)) {
         const bool keyboard = event.type == SDL_KEYDOWN;
-        for(auto* button : {&continueButton, &campaignButton, &customButton, &onlineButton,
+        for(auto* button : {&continueButton, &onlineButton, &campaignButton, &customButton,
                             &loadButton, &optionsButton, &modesButton, &quitButton}) {
             button->setKeyboardFocusVisible(keyboard);
             if(keyboard) button->handleMouseMovement(-1,-1,false);
@@ -402,7 +402,7 @@ void MainMenu::refreshContextButtons()
     continueButton.setEnabled(canContinue);
     std::vector<TextButton*> buttons;
     if(canContinue) buttons.push_back(&continueButton);
-    for(auto* button : {&campaignButton,&customButton,&onlineButton,&loadButton,&optionsButton,&modesButton,&quitButton}) buttons.push_back(button);
+    for(auto* button : {&onlineButton,&campaignButton,&customButton,&loadButton,&optionsButton,&modesButton,&quitButton}) buttons.push_back(button);
     const int width = enlargedStartMenus ? 320 : 280;
     const int x = (getSize().x-width)/2;
     const int top = std::max(158, (getSize().y-310)/2);

@@ -86,7 +86,7 @@ CrossplayMenu::CrossplayMenu() : MenuBase() {
     setBackground(pGFXManager->getUIGraphic(UI_MenuBackground));
     resize(getTextureSize(pGFXManager->getUIGraphic(UI_MenuBackground)));
     setWindowWidget(&windowWidget);
-    captionLabel.setText(_("Join Online"));
+    captionLabel.setText(_("Play Online"));
     captionLabel.setTextFontSize(22);
     captionLabel.setAlignment(Alignment_HCenter);
     playerNameLabel.setText(_("Player name"));

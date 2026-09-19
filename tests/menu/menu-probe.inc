@@ -100,8 +100,11 @@ int runMenuProbe() {
         menuRequire(!menu.displayButton.isVisible(),"Duplicate Display entry remains");
         menuRequire(!menu.campaignButton.keyboardFocusVisible,"Home shows unsolicited keyboard focus");
         menuCapture(menu,"home");
+        menu.canContinue=true; menu.refreshContextButtons();
+        menuCapture(menu,"home-continue");
+        menu.canContinue=false; menu.refreshContextButtons();
         SDL_Event tab{}; tab.type=SDL_KEYDOWN; tab.key.keysym.sym=SDLK_TAB;
-        for(auto* expected : {&menu.customButton,&menu.onlineButton,&menu.loadButton,&menu.optionsButton,&menu.modesButton,&menu.quitButton,&menu.campaignButton}) {
+        for(auto* expected : {&menu.campaignButton,&menu.customButton,&menu.loadButton,&menu.optionsButton,&menu.modesButton,&menu.quitButton,&menu.onlineButton}) {
             menu.handleInput(tab);
             menuRequire(menu.windowWidget.pActiveChildWidget==expected,"Home Tab order reaches a hidden destination or disagrees with screen order");
             menuRequire(expected->keyboardFocusVisible,"Keyboard navigation lost its visible focus");

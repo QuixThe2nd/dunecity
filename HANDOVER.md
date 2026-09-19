@@ -1,3 +1,14 @@
+## 2026-09-19 — Play Online immediately below Continue, unified 1.0.724
+
+Renamed Join Online to Play Online on home and the lobby heading. Home order is
+Continue (when available), Play Online, Campaign, Custom Game, Load Game,
+Settings, Extras, Quit. Keyboard navigation follows the same order; without a
+save, Play Online is the first active destination. Both native and browser 724
+builds include all 723/earlier work. All seven CTest suites, dependency and version
+checks pass. Real menu renders cover Continue present/absent at all three probe
+sizes; ../outputs/interface-724/home-continue.png verifies the requested order.
+Build/test logs are ../outputs/interface-724-{native-build,browser-build,ctest}.log.
+
 ## 2026-09-19 — Public default and integrated lobby chat, unified 1.0.723
 
 Stefan repeated the intended online interface: Public - anyone by default, public

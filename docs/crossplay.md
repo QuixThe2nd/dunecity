@@ -129,10 +129,10 @@ The value goes through exactly the same validation.
 
 ## 6. Playing
 
-Desktop and browser: choose **Join Online** from the home screen. Desktop also
+Desktop and browser: choose **Play Online** from the home screen. Desktop also
 provides **LAN / direct connection** for legacy connections.
 
-1. Set **Player Name** in Settings. Join Online displays that name and connects
+1. Set **Player Name** in Settings. Play Online displays that name and connects
    public chat automatically in the right-hand pane beside the game list. There
    is no separate chat screen or name-confirmation button. Input becomes available
    once the service accepts the session. Invalid names are corrected in Settings.
@@ -141,7 +141,7 @@ provides **LAN / direct connection** for legacy connections.
    **Join Game**; public play needs no invitation code. An explicit private choice
    remains private through setup and admission.
 3. Choose **Private - invite code** for invitation-only play. Friends enter the
-   code in Join Online and choose **Join code**. Saved online games also default
+   code in Play Online and choose **Join code**. Saved online games also default
    to public when reopened for hosting.
 4. The host picks a map or campaign mission. Game-room chat remains separate from
    public lobby chat. Start Game and campaign continuation follow the normal flow.
