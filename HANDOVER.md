@@ -26,9 +26,20 @@ and existing match data. Private games are excluded from the named table; tokens
 codes and addresses are omitted. Server analytics_enabled controls capture,
 independent of client diagnostics. Game events deduplicate retries. No historical
 backfill or outage retry journal; storage errors do not block accepted actions.
-The new service and website receiver are prepared locally, NOT yet deployed.
-Publishing needs the explicit push request required by AGENTS.md. Normal website
-deployment packages the private service; do not bypass it with an untracked upload.
+Stefan explicitly authorized pushing/deploying the metaserver update in this
+session. Website changes rebased over newer published 707/download-stat updates
+and shipped as 834db03 + 3472e53. Deploy to Droplet run 35410689143 succeeded:
+https://github.com/VR48/dunelegacy.com/actions/runs/35410689143
+Live service hashes verify all thirteen files against game commit 8a3978f; five
+website receiver/entrypoint files match local, analytics_enabled is true, health
+is OK, and analytics_public_activity is initialized with database quick_check OK.
+No fabricated public chat/game records were inserted (table empty at verification).
+Private SQLite backup verified before deployment:
+/var/www/data/backups/public-activity-20260919T004957Z/games.sqlite.
+The hosted browser game remains the independently published 1.0.707; the requested
+combined 1.0.725 browser assets are built locally. This deployment publishes the
+metaserver service, not a new public game release. Restart the local native 725
+app to see waiting counts. Original running match was not restarted.
 
 Validation: native/browser builds and dependency/version checks pass; all seven
 CTest suites pass, including 640/854/1280 real-menu renders, All mods versus a
