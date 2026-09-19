@@ -52,14 +52,17 @@
 class CrossplayMenu : public MenuBase {
 public:
     CrossplayMenu();
-    CrossplayMenu(const GameInitSettings& game, bool publicGame, const ChangeEventList& players = {});
+    CrossplayMenu(const GameInitSettings& game, bool publicGame, const ChangeEventList& players = {}, bool allowLateJoin = true);
     ~CrossplayMenu() override;
 
     void update() override;
+    void onChildWindowClose(Window* window) override;
 
 private:
     enum class Stage {
         Choosing,       ///< nothing in flight
+        ChoosingJoinMode,
+        WaitingForApproval,
         Requesting,     ///< waiting for the game service to answer
         Connecting,     ///< opening the game connection
         HostReady,      ///< in the room as host; may now choose what to play
@@ -78,7 +81,7 @@ private:
 
     void beginAdmission(bool hosting, bool publicJoin = false);
     AdmissionRequest lobbyRequest() const;
-    void confirmChatName();
+    void enterLobbyChat();
     void sendLobbyChat();
     void updateLobbyChat();
     void changeVisibility();
@@ -90,7 +93,7 @@ private:
     void setStatus(const std::string& message);
     void refreshControls();
 
-    bool validateAndSavePlayerName();
+    bool validatePlayerName();
 
     void onReceiveGameInfo(const GameInitSettings& gameInitSettings,
                            const ChangeEventList& changeEventList);
@@ -101,12 +104,16 @@ private:
 
     std::unique_ptr<GameInitSettings> preparedGame;
     ChangeEventList preparedPlayers;
+    bool allowLateJoin = true, joiningRunning = false, joiningAsSpectator = false;
+    std::string joinTicket;
+    bool joinPollPending = false;
+    Uint32 nextJoinPoll = 0, joinRequestDeadline = 0;
     bool autoHostRequested = false;
-    bool showChat = false;
     DropDownBox modeFilter, modFilter;
     std::vector<ModInfo> availableMods;
-    TextButton chatToggle, otherConnections;
+    TextButton otherConnections;
     TextView preparedSummary;
+    TextView selectedGameDetails;
     std::vector<PublicRelayGame> allPublicGames;
     Stage       stage = Stage::Choosing;
     bool        hostingCoop = false;
@@ -123,6 +130,7 @@ private:
     RoomAdmissionClient visibilityUpdate;
     AdmissionOperation chatAction = AdmissionOperation::Room;
     std::string chatSession;
+    std::string chatContentHash;
     std::uint64_t chatCursor = 0;
     Uint32 nextChatPoll = 0;
     bool chatPending = false;
@@ -142,11 +150,13 @@ private:
 
     HBox            playerNameHBox;
     Label           playerNameLabel;
-    TextBox         playerNameTextBox;
-    TextButton      confirmNameButton;
+    Label           playerNameValue;
+    Label           chatTitle;
     TextButton      privateInviteButton;
     Label           chatLabel;
     TextView        chatHistory;
+    Label           waitingLabel;
+    TextView        waitingNames;
     HBox            chatInputHBox;
     TextBox         chatInput;
     TextButton      chatSendButton;

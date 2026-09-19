@@ -61,3 +61,24 @@ TEST_CASE("Residential gaps only outrank equally suitable expansion sites", "[ai
     REQUIRE(preferCitySite(true,0,2,500,true,2,0,0));
     REQUIRE_FALSE(preferCitySite(true,0,2,500,true,2,2,0));
 }
+
+#include "performance/reference-ground-access.inc"
+TEST_CASE("Word-sized access checks match the original graph for every 2x2 occupancy", "[ai][placement]") {
+    for (unsigned mask=0;mask<65536;++mask) {
+        auto passable=[&](int x,int y) {return (mask & (1u<<(y*4+x)))!=0;};
+        for (bool diagonal:{false,true}) for (bool exit:{false,true})
+            REQUIRE(GroundAccessPolicy::allows({1,1,2,2},exit,passable,diagonal)
+                ==ReferenceGroundAccessPolicy::allows({1,1,2,2},exit,passable,diagonal));
+    }
+}
+TEST_CASE("Access checks preserve larger footprints and the vector fallback", "[ai][placement]") {
+    unsigned random=123;
+    for (int w=1;w<=8;++w) for (int h=1;h<=8;++h) for (int round=0;round<40;++round) {
+        std::vector<bool> open((w+2)*(h+2));
+        for (size_t i=0;i<open.size();++i) {random=random*1664525u+1013904223u;open[i]=(random>>29)!=0;}
+        auto passable=[&](int x,int y) {return open[y*(w+2)+x];};
+        for (bool diagonal:{false,true}) for (bool exit:{false,true})
+            REQUIRE(GroundAccessPolicy::allows({1,1,w,h},exit,passable,diagonal)
+                ==ReferenceGroundAccessPolicy::allows({1,1,w,h},exit,passable,diagonal));
+    }
+}

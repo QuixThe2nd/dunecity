@@ -156,6 +156,7 @@ private:
     Label           mapPropertyAuthors;
     Label           mapPropertyLicense;
     Label           mapPropertyMod;
+    Label           mapPropertyCity;
 
     // bottom row of buttons
     HBox            buttonHBox;

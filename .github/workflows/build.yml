@@ -39,7 +39,7 @@ jobs:
       - name: Run the signaling service test suite
         run: |
           php --version
-          python3 tools/p2p-signaling/test/test_signaling.py
+          python3 -m unittest discover -s tools/p2p-signaling/test -p 'test_*.py'
 
   # Gate: on v* tag builds, verify that the source-controlled version metadata
   # (CMakeLists.txt, include/config.h, vcpkg.json) already matches the tag.

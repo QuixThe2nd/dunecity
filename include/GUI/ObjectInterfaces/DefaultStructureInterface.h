@@ -22,6 +22,7 @@
 
 #include <globals.h>
 #include <Command.h>
+#include <misc/MenuPalette.h>
 #include <GUI/TextButton.h>
 
 #include <FileClasses/GFXManager.h>
@@ -57,6 +58,13 @@ protected:
         });
         destroyButton.setVisible(false);
         topBox.addWidget(&destroyButton, Point(28,0), Point(SIDEBARWIDTH-53,22));
+    }
+
+    void draw(Point position) override {
+        if(!isVisible()) return;
+        SDL_Rect panel{position.x, position.y, getSize().x, getSize().y};
+        renderFillRect(renderer, &panel, MenuTheme::background);
+        DefaultObjectInterface::draw(position);
     }
 
     void OnRepair() {

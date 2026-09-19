@@ -19,6 +19,7 @@
 #define INGAMESETTINGSMENU
 
 #include <GUI/Window.h>
+#include <GUI/Label.h>
 #include <GUI/StaticContainer.h>
 #include <GUI/TextButton.h>
 #include <GUI/PictureButton.h>
@@ -67,21 +68,22 @@ private:
     void onScrollSpeedMinus();
 
     StaticContainer windowWidget;
+    Label title, gameSpeedLabel, volumeLabel, scrollSpeedLabel;
 
     TextButton      cancelButton;
     TextButton      okButton;
 
-    PictureButton   gameSpeedPlus;
-    PictureButton   gameSpeedMinus;
-    ProgressBar     gameSpeedBar;
+    TextButton      gameSpeedPlus;
+    TextButton      gameSpeedMinus;
+    TextProgressBar gameSpeedBar;
 
-    PictureButton   volumePlus;
-    PictureButton   volumeMinus;
-    ProgressBar     volumeBar;
+    TextButton      volumePlus;
+    TextButton      volumeMinus;
+    TextProgressBar volumeBar;
 
-    PictureButton   scrollSpeedPlus;
-    PictureButton   scrollSpeedMinus;
-    ProgressBar     scrollSpeedBar;
+    TextButton      scrollSpeedPlus;
+    TextButton      scrollSpeedMinus;
+    TextProgressBar scrollSpeedBar;
 
     Checkbox        playCreditsSFXCheckbox;
 

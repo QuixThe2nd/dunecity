@@ -50,12 +50,14 @@ bool ListBox::handleMouseLeft(Sint32 x, Sint32 y, bool pressed) {
         if(pressed == true) {
             int index = ((y - 1) / GUIStyle::getInstance().getListBoxEntryHeight()) + firstVisibleElement;
             if((index >= 0) && (index < getNumEntries())) {
+                const bool sameItem = selectedElement == index;
                 selectedElement = index;
 
-                if(SDL_GetTicks() - lastClickTime < 200) {
-                    if(pOnDoubleClick) {
-                        pOnDoubleClick();
-                    }
+                // Rapid clicks on different rows are separate selections.
+                // Suppressing their notification leaves dropdown consumers
+                // (including campaign AI setup) on the previous choice.
+                if(sameItem && SDL_GetTicks() - lastClickTime < 200 && pOnDoubleClick) {
+                    pOnDoubleClick();
                 } else {
                     lastClickTime = SDL_GetTicks();
                     updateList();

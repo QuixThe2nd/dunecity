@@ -12,6 +12,10 @@
 #include <sstream>
 
 #include "starport-economy-probe.inc"
+#include "city-placement-probe.inc"
+#include "controls-probe.inc"
+#include "sourceforge-regressions-probe.inc"
+#include "harvester-safety-probe.inc"
 #include "shared-spending-probe.inc"
 #include "opening-economy-probe.inc"
 #include "army-movement-probe.inc"
@@ -92,6 +96,22 @@ int runCampaignBalanceProbe() {
         AITelemetry::log().limit=std::stoull(std::getenv("BALANCE_CAPTURE_MIB"))*1024*1024;
     game->bReplay = false;
     game->initializeGameLoop();
+    if(std::getenv("BALANCE_HARVESTER_SAFETY_PROBE")) {
+        runHarvesterSafetyProbe(*game);game.reset();currentGame=nullptr;pLocalPlayer=nullptr;
+        return MENU_QUIT_DEFAULT;
+    }
+    if(std::getenv("BALANCE_SOURCEFORGE_PROBE")) {
+        runSourceforgeRegressionsProbe(*game);game.reset();currentGame=nullptr;pLocalPlayer=nullptr;
+        return MENU_QUIT_DEFAULT;
+    }
+    if(std::getenv("BALANCE_CONTROLS_PROBE")) {
+        runControlsProbe(*game);game.reset();currentGame=nullptr;pLocalPlayer=nullptr;
+        return MENU_QUIT_DEFAULT;
+    }
+    if (std::getenv("BALANCE_CITY_PLACEMENT_PROBE")) {
+        runCityPlacementProbe(*game);game.reset();currentGame=nullptr;pLocalPlayer=nullptr;
+        return MENU_QUIT_DEFAULT;
+    }
     if (std::getenv("BALANCE_OPENING_ECONOMY_PROBE")) {
         runOpeningEconomyProbe(*game);game.reset();currentGame=nullptr;pLocalPlayer=nullptr;
         return MENU_QUIT_DEFAULT;

@@ -431,16 +431,14 @@ TEST_CASE("Harvesters avoid launcher approach range before actual weapon reach",
     REQUIRE(escapeCorridor(9,0,0,0,danger)); // Allow escape out of the warning margin.
 }
 
-TEST_CASE("Empty harvesters do not repeat refuge trips because their old field is unsafe", "[ai][harvester]") {
+TEST_CASE("Harvester evacuation prefers another field over unnecessary unloading", "[ai][harvester]") {
     using TacticalSafetyPolicy::needsRefineryRefuge;
-    // Escape first; after unloading at a safe site, find a safe job or hold.
-    REQUIRE(needsRefineryRefuge(true,true,false,false));
-    REQUIRE_FALSE(needsRefineryRefuge(false,true,false,false));
-    REQUIRE_FALSE(needsRefineryRefuge(false,true,true,false));
-    // Carrying spice still warrants safe unloading, even before being hit.
-    REQUIRE(needsRefineryRefuge(false,true,false,true));
-    REQUIRE(needsRefineryRefuge(false,false,true,true));
     REQUIRE_FALSE(needsRefineryRefuge(false,false,false,true));
+    REQUIRE_FALSE(needsRefineryRefuge(false,false,true,true));
+    REQUIRE_FALSE(needsRefineryRefuge(true,false,false,false));
+    REQUIRE(needsRefineryRefuge(false,true,true,true));
+    REQUIRE(needsRefineryRefuge(true,false,true,true));
+    REQUIRE(needsRefineryRefuge(false,false,true,false));
 }
 
 TEST_CASE("A spare lane can become foundation while the other lane stays connected", "[city][placement][roads]") {
@@ -493,13 +491,19 @@ TEST_CASE("Service placement penalises clusters and favours underserved crime", 
     REQUIRE(cluster.useful(false));
 }
 
-TEST_CASE("Reactor placement prefers safety and separation without vetoing the only site", "[city][safety]") {
+TEST_CASE("Reactor placement puts weapon distance and rear safety ahead of packing", "[city][safety]") {
     using namespace TacticalSafetyPolicy;
     REQUIRE(reactorPlacementAllowed(Structure_NuclearPlant,false));
     REQUIRE_FALSE(reactorPlacementAllowed(Structure_HeavyFactory,false));
-    REQUIRE(reactorSiteRank(0,0,true,-10000) > reactorSiteRank(0,0,false,10000));
-    REQUIRE(reactorSiteRank(0,0,false,0) > reactorSiteRank(100,0,true,10000));
-    REQUIRE(reactorSiteRank(100,0,false,0) > reactorSiteRank(200,0,false,10000));
+    // Live fire cannot win merely because the sheltered plot has loss history
+    // or cannot clear every neighbouring critical building's blast radius.
+    REQUIRE(reactorSiteRank(0,100,1,false,-80,-10000) > reactorSiteRank(100,0,0,true,800,10000));
+    REQUIRE(reactorSiteRank(100,0,0,false,0,0) > reactorSiteRank(200,0,0,true,800,10000));
+    REQUIRE(reactorSiteRank(0,0,6,false,0,-10000) > reactorSiteRank(0,0,1,true,800,10000));
+    REQUIRE(reactorSiteRank(0,0,12,true,160,-10000) > reactorSiteRank(0,0,12,true,-160,10000));
+    REQUIRE(reactorSiteRank(0,0,12,true,0,-10000) > reactorSiteRank(0,0,12,false,0,10000));
+    REQUIRE(reactorSiteRank(0,0,6,true,0,0) > reactorSiteRank(0,100,12,true,800,10000));
+    REQUIRE(reactorSiteRank(0,0,12,true,0,1) > reactorSiteRank(0,0,12,true,0,0));
 }
 
 TEST_CASE("Rocket coverage includes city districts and whole diagonal footprints", "[city][placement][air]") {
@@ -527,4 +531,39 @@ TEST_CASE("Placement fallback reaches disconnected districts without rescanning 
             + int(inPlacementSearchPass(x,y,63,63,50,1));
         REQUIRE(visits==1);
     }
+}
+
+#include <players/CityDistanceField.h>
+TEST_CASE("Placement distance fields match direct footprint scans", "[ai][placement]") {
+    constexpr int w=9,h=7;
+    struct Rect {int x,y,w,h;};
+    // Vary source count, origins, overlaps and footprints deterministically,
+    // checking every candidate origin and size, including all map edges.
+    for (unsigned scenario=0; scenario<80; ++scenario) {
+        CityDistanceField field(w,h);
+        std::vector<Rect> sources;
+        unsigned random=scenario+1;
+        auto next=[&] {random=random*1664525u+1013904223u;return random;};
+        for (unsigned i=0; i<scenario%11; ++i) {
+            const int sw=1+next()%3,sh=1+next()%3;
+            Rect r{int(next()%(w-sw+1)),int(next()%(h-sh+1)),sw,sh};
+            sources.push_back(r);field.add(r.x,r.y,r.w,r.h);
+        }
+        field.build();
+        for (int ch=1;ch<=3;++ch) for (int cw=1;cw<=3;++cw)
+            for (int y=0;y<=h-ch;++y) for (int x=0;x<=w-cw;++x) {
+                int expected=CityDistanceField::missing;
+                for (const auto& r:sources)
+                    expected=std::min(expected,CityPlacementPolicy::footprintDistance(x,y,cw,ch,r.x,r.y,r.w,r.h));
+                REQUIRE(field.footprint(x,y,cw,ch)==expected);
+            }
+    }
+}
+TEST_CASE("Placement fields are rebuilt after a reservation changes", "[ai][placement]") {
+    CityDistanceField first(12,10);first.add(2,3,3,2);first.build();
+    CityDistanceField next(12,10);next.add(9,7,2,3);next.build();
+    REQUIRE(first.get(2,3)==0);
+    REQUIRE(next.get(2,3)==7);
+    REQUIRE(first.get(9,7)==5);
+    REQUIRE(next.get(9,7)==0);
 }

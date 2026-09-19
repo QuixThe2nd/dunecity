@@ -43,7 +43,7 @@
 #include <vector>
 #include <array>
 
-enum class AdmissionOperation { Room, Visibility, ChatEnter, ChatPoll, ChatSay };
+enum class AdmissionOperation { Room, Visibility, ChatEnter, ChatPoll, ChatSay, JoinRequest, JoinStatus };
 struct LobbyChatMessage {
     std::uint64_t id = 0;
     std::string name;
@@ -54,6 +54,12 @@ struct PublicRelayGame {
     std::string roomCode;
     std::string hostName;
     std::string mode;
+    std::string modName;
+    std::string contentHash;
+    std::string mapName;
+    bool running = false;
+    bool allowLateJoin = false;
+    std::uint64_t elapsedSeconds = 0;
     unsigned players = 0;
     unsigned maxPeers = 0;
 };
@@ -62,6 +68,7 @@ struct PublicRelayGame {
 struct AdmissionResponse {
     bool          ok             = false;
     std::uint16_t protocol       = 0;
+    std::string requestTicket, requestState;
     std::string   roomCode;
     std::string   grant;
     std::string   socketUrl;
@@ -74,6 +81,9 @@ struct AdmissionResponse {
     std::string chatSession;
     std::uint64_t chatCursor = 0;
     bool chatGap = false;
+    bool hasPresence = false;
+    unsigned onlineCount = 0;
+    std::vector<std::string> waitingNames;
     std::vector<LobbyChatMessage> messages;
 
     // Only when ok == false.
@@ -83,11 +93,11 @@ struct AdmissionResponse {
 
 namespace RoomAdmission {
 
-constexpr std::size_t kMaxResponseBytes  = 8192;
-constexpr std::size_t kMaxResponseLines  = 16;
-constexpr std::size_t kMaxLineBytes      = 512;
+constexpr std::size_t kMaxResponseBytes  = 12288;
+constexpr std::size_t kMaxResponseLines  = 48;
+constexpr std::size_t kMaxLineBytes      = 800;
 constexpr std::size_t kMaxKeyBytes       = 32;
-constexpr std::size_t kMaxValueBytes     = 480;
+constexpr std::size_t kMaxValueBytes     = 768;
 
 inline std::string hexText(const std::string& text) {
     static const char hex[] = "0123456789abcdef";
@@ -120,15 +130,29 @@ inline bool parseChatNumber(const std::string& text, std::uint64_t& value) {
 }
 
 inline bool parsePublicGame(const std::string& value, PublicRelayGame& game) {
-    std::array<std::string, 5> fields;
+    std::vector<std::string> fields;
     std::size_t start = 0;
-    for(unsigned i = 0; i < 4; ++i) {
+    for(;;) {
         const auto end = value.find('|', start);
-        if(end == std::string::npos) return false;
-        fields[i] = value.substr(start, end - start);
-        start = end + 1;
+        fields.push_back(value.substr(start, end == std::string::npos ? end : end-start));
+        if(fields.size()>11) return false;
+        if(end == std::string::npos) break;
+        start = end+1;
     }
-    fields[4] = value.substr(start);
+    if(fields.size()!=5 && fields.size()!=7 && fields.size()!=11) return false;
+    game.modName.clear(); game.contentHash.clear();
+    if(fields.size()>=7) {
+        if(fields[5].empty() || fields[5].size()>128 || !RoomRelay::isLowercaseHex(fields[5])) return false;
+        game.contentHash=fields[5];
+        if(!fields[6].empty() && !decodeHexText(fields[6],64,game.modName)) return false;
+    }
+    if(fields.size()==11) {
+        if((!fields[7].empty() && !decodeHexText(fields[7],120,game.mapName))
+           || (fields[8]!="match" && fields[8]!="lobby")
+           || !parseChatNumber(fields[9],game.elapsedSeconds)
+           || (fields[10]!="0" && fields[10]!="1")) return false;
+        game.running=fields[8]=="match"; game.allowLateJoin=fields[10]=="1";
+    }
     if(!RoomRelay::isAcceptableRoomCode(fields[0])
        || (fields[3] != "custom" && fields[3] != "coop")) return false;
     const auto count = [](const std::string& text, unsigned& result) {
@@ -285,6 +309,19 @@ inline bool parseAdmissionResponse(const std::string& body, AdmissionResponse& o
                     }
                 }
                 out.games.push_back(std::move(game));
+            } else if(key == "online") {
+                std::uint64_t count = 0;
+                if(operation != AdmissionOperation::ChatPoll || out.hasPresence || !parseChatNumber(value,count) || count>10000) {
+                    error="The online player list is malformed."; return false;
+                }
+                out.hasPresence=true; out.onlineCount=static_cast<unsigned>(count);
+            } else if(key == "waiting") {
+                std::string name;
+                if(operation != AdmissionOperation::ChatPoll || out.waitingNames.size()>=12 || !decodeHexText(value,64,name)
+                   || !RoomRelay::isAcceptableDisplayName(name)) {
+                    error="The online player list is malformed."; return false;
+                }
+                out.waitingNames.push_back(std::move(name));
             } else if(key == "visibility") {
                 if(sawVisibility || (value != "public" && value != "private")) {
                     error = "The game visibility answer is malformed."; return false;
@@ -322,6 +359,12 @@ inline bool parseAdmissionResponse(const std::string& body, AdmissionResponse& o
                     error = "The lobby chat answer is malformed."; return false;
                 }
                 out.messages.push_back(std::move(message));
+            } else if(key == "request") {
+                if(!out.requestTicket.empty() || value.size()!=64 || !RoomRelay::isLowercaseHex(value)) { error="Invalid join request."; return false; }
+                out.requestTicket=value;
+            } else if(key == "requestState") {
+                if(!out.requestState.empty() || (value!="pending" && value!="approved" && value!="declined" && value!="cancelled" && value!="expired" && value!="joined")) { error="Invalid join request status."; return false; }
+                out.requestState=value;
             } else if(key == "room") {
                 if(sawRoom) { error = "The game service repeated its room code."; return false; }
                 sawRoom = true;
@@ -383,6 +426,14 @@ inline bool parseAdmissionResponse(const std::string& body, AdmissionResponse& o
     if(out.protocol != RoomRelay::kProtocolVersion) {
         error = "This version of the game cannot use that game service.";
         return false;
+    }
+    if((!out.waitingNames.empty() && !out.hasPresence) || out.waitingNames.size()>out.onlineCount) {
+        error="The online player list is malformed."; return false;
+    }
+    if(operation==AdmissionOperation::JoinRequest || operation==AdmissionOperation::JoinStatus) {
+        if(out.requestState.empty() || (operation==AdmissionOperation::JoinRequest && out.requestTicket.empty())) { error="Incomplete join request answer."; return false; }
+        if(out.requestState!="approved") return true;
+        operation=AdmissionOperation::Room; // approved answers must carry a fully validated grant
     }
     if(operation != AdmissionOperation::Room) {
         const bool valid = operation == AdmissionOperation::Visibility ? sawVisibility
@@ -460,6 +511,11 @@ struct AdmissionRequest {
     bool publicOnly = false;
     bool        hosting  = true;
     bool        listing = false;
+    bool        allMods = false;
+    bool        presence = false;
+    bool details = false, allowLateJoin = false, cancelJoinRequest = false, spectate = false;
+    std::string mapName, requestTicket;
+    std::string modName;
     unsigned    listOffset = 0;
     bool        publicRoom = false;
     std::uint8_t maxPeers = 2;
@@ -478,6 +534,7 @@ public:
 
     /// Starts a request. Any request already running is abandoned.
     void begin(const AdmissionRequest& request);
+    static void cancelJoinRequest(AdmissionRequest request);
 
     /// Drives the request. Must be called from the game loop; never blocks.
     void update();

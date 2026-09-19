@@ -136,11 +136,19 @@ bool relayPeerNamesAreBound = true;
 } // namespace
 
 void NetworkManager::installSessionBridges() {
+    pOnJoinSync=[this](Uint32 peer,Uint32 operation,Uint32 transaction,Uint32 offset,const std::string& data) {
+        receiveJoinSync(peer,operation,transaction,offset,data);
+    };
     pOnStartGameBridge = [this](unsigned int timeLeft) {
         // The packet router has already verified that STARTGAME came from the host.
         // Freeze now, before the countdown allows a membership change to alter this match.
         if(auto* direct = getDirectTransport()) {
             if(!direct->acceptStartCallback()) return;
+        }
+        if(joinStage==JoinStage::Starting || joinStage==JoinStage::Receiving) {
+            if(joinSnapshot) { joinStage=JoinStage::Ready; joinStatus="Resuming with the new player..."; }
+            else abortLateJoin("The game snapshot was not ready.");
+            return;
         }
         if(pOnStartGame) pOnStartGame(timeLeft);
     };
@@ -561,6 +569,8 @@ void NetworkManager::update()
 {
     if(isRelaySession()) {
         updateRelaySession();
+        updateLateJoin();
+        updateObservers();
         return;
     }
 
@@ -977,6 +987,7 @@ NetworkSessionCallbacks NetworkManager::sessionCallbacks() const {
     callbacks.onReceiveGameInfo        = &pOnReceiveGameInfo;
     callbacks.onReceiveChangeEventList = &pOnReceiveChangeEventList;
     callbacks.onStartGame              = &pOnStartGameBridge;
+    callbacks.onJoinSync               = &pOnJoinSync;
     callbacks.onReceiveCommandList     = &pOnReceiveCommandList;
     callbacks.onReceiveSelectionList   = &pOnReceiveSelectionList;
     callbacks.onReceiveClientStats     = &pOnReceiveClientStats;
@@ -1124,7 +1135,9 @@ void NetworkManager::updateRelaySession() {
                 debugNetwork("Relay peer '%s' joined (%s, %s)\n", event.name.c_str(),
                              event.role == RoomRelay::Role::Host ? "host" : "client",
                              event.runtime.c_str());
-                if(bIsServer && pGameInitSettings != nullptr) {
+                if(bIsServer && pGameInitSettings != nullptr && !bGameInProgress && !lateJoinPaused()) {
+                    // A late join receives the authoritative checkpoint. Sending the original
+                    // lobby here would reopen its player-assignment callback during a match.
                     // The lobby state is what a joining player needs first, exactly as on the
                     // mesh transport - only addressed to a relay peer id instead of an address.
                     ENetPacketOStream packetStream(ENET_PACKET_FLAG_RELIABLE);
@@ -1138,6 +1151,14 @@ void NetworkManager::updateRelaySession() {
             } break;
 
             case RoomSessionTransport::Event::Type::PeerLeft: {
+                if(event.spectator || isSpectator(event.name) || observerTransfers.count(event.peerId)) {
+                    observerTransfers.erase(event.peerId);
+                    spectators.erase(event.name); break;
+                }
+                if(event.name==joinName && event.role!=RoomRelay::Role::Host) {
+                    if(lateJoinPaused()) abortLateJoin("The new player disconnected.");
+                    break;
+                }
                 debugNetwork("Relay peer '%s' left (reason %u)\n", event.name.c_str(),
                              static_cast<unsigned>(event.reason));
                 if(pOnPeerDisconnected) {
@@ -1245,6 +1266,9 @@ void NetworkManager::handleRelayGamePayload(std::uint32_t peerId,
 
     try {
         const Uint32 packetType = packetStream.readUint32();
+        if(isSpectator(peerName) && packetType!=NETWORKPACKET_JOIN_ACK && packetType!=NETWORKPACKET_CHATMESSAGE) return;
+        if(lateJoinPaused() && (packetType==NETWORKPACKET_COMMANDLIST || packetType==NETWORKPACKET_SELECTIONLIST
+            || packetType==NETWORKPACKET_CLIENTSTATS || packetType==NETWORKPACKET_SETPATHBUDGET)) return;
 
         // The central admission policy applies unchanged. On the relay a peer is always fully
         // established (the relay would not route for anybody else) and "the host connection"
@@ -1314,7 +1338,9 @@ void NetworkManager::handleRelayGamePayload(std::uint32_t peerId,
                                 static_cast<unsigned>(offender->refusedMessages));
                 }
                 if(offender->refusedMessages >= MAX_REJECTED_PACKETS_PER_PEER && pRelayClient) {
-                    pRelayClient->stop(3 /* ended because of an error */);
+                    if(auto* direct=getDirectTransport(); direct && direct->isSpectatorPeer(peerId))
+                        direct->disconnectSpectator(peerId,"The spectator sent invalid messages.");
+                    else pRelayClient->stop(3 /* ended because of an error */);
                 }
             },
             [](const std::string&) { return false; },   // names are not rebindable on the relay
@@ -1348,8 +1374,13 @@ void NetworkManager::handleRelayGamePayload(std::uint32_t peerId,
         payloadContext.contentMustMatch = true;
         payloadContext.coopPartnerIsSolePeer = (peerCount == 1) && peerIsHost;
 
-        GamePayloadRouter::handle(packetType, packetStream, adapter, payloadContext,
-                                  sessionCallbacks());
+        auto callbacks=sessionCallbacks();
+        std::function<void(const std::string&,const std::string&)> chat=[this](const auto& name,const auto& message) {
+            if(pOnReceiveChatMessage) pOnReceiveChatMessage(name,message);
+            forwardObserverChat(name,message);
+        };
+        callbacks.onReceiveChatMessage=&chat;
+        GamePayloadRouter::handle(packetType, packetStream, adapter, payloadContext, callbacks);
     } catch(InputStream::eof&) {
         SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
                     "NetworkManager: truncated relay payload from '%s'", peerName.c_str());
@@ -2047,6 +2078,7 @@ void NetworkManager::sendPacketToAllConnectedPeers(ENetPacketOStream& packetStre
 
 void NetworkManager::sendChatMessage(const std::string& message)
 {
+    forwardObserverChat(playerName,message);
     ENetPacketOStream packetStream(ENET_PACKET_FLAG_RELIABLE);
     packetStream.writeUint32(NETWORKPACKET_CHATMESSAGE);
     packetStream.writeString(message);
@@ -2132,6 +2164,8 @@ std::unique_ptr<GameInitSettings> NetworkManager::takeCoopMission() {
 }
 
 void NetworkManager::beginSimulation(Uint32 seed) {
+    if(bIsServer) { observerTransfers.clear(); observerHistory.clear(); observerHistoryBytes=0; }
+    if(joinLoading) { seed=resumeSeed; joinLoading=false; }
     simulationSeed = seed;
     bGameInProgress = true;
 
@@ -2195,6 +2229,7 @@ bool NetworkManager::sendStartGame(unsigned int timeLeft) {
 }
 
 void NetworkManager::sendCommandList(const CommandList& commandList) {
+    if(isSpectating()) return;
     ENetPacketOStream packetStream(ENET_PACKET_FLAG_UNSEQUENCED);
     packetStream.writeUint32(NETWORKPACKET_COMMANDLIST);
     packetStream.writeUint32(simulationSeed);
@@ -2204,6 +2239,7 @@ void NetworkManager::sendCommandList(const CommandList& commandList) {
 }
 
 void NetworkManager::sendSelectedList(const std::set<Uint32>& selectedList, int groupListIndex) {
+    if(isSpectating()) return;
     ENetPacketOStream packetStream(ENET_PACKET_FLAG_RELIABLE);
     packetStream.writeUint32(NETWORKPACKET_SELECTIONLIST);
     packetStream.writeUint32(simulationSeed);
@@ -2249,6 +2285,7 @@ void NetworkManager::debugNetwork(const char* fmt, ...) {
 }
 
 void NetworkManager::sendClientStats(float avgFps, float simMsAvg, Uint32 queueDepth, Uint32 currentBudget, Uint32 gameCycle) {
+    if(isSpectating()) return;
     // Client → Host: Send performance stats (including simulation timing for post-vsync throttling)
     if(bIsServer) {
         SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "NetworkManager: Host trying to send client stats (should only be called by clients)");

@@ -43,6 +43,7 @@
 */
 
 #include <Network/DirectPeerConnection.h>
+#include <Network/LateJoinPolicy.h>
 #include <Network/BoundedHttpClient.h>
 #include <Network/P2PSignalingProtocol.h>
 #include <Network/NetworkPacketPolicy.h>
@@ -50,6 +51,7 @@
 #include <Network/RoomSessionTransport.h>
 
 #include <deque>
+#include <bitset>
 #include <functional>
 #include <map>
 #include <memory>
@@ -69,6 +71,7 @@ public:
         std::string   runtime;                  ///< "native" or "browser"
         std::uint16_t gameProtocolVersion = 0;
         bool          allowLoopbackPlaintext = false;
+        bool          allowLateJoin = false;
     };
 
     /// Injection points, so the tests can drive the real state machine without a socket or a NIC.
@@ -182,6 +185,26 @@ public:
     /// True once the signaling service has stopped answering. Not fatal to a running match.
     bool signalingLost() const { return signalingLost_; }
 
+    using JoinRequest=LateJoinPolicy::Request;
+    const std::vector<JoinRequest>& joinRequests() const { return joinRequests_; }
+    bool manageJoin(const std::string& action, const std::string& request);
+    bool joinDecisionPending() const { return !joinAction_.empty(); }
+    bool joinDecisionSucceeded() const { return joinDecisionOK_; }
+    bool allowsLateJoin() const { return config_.allowLateJoin; }
+    // Only the authenticated host's synchronization packet may call this on a client.
+    bool openJoinWindow(const std::string& name);
+    void abortJoinWindow();
+    void completeJoinWindow() { joinName_.clear(); }
+    void setSpectators(const std::set<std::string>& names) { spectators_=names; }
+    bool isSpectating() const { return localSpectator_; }
+    bool isSpectatorPeer(std::uint32_t id) const {
+        const auto* peer=findPeer(id); return peer && peer->spectator;
+    }
+    bool peerConnected(std::uint32_t id) const;
+    void disconnectSpectator(std::uint32_t id, const std::string& reason) {
+        if(isSpectatorPeer(id)) dropLink(id,reason);
+    }
+
     std::size_t queuedEventCount() const { return events_.size(); }
 
 private:
@@ -277,6 +300,12 @@ private:
     std::string endpoint(const char* path) const;
     BoundedHttpClient::Request signalingRequest() const;
 
+    void pumpJoinRequests(std::uint32_t nowMs);
+    std::unique_ptr<BoundedHttpClient> joinHttp_;
+    std::vector<JoinRequest> joinRequests_;
+    std::string joinAction_, joinRequestId_, joinName_;
+    bool joinDecisionOK_ = false;
+    std::uint32_t nextJoinPoll_ = 0;
     Dependencies dependencies_;
     Config       config_;
     std::unique_ptr<BoundedHttpClient> http_;
@@ -284,6 +313,7 @@ private:
     Status           status_     = Status::Idle;
     SignalingStage   stage_      = SignalingStage::Idle;
     RoomRelay::Role  localRole_  = RoomRelay::Role::Unknown;
+    bool localSpectator_ = false;
     RoomRelay::Phase phase_      = RoomRelay::Phase::Lobby;
     std::uint32_t    localPeerId_ = 0;
     std::uint8_t     maxPeers_   = 0;
@@ -297,7 +327,7 @@ private:
 
     std::vector<Peer>              peers_;
     std::vector<std::unique_ptr<Link>> links_;
-    std::vector<std::uint32_t> retiredPeerIds_;
+    std::bitset<65536> retiredPeerIds_;
     std::deque<Event>              events_;
     std::deque<OutgoingSignal>     outgoing_;
     std::size_t                    eventBytes_ = 0;
@@ -323,6 +353,7 @@ private:
     bool startCallbackAccepted_ = false;
     bool leaveQueued_ = false;
     std::vector<std::uint32_t> frozenRoster_;
+    std::set<std::string> spectators_;
     /// The phase the host still owes the service, and when it stopped being worth retrying.
     bool           phaseUpdatePending_ = false;
     RoomRelay::Phase pendingPhase_   = RoomRelay::Phase::Lobby;

@@ -105,6 +105,7 @@ struct RoomMember {
     RoomRelay::Role role = RoomRelay::Role::Unknown;
     std::string     name;
     std::string     runtime;    ///< the peer's claim, carried as one and never trusted
+    bool spectator = false;
 };
 
 /**
@@ -132,6 +133,7 @@ struct SignalRecord {
 
 struct SessionResponse {
     bool          ok       = false;
+    bool spectator = false;
     std::uint32_t peerId   = 0;
     std::string   session;      ///< 64 lowercase hex; lives in a header, never in a URL
     RoomRelay::Role role     = RoomRelay::Role::Unknown;
@@ -577,6 +579,9 @@ inline bool parseSessionResponse(const std::string& body, SessionResponse& out, 
             else if(value == "client") out.role = RoomRelay::Role::Client;
             else return false;
             sawRole = true;
+        } else if(key == "spectator") {
+            if(value != "0" && value != "1") return false;
+            out.spectator = value == "1";
         } else if(key == "maxPeers") {
             std::uint64_t parsed = 0;
             if(!parseUnsigned(value, RoomRelay::Limits::kMaxPeersPerRoom, parsed) || parsed < 2) {
@@ -659,15 +664,20 @@ inline bool parsePollResponse(const std::string& body, std::uint32_t localPeerId
         } else if(key == "peer") {
             std::vector<std::string> fields;
             if(out.members.size() >= RoomRelay::Limits::kMaxPeersPerRoom
-               || !splitFields(value, 4, fields)) {
+               || (!splitFields(value, 5, fields) && !splitFields(value, 4, fields))) {
                 return false;
             }
             std::uint64_t id = 0;
             RoomMember member;
+            if(fields.size()==5) {
+                if(fields[4]!="0" && fields[4]!="1") return false;
+                member.spectator=fields[4]=="1";
+            }
             if(!parseUnsigned(fields[0], Limits::kMaxPeerId, id) || id == 0) return false;
             if(fields[1] == "host")        member.role = RoomRelay::Role::Host;
             else if(fields[1] == "client") member.role = RoomRelay::Role::Client;
             else return false;
+            if(member.spectator && member.role==RoomRelay::Role::Host) return false;
             if(!decodeHexText(fields[2], RoomRelay::Limits::kMaxNameChars, false, member.name)
                || !RoomRelay::isAcceptableDisplayName(member.name)) {
                 return false;

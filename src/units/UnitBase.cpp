@@ -208,6 +208,22 @@ void UnitBase::save(OutputStream& stream) const {
     stream.writeSint32(deviationTimer);
 }
 
+// Network-only continuation state. Ordinary saved games deliberately reset this.
+void UnitBase::saveObserverRuntime(OutputStream& s) const {
+    s.writeUint8(static_cast<Uint8>(pendingTargetRequest)); s.writeBool(pathRequestQueued);
+    s.writeSint32(cachedPathDestination.x); s.writeSint32(cachedPathDestination.y);
+    s.writeUint32(cachedPathRevision); s.writeFixPoint(lastDistanceToDestination);
+    s.writeUint8(noProgressCount); s.writeSint32(carryallRequestCooldown);
+}
+void UnitBase::loadObserverRuntime(InputStream& s) {
+    const auto kind=s.readUint8();
+    if(kind>static_cast<Uint8>(TargetRequestKind::Acquire)) throw std::runtime_error("Invalid target request");
+    pendingTargetRequest=static_cast<TargetRequestKind>(kind); pathRequestQueued=s.readBool();
+    cachedPathDestination.x=s.readSint32(); cachedPathDestination.y=s.readSint32();
+    cachedPathRevision=s.readUint32(); lastDistanceToDestination=s.readFixPoint();
+    noProgressCount=s.readUint8(); carryallRequestCooldown=s.readSint32();
+}
+
 bool UnitBase::attack() {
 
     if(numWeapons) {
@@ -942,12 +958,18 @@ void UnitBase::idleAction() {
     }
 }
 
+ObjectBase* UnitBase::getActionClickTarget(int xPos, int yPos) const {
+    const auto* tile=currentGameMap->tileExists(xPos,yPos) ? currentGameMap->getTile(xPos,yPos) : nullptr;
+    if(!tile || !tile->isExploredByTeam(owner->getTeamID()) || tile->isFoggedByTeam(owner->getTeamID())) return nullptr;
+    auto* object=tile->getObject();
+    return object && object->isVisible(owner->getTeamID()) ? object : nullptr;
+}
+
 void UnitBase::handleActionClick(int xPos, int yPos) {
     if(respondable) {
         if(currentGameMap->tileExists(xPos, yPos)) {
-            if(currentGameMap->getTile(xPos,yPos)->hasAnObject()) {
-                // attack unit/structure or move to structure
-                ObjectBase* tempTarget = currentGameMap->getTile(xPos,yPos)->getObject();
+            if(ObjectBase* tempTarget = getActionClickTarget(xPos,yPos)) {
+                // Attack/follow only a visible target, as shown by the cursor.
 
                 if(tempTarget->getOwner()->getTeamID() != getOwner()->getTeamID()) {
                     // attack

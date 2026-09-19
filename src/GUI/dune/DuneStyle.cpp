@@ -74,6 +74,7 @@ sdl2::surface_ptr DuneStyle::createLabelSurface(Uint32 width, Uint32 height, con
     SDL_FillRect(surface.get(), nullptr, backgroundcolor);
 
     if(textcolor == COLOR_DEFAULT) textcolor = textPalette.foreground;
+    else if(backgroundcolor == COLOR_TRANSPARENT) textcolor = MenuTheme::readableText(textcolor);
     if(textshadowcolor == COLOR_DEFAULT) textshadowcolor = textPalette.shadow;
 
     int fontheight = getTextHeight(fontSize);
@@ -137,6 +138,7 @@ sdl2::surface_ptr DuneStyle::createCheckboxSurface(Uint32 width, Uint32 height, 
     SDL_FillRect(surface.get(), nullptr, backgroundcolor);
 
     if(textcolor == COLOR_DEFAULT) textcolor = textPalette.foreground;
+    else if(backgroundcolor == COLOR_TRANSPARENT) textcolor = MenuTheme::readableText(textcolor);
     if(textshadowcolor == COLOR_DEFAULT) textshadowcolor = textPalette.shadow;
 
     if(activated) {
@@ -192,6 +194,7 @@ sdl2::surface_ptr DuneStyle::createRadioButtonSurface(Uint32 width, Uint32 heigh
     SDL_FillRect(surface.get(), nullptr, backgroundcolor);
 
     if(textcolor == COLOR_DEFAULT) textcolor = textPalette.foreground;
+    else if(backgroundcolor == COLOR_TRANSPARENT) textcolor = MenuTheme::readableText(textcolor);
     if(textshadowcolor == COLOR_DEFAULT) textshadowcolor = textPalette.shadow;
 
     if(activated) {
@@ -244,9 +247,7 @@ sdl2::surface_ptr DuneStyle::createRadioButtonSurface(Uint32 width, Uint32 heigh
 
 
 sdl2::surface_ptr DuneStyle::createDropDownBoxButton(Uint32 size, bool pressed, bool activated, Uint32 color) {
-    if(color == COLOR_DEFAULT) {
-        color = textPalette.foreground;
-    }
+    color = textPalette.foreground;
 
     // create surfaces
     sdl2::surface_ptr surface = sdl2::surface_ptr{ SDL_CreateRGBSurface(0, size, size, SCREEN_BPP, RMASK, GMASK, BMASK, AMASK) };
@@ -295,54 +296,19 @@ Point DuneStyle::getMinimumButtonSize(const std::string& text) {
     return Point(getTextWidth(text.c_str(),12)+12,getTextHeight(12));
 }
 
-sdl2::surface_ptr DuneStyle::createButtonSurface(Uint32 width, Uint32 height, const std::string& text, bool pressed, bool activated, Uint32 textcolor, Uint32 textshadowcolor) {
-    sdl2::surface_ptr surface = sdl2::surface_ptr{ SDL_CreateRGBSurface(0, width, height, SCREEN_BPP, RMASK, GMASK, BMASK, AMASK) };
-    if(!surface) {
-        return nullptr;
-    }
-
-    // create button background
-    if(pressed == false) {
-        // normal mode
-        SDL_FillRect(surface.get(), nullptr, buttonBackgroundColor);
-        drawRect(surface.get(), 0, 0, surface->w-1, surface->h-1, buttonBorderColor);
-        drawHLine(surface.get(), 1, 1, surface->w-2, buttonEdgeTopLeftColor);
-        drawVLine(surface.get(), 1, 1, surface->h-2, buttonEdgeTopLeftColor);
-        drawHLine(surface.get(), 1, surface->h-2, surface->w-2, buttonEdgeBottomRightColor);
-        drawVLine(surface.get(), surface->w-2, 1, surface->h-2, buttonEdgeBottomRightColor);
-    } else {
-        // pressed button mode
-        SDL_FillRect(surface.get(), nullptr, pressedButtonBackgroundColor);
-        drawRect(surface.get(), 0, 0, surface->w-1, surface->h-1, buttonBorderColor);
-        drawRect(surface.get(), 1, 1, surface->w-2, surface->h-2, buttonEdgeBottomRightColor);
-
-    }
-
-    // create text on this button
-    int fontsize = height >= 48 ? 22 : height >= 36 ? 20 : height >= 28 ? 16 : 14;
-    while(fontsize > 8 && (width < getTextWidth(text, fontsize) + 12 ||
-                          height < getTextHeight(fontsize) + 4)) --fontsize;
-
-    const bool defaultText = textcolor == COLOR_DEFAULT;
-    if(defaultText) textcolor = textPalette.foreground;
-    if(textshadowcolor == COLOR_DEFAULT) textshadowcolor = textPalette.shadow;
-    const int textWidth = getTextWidth(text, fontsize);
-    const int textHeight = getTextHeight(fontsize);
-    const bool focusOutlineFits = width >= textWidth + 18 && height >= textHeight + 10;
-    if(activated && focusOutlineFits)
-        drawRect(surface.get(), 3, 3, surface->w - 4, surface->h - 4, textPalette.foreground);
-
-    sdl2::surface_ptr textSurface1 = createSurfaceWithText(text, textshadowcolor, fontsize);
-    SDL_Rect textRect1 = calcDrawingRect(textSurface1.get(), surface->w / 2 + 1 + (pressed ? 1 : 0), surface->h / 2 + 1 + (pressed ? 1 : 0), HAlign::Center, VAlign::Center);
-    SDL_BlitSurface(textSurface1.get(), nullptr, surface.get(), &textRect1);
-
-    const Uint32 foreground = (activated && (!defaultText || !focusOutlineFits)) ? brightenUp(textcolor) : textcolor;
-    sdl2::surface_ptr textSurface2 = createSurfaceWithText(text, foreground, fontsize);
-    SDL_Rect textRect2 = calcDrawingRect(textSurface2.get(), surface->w / 2 + (pressed ? 1 : 0), surface->h / 2 + (pressed ? 1 : 0), HAlign::Center, VAlign::Center);
-    SDL_BlitSurface(textSurface2.get(), nullptr, surface.get(), &textRect2);
-
+sdl2::surface_ptr DuneStyle::createButtonSurface(Uint32 width, Uint32 height, const std::string& text, bool pressed, bool activated, Uint32, Uint32) {
+    sdl2::surface_ptr surface{SDL_CreateRGBSurfaceWithFormat(0,width,height,32,SCREEN_FORMAT)};
+    if(!surface) return nullptr;
+    SDL_FillRect(surface.get(),nullptr,pressed ? MenuTheme::pressed : MenuTheme::control);
+    drawRect(surface.get(),0,0,width-1,height-1,activated ? MenuTheme::accent : MenuTheme::border);
+    int fontsize = height >= 48 ? 22 : height >= 38 ? 20 : height >= 30 ? 18 : height >= 24 ? 16 : 14;
+    while(fontsize>8 && (width < getTextWidth(text,fontsize)+12 || height < getTextHeight(fontsize)+4)) --fontsize;
+    auto label=createSurfaceWithText(text,textPalette.foreground,fontsize);
+    SDL_Rect rect=calcDrawingRect(label.get(),width/2+(pressed ? 1 : 0),height/2+(pressed ? 1 : 0),HAlign::Center,VAlign::Center);
+    SDL_BlitSurface(label.get(),nullptr,surface.get(),&rect);
     return surface;
 }
+
 
 
 
@@ -367,7 +333,7 @@ sdl2::surface_ptr DuneStyle::createTextBoxSurface(Uint32 width, Uint32 height, c
     drawHLine(surface.get(),1,surface->h-2,surface->w-2,buttonEdgeTopLeftColor);
     drawVLine(surface.get(),surface->w-2,1,surface->h-2,buttonEdgeTopLeftColor);
 
-    if(textcolor == COLOR_DEFAULT) textcolor = textPalette.foreground;
+    textcolor = textPalette.foreground;
     if(textshadowcolor == COLOR_DEFAULT) textshadowcolor = textPalette.shadow;
 
     SDL_Rect cursorPos;
@@ -434,9 +400,7 @@ Point DuneStyle::getMinimumScrollBarArrowButtonSize() {
 }
 
 sdl2::surface_ptr DuneStyle::createScrollBarArrowButton(bool down, bool pressed, bool activated, Uint32 color) {
-    if(color == COLOR_DEFAULT) {
-        color = textPalette.foreground;
-    }
+    color = textPalette.foreground;
 
     // create surfaces
     sdl2::surface_ptr surface = sdl2::surface_ptr{ SDL_CreateRGBSurface(0, 17, 17, SCREEN_BPP, RMASK, GMASK, BMASK, AMASK) };
@@ -488,13 +452,11 @@ sdl2::surface_ptr DuneStyle::createScrollBarArrowButton(bool down, bool pressed,
 
 
 Uint32 DuneStyle::getListBoxEntryHeight() {
-    return 16;
+    return 20;
 }
 
 sdl2::surface_ptr DuneStyle::createListBoxEntry(Uint32 width, const std::string& text, bool selected, Uint32 color) {
-    if(color == COLOR_DEFAULT) {
-        color = textPalette.foreground;
-    }
+    color = textPalette.foreground;
 
     // create surfaces
     sdl2::surface_ptr surface = sdl2::surface_ptr{ SDL_CreateRGBSurface(0, width, getListBoxEntryHeight(), SCREEN_BPP, RMASK, GMASK, BMASK, AMASK) };
@@ -508,7 +470,7 @@ sdl2::surface_ptr DuneStyle::createListBoxEntry(Uint32 width, const std::string&
         SDL_FillRect(surface.get(), nullptr, COLOR_TRANSPARENT);
     }
 
-    sdl2::surface_ptr textSurface = createSurfaceWithText(text, color, 12);
+    sdl2::surface_ptr textSurface = createSurfaceWithText(text, color, 14);
     SDL_Rect textRect = calcDrawingRect(textSurface.get(), 3, surface->h/2 + 2, HAlign::Left, VAlign::Center);
     SDL_BlitSurface(textSurface.get(),nullptr,surface.get(),&textRect);
 
@@ -548,7 +510,7 @@ sdl2::surface_ptr DuneStyle::createProgressBarOverlay(Uint32 width, Uint32 heigh
 
 
 sdl2::surface_ptr DuneStyle::createToolTip(const std::string& text) {
-    sdl2::surface_ptr helpTextSurface = createSurfaceWithText(text, COLOR_YELLOW, 12);
+    sdl2::surface_ptr helpTextSurface = createSurfaceWithText(text, textPalette.foreground, 14);
     if(helpTextSurface == nullptr) {
         return nullptr;
     }
@@ -559,9 +521,9 @@ sdl2::surface_ptr DuneStyle::createToolTip(const std::string& text) {
         return nullptr;
     }
 
-    SDL_FillRect(surface.get(), nullptr, COLOR_HALF_TRANSPARENT);
+    SDL_FillRect(surface.get(), nullptr, MenuTheme::background);
 
-    drawRect(surface.get(), 0, 0, helpTextSurface->w + 5 - 1, helpTextSurface->h + 2 - 1, COLOR_YELLOW);
+    drawRect(surface.get(), 0, 0, helpTextSurface->w + 5 - 1, helpTextSurface->h + 2 - 1, MenuTheme::accent);
 
     SDL_Rect textRect = calcDrawingRect(helpTextSurface.get(), 3, 3);
     SDL_BlitSurface(helpTextSurface.get(), nullptr, surface.get(), &textRect);
@@ -572,40 +534,13 @@ sdl2::surface_ptr DuneStyle::createToolTip(const std::string& text) {
 
 
 sdl2::surface_ptr DuneStyle::createBackground(Uint32 width, Uint32 height) {
-    sdl2::surface_ptr pSurface;
-    if(pGFXManager) {
-        pSurface = getSubPicture(pGFXManager->getBackgroundSurface(), 0, 0, width, height);
-        if(!pSurface) {
-            return nullptr;
-        }
-    } else {
-        // data manager not yet loaded
-        pSurface = sdl2::surface_ptr{ SDL_CreateRGBSurface(0, width, height, SCREEN_BPP, RMASK, GMASK, BMASK, AMASK) };
-        if (pSurface == nullptr) {
-            return nullptr;
-        }
-        SDL_FillRect(pSurface.get(), nullptr, buttonBackgroundColor);
-    }
-
-    // Dialogs are modal panels, not overlays. The shared palette background
-    // carries a transparent color key for sprites; remove it here so underlying
-    // labels and buttons cannot bleed through a message box.
-    SDL_SetColorKey(pSurface.get(), SDL_FALSE, 0);
-    SDL_SetSurfaceBlendMode(pSurface.get(), SDL_BLENDMODE_NONE);
-
-
-    drawRect(pSurface.get(), 0, 0, pSurface->w-1, pSurface->h-1, buttonBorderColor);
-    drawHLine(pSurface.get(), 1, 1, pSurface->w-2, buttonEdgeTopLeftColor);
-    drawHLine(pSurface.get(), 2, 2, pSurface->w-3, buttonEdgeTopLeftColor);
-    drawVLine(pSurface.get(), 1, 1, pSurface->h-2, buttonEdgeTopLeftColor);
-    drawVLine(pSurface.get(), 2, 2, pSurface->h-3, buttonEdgeTopLeftColor);
-    drawHLine(pSurface.get(), 1, pSurface->h-2, pSurface->w-2, buttonEdgeBottomRightColor);
-    drawHLine(pSurface.get(), 2, pSurface->h-3, pSurface->w-3, buttonEdgeBottomRightColor);
-    drawVLine(pSurface.get(), pSurface->w-2, 1, pSurface->h-2, buttonEdgeBottomRightColor);
-    drawVLine(pSurface.get(), pSurface->w-3, 2, pSurface->h-3, buttonEdgeBottomRightColor);
-
-    return pSurface;
+    sdl2::surface_ptr surface{SDL_CreateRGBSurfaceWithFormat(0,width,height,32,SCREEN_FORMAT)};
+    if(!surface) return nullptr;
+    SDL_FillRect(surface.get(),nullptr,MenuTheme::background);
+    drawRect(surface.get(),0,0,width-1,height-1,MenuTheme::border);
+    return surface;
 }
+
 
 sdl2::surface_ptr DuneStyle::createWidgetBackground(Uint32 width, Uint32 height) {
     sdl2::surface_ptr surface = sdl2::surface_ptr{ SDL_CreateRGBSurface(0, width, height, SCREEN_BPP, RMASK, GMASK, BMASK, AMASK) };

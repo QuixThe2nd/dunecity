@@ -27,35 +27,36 @@
 #include <FileClasses/TextManager.h>
 #include <FileClasses/GFXManager.h>
 #include <misc/format.h>
+#include <misc/MenuPalette.h>
 
 #include <algorithm>
 
 namespace {
 
-constexpr int kBudgetWindowWidth = 420;
-constexpr int kBudgetWindowHeight = 512;
+constexpr int kBudgetWindowWidth = 620;
+constexpr int kBudgetWindowHeight = 460;
 
 Uint32 centeredCoordinate(int available, int extent) {
     return static_cast<Uint32>(std::max(0, (available - extent) / 2));
 }
 
-void configureSectionHeading(Label& label, const char* text) {
+void configureSectionHeading(Label& label, const std::string& text) {
     label.setText(text);
-    label.setTextFontSize(12);
-    label.setTextColor(COLOR_RGB(128, 24, 0));
+    label.setTextFontSize(15);
+    label.setTextColor(MenuTheme::accent,COLOR_TRANSPARENT);
 }
 
 void configureValueLabel(Label& label, Alignment_Enum alignment = Alignment_Left) {
     label.setTextColor(COLOR_WHITE);
-    label.setTextFontSize(13);
+    label.setTextFontSize(14);
     label.setAlignment(alignment);
 }
 
 } // namespace
 
 CityBudgetWindow::CityBudgetWindow()
- : Window(centeredCoordinate(settings.video.width - SIDEBARWIDTH, kBudgetWindowWidth),
-          centeredCoordinate(settings.video.height, kBudgetWindowHeight),
+ : Window(centeredCoordinate(getRendererWidth(), kBudgetWindowWidth),
+          centeredCoordinate(getRendererHeight(), kBudgetWindowHeight),
           kBudgetWindowWidth, kBudgetWindowHeight) {
 
     // Non-modal: clicks outside this window dismiss it and pass through to
@@ -65,159 +66,46 @@ CityBudgetWindow::CityBudgetWindow()
     setModal(false);
 
     setWindowWidget(&rootHBox);
-    rootHBox.addWidget(HSpacer::create(10));
-    rootHBox.addWidget(&mainVBox);
-    rootHBox.addWidget(HSpacer::create(10));
-
-    mainVBox.addWidget(VSpacer::create(8));
-
-    titleLabel.setText("City Budget");
-    titleLabel.setAlignment(Alignment_HCenter);
-    titleLabel.setTextColor(COLOR_WHITE);
-    titleLabel.setTextFontSize(16);
-    mainVBox.addWidget(&titleLabel, 22);
-    mainVBox.addWidget(VSpacer::create(4));
-
-    yearLabel.setText("Year: 0");
-    treasuryLabel.setText("Treasury: 0 credits");
-    configureValueLabel(yearLabel);
-    configureValueLabel(treasuryLabel, Alignment_Right);
-    summaryHBox.addWidget(&yearLabel);
-    summaryHBox.addWidget(HSpacer::create(8));
-    summaryHBox.addWidget(&treasuryLabel);
-    mainVBox.addWidget(&summaryHBox, 24);
-    mainVBox.addWidget(VSpacer::create(8));
-
-    configureSectionHeading(allocationsHeadingLabel, "ALLOCATIONS");
-    mainVBox.addWidget(&allocationsHeadingLabel, 18);
-
-    // Tax rate slider — player-adjustable lever (0-20%, default 7%).
-    taxLabel.setText("Tax Rate");
-    configureValueLabel(taxLabel);
-    taxHBox.addWidget(&taxLabel);
-    taxHBox.addWidget(HSpacer::create(8));
-
-    taxMinus.setTextures(pGFXManager->getUIGraphic(UI_Minus), pGFXManager->getUIGraphic(UI_Minus_Pressed));
-    taxMinus.setOnClick(std::bind(&CityBudgetWindow::onTaxDecrease, this));
-    taxHBox.addWidget(&taxMinus);
-    taxHBox.addWidget(HSpacer::create(5));
-
-    taxValueLabel.setText("7%");
-    configureValueLabel(taxValueLabel, Alignment_HCenter);
-    taxHBox.addWidget(&taxValueLabel, 54);
-    taxHBox.addWidget(HSpacer::create(5));
-
-    taxPlus.setTextures(pGFXManager->getUIGraphic(UI_Plus), pGFXManager->getUIGraphic(UI_Plus_Pressed));
-    taxPlus.setOnClick(std::bind(&CityBudgetWindow::onTaxIncrease, this));
-    taxHBox.addWidget(&taxPlus);
-
-    mainVBox.addWidget(&taxHBox, 32);
-
-    policeLabel.setText("Police Funding");
-    configureValueLabel(policeLabel);
-    policeHBox.addWidget(&policeLabel);
-    policeHBox.addWidget(HSpacer::create(8));
-
-    policeMinus.setTextures(pGFXManager->getUIGraphic(UI_Minus), pGFXManager->getUIGraphic(UI_Minus_Pressed));
-    policeMinus.setOnClick(std::bind(&CityBudgetWindow::onPoliceDecrease, this));
-    policeHBox.addWidget(&policeMinus);
-    policeHBox.addWidget(HSpacer::create(5));
-
-    policeValueLabel.setText("100%");
-    configureValueLabel(policeValueLabel, Alignment_HCenter);
-    policeHBox.addWidget(&policeValueLabel, 54);
-    policeHBox.addWidget(HSpacer::create(5));
-
-    policePlus.setTextures(pGFXManager->getUIGraphic(UI_Plus), pGFXManager->getUIGraphic(UI_Plus_Pressed));
-    policePlus.setOnClick(std::bind(&CityBudgetWindow::onPoliceIncrease, this));
-    policeHBox.addWidget(&policePlus);
-
-    mainVBox.addWidget(&policeHBox, 32);
-    mainVBox.addWidget(VSpacer::create(6));
-
-    configureSectionHeading(forecastHeadingLabel, "ANNUAL FORECAST");
-    mainVBox.addWidget(&forecastHeadingLabel, 18);
-
-    incomeLabel.setText("Projected Tax: +0/yr");
-    policeCostLabel.setText("Police Services: -0/yr");
-    netLabel.setText("Net Annual: 0/yr");
-    perSecondLabel.setText("Cash Flow: 0/sec");
-    configureValueLabel(incomeLabel);
-    configureValueLabel(policeCostLabel, Alignment_Right);
-    configureValueLabel(netLabel);
-    configureValueLabel(perSecondLabel, Alignment_Right);
-    forecastPrimaryHBox.addWidget(&incomeLabel);
-    forecastPrimaryHBox.addWidget(HSpacer::create(8));
-    forecastPrimaryHBox.addWidget(&policeCostLabel);
-    forecastSecondaryHBox.addWidget(&netLabel);
-    forecastSecondaryHBox.addWidget(HSpacer::create(8));
-    forecastSecondaryHBox.addWidget(&perSecondLabel);
-    mainVBox.addWidget(&forecastPrimaryHBox, 22);
-    configureValueLabel(policeStationCostLabel);
-    configureValueLabel(rocketTurretCostLabel);
-    policeStationCostLabel.setText("Police stations: 0 | -0/yr");
-    rocketTurretCostLabel.setText("Rocket turrets: 0 | -0/yr");
-    mainVBox.addWidget(&policeStationCostLabel, 22);
-    mainVBox.addWidget(&rocketTurretCostLabel, 22);
-    configureValueLabel(gunTurretCostLabel);
-    gunTurretCostLabel.setText("Gun turrets: 0 | -0/yr");
-    mainVBox.addWidget(&gunTurretCostLabel, 22);
-    configureValueLabel(roadCostLabel);
-    roadCostLabel.setText("Roads: no upkeep");
-    mainVBox.addWidget(&roadCostLabel, 22);
-    mainVBox.addWidget(&forecastSecondaryHBox, 22);
-    mainVBox.addWidget(VSpacer::create(6));
-
-    configureSectionHeading(cityStatusHeadingLabel, "CITY STATUS");
-    mainVBox.addWidget(&cityStatusHeadingLabel, 18);
-
-    totalPopLabel.setText("Population: 0");
-    unemploymentLabel.setText("Unemployment: 0%");
-    configureValueLabel(totalPopLabel);
-    configureValueLabel(unemploymentLabel, Alignment_Right);
-    populationHBox.addWidget(&totalPopLabel);
-    populationHBox.addWidget(HSpacer::create(8));
-    populationHBox.addWidget(&unemploymentLabel);
-    mainVBox.addWidget(&populationHBox, 22);
-
-    resPopLabel.setText("Residential: 0");
-    comPopLabel.setText("Commercial: 0");
-    indPopLabel.setText("Industrial: 0");
-    configureValueLabel(resPopLabel);
-    configureValueLabel(comPopLabel, Alignment_HCenter);
-    configureValueLabel(indPopLabel, Alignment_Right);
-    zoningHBox.addWidget(&resPopLabel);
-    zoningHBox.addWidget(HSpacer::create(8));
-    zoningHBox.addWidget(&comPopLabel);
-    zoningHBox.addWidget(HSpacer::create(8));
-    zoningHBox.addWidget(&indPopLabel);
-    mainVBox.addWidget(&zoningHBox, 22);
-
-    servicesLabel.setText("Services: 0 hospitals | 0 churches");
-    configureValueLabel(servicesLabel);
-    mainVBox.addWidget(&servicesLabel, 22);
-
-    environmentLabel.setText("Land Value: — | Pollution: —");
-    crimeTrafficLabel.setText("Crime: — | Traffic: —");
-    configureValueLabel(environmentLabel);
-    configureValueLabel(crimeTrafficLabel);
-    environmentLabel.setTextFontSize(11);
-    crimeTrafficLabel.setTextFontSize(11);
-    mainVBox.addWidget(&environmentLabel, 22);
-    mainVBox.addWidget(&crimeTrafficLabel, 22);
-    mainVBox.addWidget(VSpacer::create(10));
-
-    confirmButton.setText("Confirm");
-    confirmButton.setOnClick(std::bind(&CityBudgetWindow::onConfirm, this));
-    buttonsHBox.addWidget(&confirmButton);
-    buttonsHBox.addWidget(HSpacer::create(10));
-
-    cancelButton.setText("Cancel");
-    cancelButton.setOnClick(std::bind(&CityBudgetWindow::onCancel, this));
-    buttonsHBox.addWidget(&cancelButton);
-
-    mainVBox.addWidget(&buttonsHBox, 34);
-    mainVBox.addWidget(VSpacer::create(8));
+    rootHBox.addWidget(HSpacer::create(18));rootHBox.addWidget(&mainVBox);rootHBox.addWidget(HSpacer::create(18));
+    mainVBox.addWidget(VSpacer::create(12));
+    titleLabel.setText(_("City Budget"));titleLabel.setAlignment(Alignment_HCenter);
+    titleLabel.setTextColor(MenuTheme::text,COLOR_TRANSPARENT);titleLabel.setTextFontSize(24);
+    mainVBox.addWidget(&titleLabel,30);
+    configureValueLabel(yearLabel);configureValueLabel(treasuryLabel,Alignment_Right);
+    summaryHBox.addWidget(&yearLabel);summaryHBox.addWidget(&treasuryLabel);
+    mainVBox.addWidget(&summaryHBox,26);mainVBox.addWidget(VSpacer::create(8));
+    configureSectionHeading(allocationsHeadingLabel,_("Allocations"));
+    mainVBox.addWidget(&allocationsHeadingLabel,20);
+    auto allocation=[&](HBox& row,Label& label,TextButton& minus,Label& value,TextButton& plus,
+                        const char* text,auto decrease,auto increase) {
+        label.setText(_(text));configureValueLabel(label);row.addWidget(&label);
+        minus.setText("-");minus.setOnClick(decrease);row.addWidget(&minus,28);
+        configureValueLabel(value,Alignment_HCenter);row.addWidget(&value,48);
+        plus.setText("+");plus.setOnClick(increase);row.addWidget(&plus,28);
+    };
+    allocation(taxHBox,taxLabel,taxMinus,taxValueLabel,taxPlus,"Tax rate",
+        std::bind(&CityBudgetWindow::onTaxDecrease,this),std::bind(&CityBudgetWindow::onTaxIncrease,this));
+    allocation(policeHBox,policeLabel,policeMinus,policeValueLabel,policePlus,"Police funding",
+        std::bind(&CityBudgetWindow::onPoliceDecrease,this),std::bind(&CityBudgetWindow::onPoliceIncrease,this));
+    allocationPairHBox.addWidget(&taxHBox);allocationPairHBox.addWidget(HSpacer::create(16));allocationPairHBox.addWidget(&policeHBox);
+    mainVBox.addWidget(&allocationPairHBox,36);mainVBox.addWidget(VSpacer::create(12));
+    configureSectionHeading(forecastHeadingLabel,_("Annual forecast"));forecastVBox.addWidget(&forecastHeadingLabel,22);
+    for(auto* label : {&incomeLabel,&policeCostLabel,&policeStationCostLabel,&rocketTurretCostLabel,
+                       &gunTurretCostLabel,&roadCostLabel,&netLabel,&perSecondLabel}) {
+        configureValueLabel(*label);forecastVBox.addWidget(label,22);
+    }
+    configureSectionHeading(cityStatusHeadingLabel,_("City status"));statusVBox.addWidget(&cityStatusHeadingLabel,22);
+    for(auto* label : {&totalPopLabel,&unemploymentLabel,&resPopLabel,&comPopLabel,&indPopLabel,
+                       &servicesLabel,&environmentLabel,&crimeTrafficLabel}) {
+        configureValueLabel(*label);
+        statusVBox.addWidget(label,(label==&servicesLabel || label==&environmentLabel || label==&crimeTrafficLabel) ? 36 : 22);
+    }
+    detailsHBox.addWidget(&forecastVBox);detailsHBox.addWidget(HSpacer::create(16));detailsHBox.addWidget(&statusVBox);
+    mainVBox.addWidget(&detailsHBox,240);mainVBox.addWidget(Spacer::create());
+    confirmButton.setText(_("Apply"));confirmButton.setOnClick(std::bind(&CityBudgetWindow::onConfirm,this));
+    cancelButton.setText(_("Cancel"));cancelButton.setOnClick(std::bind(&CityBudgetWindow::onCancel,this));
+    buttonsHBox.addWidget(&confirmButton);buttonsHBox.addWidget(HSpacer::create(12));buttonsHBox.addWidget(&cancelButton);
+    mainVBox.addWidget(&buttonsHBox,40);mainVBox.addWidget(VSpacer::create(12));
 
     // Snapshot the live tax rate and funding % so the sliders open at the
     // current settings rather than the header defaults. updateDisplay()
@@ -349,21 +237,21 @@ void CityBudgetWindow::updateDisplay() {
     unemploymentLabel.setTextColor(unemp > 20 ? COLOR_RGB(255,80,80) : COLOR_WHITE);
 
     // Hospital/church count (auto-created by game on residential zones)
-    servicesLabel.setText(fmt::sprintf("Services: %d hospitals | %d churches",
+    servicesLabel.setText(fmt::sprintf("Hospitals: %d\nChurches: %d",
                                        citySim->getHospitalCount(), citySim->getChurchCount()));
 
     const auto& environment = citySim->getEnvironmentStatus(
         pLocalHouse ? pLocalHouse->getHouseID() : 0);
     if (environment.sampledStructures == 0) {
-        environmentLabel.setText("Land Value: — | Pollution: —");
-        crimeTrafficLabel.setText("Crime: — | Traffic: —");
+        environmentLabel.setText("Land Value: —\nPollution: —");
+        crimeTrafficLabel.setText("Crime: —\nTraffic: —");
     } else {
         environmentLabel.setText(std::string("Land Value: ")
             + DuneCity::landValueCategory(environment.averageLandValue)
-            + " | Pollution: " + DuneCity::pollutionCategory(environment.averagePollution));
+            + "\nPollution: " + DuneCity::pollutionCategory(environment.averagePollution));
         crimeTrafficLabel.setText(std::string("Crime: ")
             + DuneCity::crimeCategory(environment.averageCrime)
-            + " | Traffic: "
+            + "\nTraffic: "
             + (environment.averageTraffic < 64 ? "Light" : environment.averageTraffic < 128 ? "Moderate" : "Heavy"));
     }
 }

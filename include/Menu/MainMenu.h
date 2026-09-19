@@ -41,6 +41,7 @@ public:
 
     virtual int showMenu() override;
     virtual void update() override;
+    void handleInput(SDL_Event& event) override;
     virtual void onChildWindowClose(Window* pChildWindow) override;
 
 private:

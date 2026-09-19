@@ -183,6 +183,15 @@ public:
         std::string     language;           ///< Language code: "en" = English, "fr" = French, "de" = German
         int             scrollSpeed;        ///< Scroll speed in pixels
         bool            showTutorialHints;  ///< If true, tutorial hints are shown during the game
+        bool            wasdCamera = false;
+        bool            leftClickOrders = false;
+        bool            showMovementPaths = true;
+#ifdef __EMSCRIPTEN__
+        static constexpr bool defaultDiagnosticLogs = false;
+#else
+        static constexpr bool defaultDiagnosticLogs = true;
+#endif
+        bool            diagnosticLogs = defaultDiagnosticLogs;
         bool            multiplePlayersPerHouse = false; ///< Custom game lobby: allow two players per house (remembered across games)
     } general;
 
@@ -202,7 +211,7 @@ public:
         bool        rotateUnitGraphics;
         bool        showWatermark;      ///< Show mod/version watermark during gameplay (default: true)
         int         cursorVisibility;   ///< Cursor visibility: 0=auto, 1=hidden, 2=visible
-        int         cursorScale;        ///< Cursor scale factor in window units: 0=original size, 1=1x, 2=2x, 3=3x, 4=4x
+        int         cursorScale;        ///< Cursor scale factor in window units: 0=1.5x default, 1=1x, 2=2x, 3=3x, 4=4x
     } video;
 
     class AudioClass {

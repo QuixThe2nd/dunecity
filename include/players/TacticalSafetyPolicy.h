@@ -7,10 +7,8 @@
 #include <players/CityPlacementPolicy.h>
 
 namespace TacticalSafetyPolicy {
-inline bool needsRefineryRefuge(bool threatened,bool unsafeJob,bool returning,bool hasCargo) {
-    // An empty vehicle already in safety needs a new field or a safe hold,
-    // not another unload/deploy loop caused by its old dangerous spice job.
-    return threatened || (hasCargo && (unsafeJob || returning));
+inline bool needsRefineryRefuge(bool returning,bool full,bool hasCargo,bool safeField) {
+    return hasCargo && (returning || full || !safeField);
 }
 
 inline int harvesterThreatRadius(int item, int range) {
@@ -66,10 +64,11 @@ inline bool protectedReactorNeighbour(int type) {
 inline bool blastClearance(int x, int y, int w, int h, int bx, int by, int bw, int bh) {
     return CityPlacementPolicy::footprintDistance(x,y,w,h,bx,by,bw,bh) >= 5;
 }
-// A safe, separated reactor site wins. If none exists, rank the remaining
-// legal sites instead of preventing essential generation indefinitely.
-inline auto reactorSiteRank(int threat, int loss, bool clearance, int score) {
-    return std::make_tuple(threat == 0 && loss == 0, clearance, -threat-loss, score);
+// Live fire is never worth trading for blast spacing or a better packing score.
+// Among unexposed sites prefer no recent losses, distance beyond weapon reach,
+// blast spacing, then the rear of the base. Packing only breaks safety ties.
+inline auto reactorSiteRank(int threat, int loss, int enemyClearance, bool blastSpacing, int rear, int score) {
+    return std::make_tuple(threat == 0, -threat, loss == 0, enemyClearance, blastSpacing, rear, -loss, score);
 }
 inline bool reactorPlacementAllowed(int item, bool clearance) {
     return item == Structure_NuclearPlant || clearance;

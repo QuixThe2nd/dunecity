@@ -40,6 +40,7 @@ public:
     }
 
     ~IMemoryStream() = default;
+    size_t getRemainingLength() const override { return bufferSize-currentPos; }
 
     void open(const char* data, int length) {
         currentPos = 0;

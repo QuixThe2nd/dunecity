@@ -1,0 +1,153 @@
+# Joining a running online game
+
+Version 1.0.726 adds direct-session live joining (game protocol 6). New custom
+online games have “Allow hot join” checked by default; the map screen can opt out. Legacy hosts omit
+`allowLateJoin`, which remains false on the service. ENet/LAN and the legacy
+WebSocket relay do not implement this feature.
+
+## Discovery and admission
+
+`POST /v1/admission/list` with `details=1` returns eleven fields per game:
+`code|players|max|mode|hexHost|contentHash|hexMod|hexMap|phase|elapsedSeconds|allowLateJoin`.
+The old five/seven-field requests remain compatible. Elapsed time is wall time
+since the first match start, including pauses. Running games are listed only
+when the host is active, opted in, and has a transport seat available. Selecting
+a row shows full metadata; compact rows show map, mod and waiting/elapsed time.
+
+A compatibility-checked `/v1/admission/request` creates a private request ticket,
+not a room seat. `/v1/admission/request-status` polls it using the same claims;
+`cancel=1` cancels the request. Polls use the polling rate allowance, not the
+smaller room-creation allowance. Requests expire after inactivity or five minutes.
+Only the authenticated host session can use `/v1/p2p/join-requests` to list,
+approve, decline or abort. Approval creates a single-use grant bound to the
+approved name and claims. General admission remains closed after match start.
+
+From 1.0.727, ordinary joins and hot-join requests require an exact application
+version match as well as protocol/content compatibility. A `version_mismatch`
+refusal names both host and client versions; clients display an acknowledged,
+wrapped popup and return to the lobby without granting a seat or notifying the
+host. Older services' generic compatibility errors also open a popup.
+
+## Synchronization
+
+The host chooses an eligible living house and controller in Options → Join
+requests. Existing humans cannot be replaced. An AI may be replaced; an extra
+controller is allowed only in shared-house modes, up to two controllers per
+house. Campaign co-op restricts assignment to the campaign's shared house.
+
+The host saves an authoritative checkpoint and sends a host-only prepare packet
+(21). Existing peers pause and acknowledge (22). Only then does the host open a
+specific-name membership window and approve the service request. The original
+peer identities, certificates and connections remain bound. A service poll alone
+cannot reopen a running roster. Losing an original peer still ends the match.
+
+Once the newcomer connects to every existing peer, the host transfers the same
+serialized network-save settings to everyone over direct WebRTC channels. The
+shared GamePayloadRouter parses these packets for all transports. Chunks are
+at most 48 KiB, acknowledged cumulatively by every peer before the next chunk;
+there is no unbounded send queue. The complete envelope is capped at 5 MiB and
+the saved-game payload retains the existing 4 MiB network-save limit. Larger
+saves fail visibly before pausing. No saved state passes through HTTP.
+
+Every receiver validates the complete settings before acknowledging completion.
+The existing roster-close/start prepare/ack/commit barrier commits the enlarged
+mesh. All peers reload the same checkpoint and retain existing human state,
+unit ownership, teams and house colors. Changed controllers keep their slot's
+player ID. A new simulation epoch rejects packets from before synchronization;
+future commands from the checkpoint are discarded consistently to avoid replaying
+buffered input under changed ownership. No pathfinding/node budget is changed.
+
+The host can cancel before the start barrier. Cancellation/timeout discards the
+pending checkpoint, revokes the newcomer and resumes the original match. Peers
+have a two-minute synchronization deadline. A failure after roster commitment
+uses the existing fail-closed start behavior. Progress remains visible while
+paused. Original game saves and their version are unchanged.
+
+## Logging and verification
+
+Public seating events retain their existing named activity log. Each resumed
+roster commitment also records the updated public start roster with a fresh
+start ID, without another public-lobby start notification or anonymous new-match
+count. Server analytics settings remain independent of browser diagnostics.
+
+`tools/p2p-signaling/test/test_late_join.py` exercises real HTTP admission,
+name-bound grants, cancellation, authorization, compatibility and rate allowances.
+`tests/network/run-late-join-probe.py` links a separate diagnostic main against
+production game objects and runs three isolated native processes with real local
+PHP/WebRTC. Modes cover AI replacement, human sharing, AI sharing and abort;
+matching simulation digests are required after resumption. `--browser` provides
+a local service/static origin for an actual browser newcomer. Nothing in the
+probe changes production objects or uses the user's settings/saves.
+
+## Passive spectators (1.0.729, protocol 8)
+
+Selecting Join Game for a running public entry offers Request to play, Spectate,
+or Cancel. Spectate is admitted automatically by the host. Reject join converts
+a pending play request to observation. Neither path assigns a controller slot.
+Exact application version/content and the host's Allow hot join opt-in remain
+required. The room cap is eight connections, including spectators; co-op still
+has two controllers. Protocol 7 retains its historical synchronized-observer
+admission behavior on the service for older clients.
+
+The service binds the spectator flag to the single-use, name-bound grant and
+session. Protocol 8 session responses include `spectator=0/1`; member records
+append a fifth `0/1` field. An observer's admission leaves phase, epoch and the
+controller roster unchanged. Observers discover and connect only to the host;
+other players never connect to them. Signaling authorization enforces that pair
+restriction independently of the client. Host start-roster checks omit viewers.
+
+Spectators are excluded from readiness, start acknowledgements, frozen player
+rosters, command broadcasts, timing/backlog measurements and gameplay diagnostics.
+A failed, congested or disconnected viewer channel is removed alone. A bounded
+retired-ID bitmap prevents repeated viewer visits exhausting a match-ending
+connection-attempt counter. Spectator input cannot exhaust the player event queue.
+Their only accepted game payloads are bounded stream acknowledgements and chat.
+Chat is forwarded by the host with the original display name; it is never a
+simulation command. Active-player loss retains the normal fail-closed behavior.
+
+After the host-to-viewer channel opens, the host captures an in-memory network
+checkpoint without pausing or reloading any player. Only the viewer loads it.
+The existing 4 MiB save and 5 MiB total-envelope limits apply. A supplementary
+network-only record preserves path/target request queues, unit movement caches,
+stuck detection, AI planning state, current path budget and command-buffer size.
+Ordinary disk-save format and its deliberate load-time resets are unchanged.
+
+The host then streams the canonical command set and path budget for each tick
+whose player inputs are complete. The spectator replays these ticks, sends no
+commands or performance votes, and never runs ahead of received input. Camera
+movement and full-map viewing are local. Periodic host state fingerprints check
+catch-up integrity; divergence ends only that spectator view. AI simulation still
+runs deterministically, while the host's command stream supplies its commands.
+
+These messages use the shared GamePayloadRouter and authenticated packets 21/22:
+
+| Operation | Direction | Meaning |
+| --- | --- | --- |
+| 10 | Host / viewer ACK | Begin checkpoint / acknowledge header |
+| 11 | Host / viewer ACK | Checkpoint chunk / cumulative byte offset |
+| 12 | Host | Ordered simulation tick, budget and optional fingerprint |
+| 13 | Viewer | Checkpoint loaded; begin tick delivery |
+| 14 | Viewer | Tick consumption frontier |
+| 15 | Host | Attributed forwarded chat |
+
+Every message carries the simulation epoch. Snapshot chunks and tick payloads are
+at most 48 KiB. Host catch-up history is bounded to 1,500 ticks and 4 MiB, with at
+most 16 unconsumed ticks in flight per observer. Fair rotating delivery admits at
+most eight messages and 64 KiB per update across all observers. Transfer/ACK
+timeouts affect only the viewer; an idle, caught-up viewer does not time out merely
+because the game is paused. A viewer beyond the bounded history must reconnect.
+No player's simulation waits for an observer's acknowledgement or loading screen.
+
+Actual player hot joining retains the synchronized checkpoint transaction above,
+with spectators excluded from its barrier. When that transaction or a co-op
+mission creates a new game state, the host restarts the spectator stream with a
+fresh checkpoint. Viewers do not influence slot assignment, path budgets, fog,
+exploration or any gameplay action.
+
+The real-peer probe supports `spectate` and `reject_spectate`, a deliberate
+five-second non-reading viewer, `--busy` for moving armies/AI production, and
+`--stall` for a viewer that never finishes loading before its timeout. It checks
+that original players advance during loading, compare at cycle 1,800, and remain
+identical after the viewer leaves. Service tests cover unchanged match phase,
+host-only viewer links, grants and old-protocol compatibility. Transport tests
+cover unready/congested viewers independently of player readiness and broadcasts.

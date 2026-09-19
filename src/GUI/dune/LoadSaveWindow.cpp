@@ -46,10 +46,11 @@ LoadSaveWindow::LoadSaveWindow(bool bSave, const std::string& caption, const std
     mainHBox.addWidget(&mainVBox);
     mainHBox.addWidget(HSpacer::create(16));
 
-    titleLabel.setTextColor(COLOR_LIGHTYELLOW, COLOR_TRANSPARENT);
+    titleLabel.setTextColor(COLOR_WHITE, COLOR_TRANSPARENT);
     titleLabel.setAlignment((Alignment_Enum) (Alignment_HCenter | Alignment_VCenter));
     titleLabel.setText(caption);
-    mainVBox.addWidget(&titleLabel);
+    titleLabel.setTextFontSize(22);
+    mainVBox.addWidget(&titleLabel,40);
 
     mainVBox.addWidget(VSpacer::create(8));
 
@@ -65,10 +66,10 @@ LoadSaveWindow::LoadSaveWindow(bool bSave, const std::string& caption, const std
             directoryHBox.addWidget(&directoryButtons[i]);
         }
 
-        mainVBox.addWidget(&directoryHBox, 20);
+        mainVBox.addWidget(&directoryHBox, 30);
     }
 
-    mainVBox.addWidget(&fileListHBox, (bSave ? 120 : 150) - (directories.size() > 1 ? 20 : 0));
+    mainVBox.addWidget(&fileListHBox, (bSave ? 196 : 230) - (directories.size() > 1 ? 30 : 0));
     fileList.setColor(color);
     fileList.setOnSelectionChange(std::bind(&LoadSaveWindow::onSelectionChange, this, std::placeholders::_1));
     fileList.setOnDoubleClick(std::bind(&LoadSaveWindow::onOK, this));
@@ -78,13 +79,13 @@ LoadSaveWindow::LoadSaveWindow(bool bSave, const std::string& caption, const std
 
     if(bSave == true) {
         saveName.setTextColor(color);
-        mainVBox.addWidget(&saveName);
+        mainVBox.addWidget(&saveName,30);
         saveName.setMaximumTextLength(64);
         saveName.setForbiddenChars("?*:|<>/\\\"");
         mainVBox.addWidget(VSpacer::create(5));
     }
 
-    mainVBox.addWidget(&buttonHBox);
+    mainVBox.addWidget(&buttonHBox,36);
 
     okButton.setText(_(bSave ? "Save" : "Load"));
     okButton.setTextColor(color);

@@ -154,6 +154,7 @@ private:
         \param  defaultFocus    Button which gets the focus on showing the question box
     */
     void init(const std::string& text, const std::string& button1Text, const std::string& button2Text, int defaultFocus) {
+        textLabel.setTextFontSize(16);
         setWindowWidget(&vbox);
         vbox.addWidget(VSpacer::create(6));
         vbox.addWidget(&textLabel);
@@ -170,7 +171,7 @@ private:
         button2.setText(button2Text);
         button2.setOnClick(std::bind(&QstBox::onButton, this, QSTBOX_BUTTON2));
         hbox2.addWidget(&button2);
-        vbox2.addWidget(&hbox2);
+        vbox2.addWidget(&hbox2,32);
         vbox2.addWidget(VSpacer::create(4));
         hbox.addWidget(Spacer::create(), 0.2);
         setText(text);

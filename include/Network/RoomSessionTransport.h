@@ -51,6 +51,7 @@ public:
         RoomRelay::Role role    = RoomRelay::Role::Unknown;
         std::string     name;
         std::string     runtime;        ///< client-reported, never trusted for anything
+        bool spectator = false;        ///< authenticated admission role, never client-reported
 
         // Config verification state, mirroring what the ENet path keeps per connection.
         std::string     gameVersion;
@@ -87,6 +88,7 @@ public:
         };
 
         Type              type              = Type::Closed;
+        bool              spectator         = false;
         std::uint32_t     peerId            = 0;
         std::string       name;
         std::string       runtime;

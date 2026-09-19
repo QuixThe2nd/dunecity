@@ -16,6 +16,8 @@
  */
 
 #include <Game.h>
+#include <misc/OMemoryStream.h>
+#include <GUI/dune/JoinProgressWindow.h>
 #include <GUI/dune/FeedbackWindow.h>
 #include <misc/CampaignControls.h>
 #include <main.h>
@@ -55,6 +57,7 @@ std::mutex Game::performanceLogMutex;
 #include <misc/SaveCompat.h>
 #include <misc/TouchInput.h>
 #include <CursorManager.h>
+#include <misc/CursorAppearance.h>
 
 #include <players/HumanPlayer.h>
 #include <players/QuantBot.h>
@@ -409,6 +412,7 @@ Game::~Game() {
         spatialGrid.reset();
     }
 
+    if(spectatorViewPlayer) { pLocalPlayer=nullptr; spectatorViewPlayer.reset(); }
     delete currentGameMap;
     currentGameMap = nullptr;
     delete screenborder;
@@ -416,6 +420,7 @@ Game::~Game() {
 }
 
 void Game::initPerformanceLog() {
+    if (!settings.general.diagnosticLogs) return;
     std::lock_guard<std::mutex> lock(performanceLogMutex);
     
     if(performanceLogFile.is_open()) {
@@ -458,6 +463,7 @@ void Game::closePerformanceLog() {
 }
 
 void Game::logPerformance(const char* format, ...) {
+    if (!settings.general.diagnosticLogs) return;
     AITelemetry::PerformanceScope perfScope("telemetry.text_flush",gameCycleCount);
     std::lock_guard<std::mutex> lock(performanceLogMutex);
     
@@ -592,6 +598,7 @@ void Game::initGame(const GameInitSettings& newGameInitSettings) {
         default: {
         } break;
     }
+    if(isSpectating() && !spectatorViewPlayer) setupSpectatorView();
     AITelemetry::startGame(AITelemetry::Record().set("version", VERSION)
         .set("mod", ModManager::instance().getActiveModName())
         .set("source", newGameInitSettings.getFilename()).set("seed", gameInitSettings.getRandomSeed())
@@ -606,7 +613,7 @@ void Game::initGame(const GameInitSettings& newGameInitSettings) {
             .set("immortal_human_player", gameInitSettings.getGameOptions().immortalHumanPlayer)
             .set("harvester_limit_override", gameInitSettings.getGameOptions().maximumNumberOfHarvestersOverride))
         .set("map_width", currentGameMap ? currentGameMap->getSizeX() : 0)
-        .set("map_height", currentGameMap ? currentGameMap->getSizeY() : 0));
+        .set("map_height", currentGameMap ? currentGameMap->getSizeY() : 0), settings.general.diagnosticLogs);
     startMatchAnalytics();
 }
 
@@ -1293,6 +1300,7 @@ void Game::requestLowerBudget(int steps) {
 // MULTIPLAYER BUDGET NEGOTIATION IMPLEMENTATION
 
 void Game::checkBudgetAdjustment() {
+    if(isSpectating()) return;
     if(pNetworkManager != nullptr && !pNetworkManager->isServer()) {
         // CLIENT: Send stats ONE CYCLE BEFORE the check interval
         // This ensures the host has fresh data when it makes its decision
@@ -1955,6 +1963,8 @@ void Game::drawScreen()
                 screenborder->world2screenY(t.getLocation().y*TILESIZE));
         });
 
+    if(settings.general.showMovementPaths)drawMovementPaths();
+
     // draw the gathering point line if a structure is selected
     if(selectedList.size() == 1) {
         StructureBase *pStructure = dynamic_cast<StructureBase*>(getObjectManager().getObject(*selectedList.begin()));
@@ -1966,7 +1976,7 @@ void Game::drawScreen()
     /* draw selection rectangles */
     currentGameMap->for_each(x1, y1, x2, y2,
         [](Tile& t) {
-            if (debug || t.isExploredByTeam(pLocalHouse->getTeamID())) {
+            if (debug || currentGame->isSpectating() || t.isExploredByTeam(pLocalHouse->getTeamID())) {
                 t.blitSelectionRects(screenborder->world2screenX(t.getLocation().x*TILESIZE),
                     screenborder->world2screenY(t.getLocation().y*TILESIZE));
             }
@@ -1975,7 +1985,7 @@ void Game::drawScreen()
 
 //////////////////////////////draw unexplored/shade
 
-    if(debug == false) {
+    if(!debug && !isSpectating()) {
         SDL_Texture* hiddenTexZoomed = pGFXManager->getZoomedObjPic(ObjPic_Terrain_Hidden, currentZoomlevel);
         SDL_Texture* hiddenFogTexZoomed = pGFXManager->getZoomedObjPic(ObjPic_Terrain_HiddenFog, currentZoomlevel);
         int zoomedTileSize = world2zoomedWorld(TILESIZE);
@@ -2287,7 +2297,14 @@ void Game::drawScreen()
 
 ///////////draw action indicator
 
-    if((indicatorFrame != NONE_ID) && (screenborder->isInsideScreen(indicatorPosition, Coord(TILESIZE,TILESIZE)) == true)) {
+    auto* actionTarget=objectManager.getObject(actionIndicatorObject);
+    const auto* actionTile=actionTarget && currentGameMap->tileExists(actionTarget->getLocation())
+        ? currentGameMap->getTile(actionTarget->getLocation()) : nullptr;
+    const bool showTarget=actionTarget && actionTile && !SDL_TICKS_PASSED(SDL_GetTicks(),actionIndicatorUntil)
+        && actionTarget->isVisible(pLocalHouse->getTeamID()) && actionTile->isExploredByTeam(pLocalHouse->getTeamID())
+        && !actionTile->isFoggedByTeam(pLocalHouse->getTeamID());
+    if(showTarget && (SDL_GetTicks()/100)%2==0) actionTarget->drawSelectionBox();
+    if(!showTarget && (indicatorFrame != NONE_ID) && (screenborder->isInsideScreen(indicatorPosition, Coord(TILESIZE,TILESIZE)) == true)) {
         SDL_Texture* pUIIndicator = pGFXManager->getUIGraphic(UI_Indicator);
         SDL_Rect source = calcSpriteSourceRect(pUIIndicator, indicatorFrame, 3);
         SDL_Rect drawLocation = calcSpriteDrawingRect(  pUIIndicator,
@@ -2353,6 +2370,11 @@ void Game::drawScreen()
         pInGameMentat->draw();
     }
 
+    if(isSpectating()) {
+        if(!spectatorLabel) spectatorLabel=pFontManager->createTextureWithText("Spectating",COLOR_WHITE,18);
+        SDL_Rect rect=calcDrawingRect(spectatorLabel.get(),sideBarPos.x/2,topBarPos.h+8,HAlign::Center,VAlign::Top);
+        SDL_RenderCopy(renderer,spectatorLabel.get(),nullptr,&rect);
+    }
     // Update cursor
     updateCursor();
 }
@@ -2396,6 +2418,7 @@ void Game::doInput()
             }*/
         }
 
+        if(pNetworkManager && pNetworkManager->lateJoinPaused() && event.type!=SDL_QUIT && dynamic_cast<JoinProgressWindow*>(pInGameMenu.get())==nullptr) continue;
         if(pInGameMenu != nullptr) {
             pInGameMenu->handleInput(event);
 
@@ -2557,6 +2580,8 @@ case CursorMode_Heal: {
                             if(currentCursorMode != CursorMode_Normal) {
                                 //cancel special cursor mode
                                 setCursorMode(CursorMode_Normal);
+                            } else if(settings.general.leftClickOrders) {
+                                unselectAll(selectedList); selectedList.clear(); selectionMode=false;
                             } else if((!selectedList.empty()
                                             && (((objectManager.getObject(*selectedList.begin()))->getOwner() == pLocalHouse))
                                             && (((objectManager.getObject(*selectedList.begin()))->isRespondable())) ) )
@@ -2600,6 +2625,20 @@ case CursorMode_Heal: {
                         break;
                     }
 
+                    if(selectionMode && mouse->button==SDL_BUTTON_LEFT && settings.general.leftClickOrders
+                        && currentCursorMode==CursorMode_Normal && !(SDL_GetModState() & KMOD_SHIFT)
+                        && std::abs(mouse->x-screenborder->world2screenX(selectionRect.x))<=4
+                        && std::abs(mouse->y-screenborder->world2screenY(selectionRect.y))<=4
+                        && screenborder->isScreenCoordInsideMap(mouse->x,mouse->y)) {
+                        const Coord target(screenborder->screen2MapX(mouse->x),screenborder->screen2MapY(mouse->y));
+                        const auto* tile=currentGameMap->getTile(target);
+                        const auto* object=tile ? tile->getObjectAt(screenborder->screen2worldX(mouse->x),screenborder->screen2worldY(mouse->y)) : nullptr;
+                        if((!object || object->getOwner()!=pLocalHouse) && handleSelectedObjectsActionClick(target.x,target.y)) {
+                            indicatorFrame=0;
+                            indicatorPosition=Coord(screenborder->screen2worldX(mouse->x),screenborder->screen2worldY(mouse->y));
+                            selectionMode=false;
+                        }
+                    }
                     if(selectionMode && (mouse->button == SDL_BUTTON_LEFT)) {
                         //this keeps the box on the map, and not over game bar
                         int finalMouseX = mouse->x;
@@ -2685,10 +2724,12 @@ case CursorMode_Heal: {
     if((pInGameMenu == nullptr) && (pInGameMentat == nullptr) && (pWaitingForOtherPlayers == nullptr) && (SDL_GetWindowFlags(window) & SDL_WINDOW_MOUSE_FOCUS)) {
 
         const Uint8 *keystate = SDL_GetKeyboardState(nullptr);
-        scrollDownMode =  (drawnMouseY >= getRendererHeight()-1-SCROLLBORDER) || keystate[SDL_SCANCODE_DOWN];
-        scrollLeftMode = (drawnMouseX <= SCROLLBORDER) || keystate[SDL_SCANCODE_LEFT];
-        scrollRightMode = (drawnMouseX >= getRendererWidth()-1-SCROLLBORDER) || keystate[SDL_SCANCODE_RIGHT];
-        scrollUpMode = (drawnMouseY <= SCROLLBORDER) || keystate[SDL_SCANCODE_UP];
+        const bool cameraKeys=!chatMode && !pInterface->hasChildWindow();
+        const bool wasd=cameraKeys && settings.general.wasdCamera && !(SDL_GetModState() & (KMOD_SHIFT|KMOD_CTRL|KMOD_ALT|KMOD_GUI));
+        scrollDownMode =  (drawnMouseY >= getRendererHeight()-1-SCROLLBORDER) || (cameraKeys && keystate[SDL_SCANCODE_DOWN]) || (wasd && keystate[SDL_SCANCODE_S]);
+        scrollLeftMode = (drawnMouseX <= SCROLLBORDER) || (cameraKeys && keystate[SDL_SCANCODE_LEFT]) || (wasd && keystate[SDL_SCANCODE_A]);
+        scrollRightMode = (drawnMouseX >= getRendererWidth()-1-SCROLLBORDER) || (cameraKeys && keystate[SDL_SCANCODE_RIGHT]) || (wasd && keystate[SDL_SCANCODE_D]);
+        scrollUpMode = (drawnMouseY <= SCROLLBORDER) || (cameraKeys && keystate[SDL_SCANCODE_UP]) || (wasd && keystate[SDL_SCANCODE_W]);
 
         if(scrollLeftMode && scrollRightMode) {
             // do nothing
@@ -2805,10 +2846,21 @@ void Game::runMainLoop() {
 
     int frameStart = SDL_GetTicks();
     int frameTime = 0;
+    Uint64 previousFrameEndPerf=0;
 
     do {
         // Start timing this rendered frame
         const Uint64 frameStartPerf = SDL_GetPerformanceCounter();
+        const Uint32 frameStartCycle=gameCycleCount;
+        double inputMsThisFrame=0.0,commandsMsThisFrame=0.0;
+        if (previousFrameEndPerf) {
+            const auto gapUs=static_cast<int64_t>(getElapsedMs(previousFrameEndPerf,frameStartPerf)*1000);
+            auto& perf=AITelemetry::log();
+            perf.performance(gameCycleCount,-1,"frame.gap",gapUs);
+            if (gapUs>=100000) perf.frameStall(gameCycleCount,gapUs,AITelemetry::Record()
+                .set("kind","between_frames").set("paused",bPause)
+                .set("input_focus",(SDL_GetWindowFlags(window)&SDL_WINDOW_INPUT_FOCUS)!=0));
+        }
         frameTiming.gameCyclesThisFrame = 0;
         frameTiming.totalPathsProcessedThisFrame = 0;
         frameTiming.pathTokensThisFrame = 0;
@@ -2893,7 +2945,9 @@ void Game::runMainLoop() {
                 bWaitForNetwork = handleNetworkUpdates();
             }
 
+            const Uint64 inputStart=SDL_GetPerformanceCounter();
             processInput();
+            inputMsThisFrame+=getElapsedMs(inputStart,SDL_GetPerformanceCounter());
 
             if(pInGameMentat != nullptr) {
                 pInGameMentat->update();
@@ -2903,9 +2957,11 @@ void Game::runMainLoop() {
                 pWaitingForOtherPlayers->update();
             }
 
-            cmdManager.update();
+            const Uint64 commandsStart=SDL_GetPerformanceCounter();
+            if(!pNetworkManager || !pNetworkManager->lateJoinPaused()) cmdManager.update();
+            commandsMsThisFrame+=getElapsedMs(commandsStart,SDL_GetPerformanceCounter());
 
-            if(!bWaitForNetwork && !bPause) {
+            if(!bWaitForNetwork && !bPause && (!pNetworkManager || !pNetworkManager->lateJoinPaused())) {
                 // Time the core simulation step for CPU load detection
                 const Uint64 simStart = SDL_GetPerformanceCounter();
                 try {
@@ -2941,7 +2997,7 @@ void Game::runMainLoop() {
                 } else {
                     frameTime -= getGameSpeed();
                 }
-            } else if(bWaitForNetwork || bPause) {
+            } else if(bWaitForNetwork || bPause || (pNetworkManager && pNetworkManager->lateJoinPaused())) {
                 // When waiting for network or paused, measure the wait time
                 if(bWaitForNetwork) {
                     Uint64 networkWaitEnd = SDL_GetPerformanceCounter();
@@ -3033,6 +3089,7 @@ void Game::runMainLoop() {
 
         // End timing this rendered frame
         const Uint64 frameEndPerf = SDL_GetPerformanceCounter();
+        previousFrameEndPerf=frameEndPerf;
         const double thisFrameMs = getElapsedMs(frameStartPerf, frameEndPerf);
         frameTiming.totalMs += thisFrameMs;
         frameTiming.totalGameCycles += frameTiming.gameCyclesThisFrame;
@@ -3052,12 +3109,19 @@ void Game::runMainLoop() {
             record("frame.structures",frameTiming.structuresMsThisFrame);
             record("frame.render",frameTiming.renderingMsThisFrame);
             record("frame.network",frameTiming.networkWaitMsThisFrame);
+            record("frame.input",inputMsThisFrame);
+            record("frame.commands",commandsMsThisFrame);
             perf.performance(gameCycleCount,-1,"frame.cycles",frameTiming.gameCyclesThisFrame,-1,false);
             perf.performance(gameCycleCount,-1,"frame.units_count",unitList.size(),-1,false);
             perf.performance(gameCycleCount,-1,"frame.structures_count",structureList.size(),-1,false);
             perf.performance(gameCycleCount,-1,"frame.tick_ms",getGameSpeed(),-1,false);
             perf.performance(gameCycleCount,-1,"frame.paused",bPause,-1,false);
-            if (perf.isWorstFrame(us(thisFrameMs))) perf.slowFrame(gameCycleCount,us(thisFrameMs),AITelemetry::Record()
+            if (perf.isWorstFrame(us(thisFrameMs)) || thisFrameMs>=100.0) {
+                const auto context=AITelemetry::Record()
+                .set("kind","game_frame").set("start_cycle",frameStartCycle)
+                .set("input_us",us(inputMsThisFrame)).set("commands_us",us(commandsMsThisFrame))
+                .set("menu_open",pInGameMenu!=nullptr || pInGameMentat!=nullptr || pWaitingForOtherPlayers!=nullptr)
+                .set("input_focus",(SDL_GetWindowFlags(window)&SDL_WINDOW_INPUT_FOCUS)!=0)
                 .set("ai_us",us(frameTiming.aiMsThisFrame)).set("city_us",us(frameTiming.citySimMsThisFrame))
                 .set("path_us",us(frameTiming.pathfindingMsThisFrame)).set("render_us",us(frameTiming.renderingMsThisFrame))
                 .set("units_us",us(frameTiming.unitsMsThisFrame)).set("structures_us",us(frameTiming.structuresMsThisFrame))
@@ -3066,7 +3130,10 @@ void Game::runMainLoop() {
                 .set("cycles",frameTiming.gameCyclesThisFrame).set("queue",pathRequestQueue.size())
                 .set("path_nodes",frameTiming.pathTokensThisFrame).set("paths",frameTiming.totalPathsProcessedThisFrame)
                 .set("units",unitList.size()).set("structures",structureList.size())
-                .set("tick_ms",getGameSpeed()).set("paused",bPause));
+                .set("tick_ms",getGameSpeed()).set("paused",bPause);
+                perf.slowFrame(gameCycleCount,us(thisFrameMs),context);
+                perf.frameStall(gameCycleCount,us(thisFrameMs),context);
+            }
             perf.flushPerformance(gameCycleCount);
         }
 
@@ -3080,9 +3147,9 @@ void Game::runMainLoop() {
         static Uint32 lastSpikeLogCycle = 0;
         if (thisFrameMs > kFrameSpikeThresholdMs
             && frameTiming.frameCount > kSpikeWarmupFrames
-            // Rate-limit to one spike log per 10 game cycles so a sustained
-            // bad period doesn't flood the file.
-            && (gameCycleCount - lastSpikeLogCycle >= 10 || lastSpikeLogCycle == 0)) {
+            // Rate-limit smaller spikes to one per 10 cycles; keep every
+            // substantial stall even when adjacent frames are worse.
+            && (thisFrameMs>=100.0 || gameCycleCount - lastSpikeLogCycle >= 10 || lastSpikeLogCycle == 0)) {
             lastSpikeLogCycle = gameCycleCount;
             logPerformance("[FRAME SPIKE] Cycle %u frame=%.1fms cycles=%d ai=%.1f(worst h%d=%.1f)"
                            " citySim=%.1f units=%.1f"
@@ -3209,7 +3276,7 @@ void Game::renderFrame() {
     SDL_RenderCopy(renderer, screenTexture, nullptr, nullptr);
     // Menus use the arrow without discarding the pending gameplay command.
     const bool modalOpen = pInGameMenu || pInGameMentat || pWaitingForOtherPlayers;
-    presentWithCursor(modalOpen ? CursorMode_Normal : currentCursorMode);
+    presentWithCursor(modalOpen ? CursorMode_Normal : currentCursorMode, !modalOpen);
     
     const Uint64 renderEnd = SDL_GetPerformanceCounter();
     const double renderMs = getElapsedMs(renderStart, renderEnd);
@@ -3255,6 +3322,20 @@ void Game::updateGameState() {
         return;
     }
 
+    if(isSpectating() && !observerCyclePrepared) return;
+    if(pNetworkManager && pNetworkManager->isServer() && pNetworkManager->hasObserverStreams()) {
+        OMemoryStream frame; frame.open(); frame.writeUint32(negotiatedBudget);
+        std::string fingerprint;
+        if(gameCycleCount%GameStateDigest::kDigestIntervalCycles==0) {
+            Uint8 encoded[GameStateDigest::kEncodedSize]; GameStateDigest::encode(computeStateDigest(),encoded);
+            fingerprint.assign(reinterpret_cast<const char*>(encoded),sizeof(encoded));
+        }
+        frame.writeString(fingerprint);
+        const auto& commands=cmdManager.commandsAt(gameCycleCount);
+        frame.writeUint32(commands.size()); for(const auto& command : commands) command.save(frame);
+        pNetworkManager->publishObserverCycle(gameCycleCount,std::string(frame.getData(),frame.getDataLength()));
+    }
+    observerCyclePrepared=false;
     pInterface->getRadarView().update();
     cmdManager.executeCommands(gameCycleCount);
 
@@ -3518,6 +3599,10 @@ void Game::initializeNetwork() {
         }
 
         cmdManager.setNetworkCycleBuffer(networkBuffer);
+        if(isSpectating()) {
+            loadObserverRuntime(pNetworkManager->takeObserverRuntime());
+            pNetworkManager->observerLoaded(gameCycleCount);
+        }
     }
 }
 
@@ -3850,12 +3935,19 @@ void Game::onMentat()
 }
 
 bool Game::canSkipMission() const {
-    return !bReplay && !finished && !bQuitGame && pLocalPlayer && pLocalHouse
+    return !isSpectating() && !bReplay && !finished && !bQuitGame && pLocalPlayer && pLocalHouse
         && CampaignControls::maySkip(gameInitSettings.getGameType(), gameInitSettings.getHouseID(),
                                      pLocalHouse->getHouseID(), true);
 }
 
 void Game::onSkipMission() {
+    if(!canSkipMission())return;
+    auto menu=std::make_unique<InGameMenu>(isNetworkGameType(gameType),COLOR_WHITE);
+    menu->onSkipMission();
+    pInGameMenu=std::move(menu); bMenu=true; pauseGame();
+}
+
+void Game::confirmSkipMission() {
     if(canSkipMission()) cmdManager.addCommand(Command(pLocalPlayer->getPlayerID(), CMD_CAMPAIGN_SKIP));
 }
 
@@ -4080,6 +4172,7 @@ bool Game::loadSaveGame(InputStream& stream) {
     }
 
     // if this is a multiplayer load we need to save some information before we overwrite gameInitSettings with the settings saved in the savegame
+    const bool lateJoinLoad=pNetworkManager && pNetworkManager->lateJoinLoading();
     const bool bCoopLoad = gameInitSettings.getGameType() == GameType::LoadCoop;
     const std::string coopServer = gameInitSettings.getServername();
     bool bMultiplayerLoad = (gameInitSettings.getGameType() == GameType::LoadMultiplayer || bCoopLoad);
@@ -4186,7 +4279,15 @@ bool Game::loadSaveGame(InputStream& stream) {
     // Single-player saves contain a local-player byte even when hosted online.
     Uint8 savedLocalPlayerID = 0;
     if(!savedNetworkLayout) savedLocalPlayerID = stream.readUint8();
-    if(bCoopLoad) {
+    if(lateJoinLoad) {
+        for(const auto& info : oldHouseInfoList) {
+            auto* target=getHouse(info.houseID);
+            if(!target) THROW(std::runtime_error,"The requested house no longer exists.");
+            std::vector<std::pair<std::string,std::string>> desired;
+            for(const auto& p : info.playerInfoList) desired.emplace_back(p.playerName,p.playerClass);
+            target->configureNetworkPlayers(desired);
+        }
+    } else if(bCoopLoad) {
         for(const auto& info : oldHouseInfoList) {
             if(info.houseID != gameInitSettings.getHouseID()) continue;
             House* shared = getHouse(info.houseID);
@@ -4239,6 +4340,7 @@ bool Game::loadSaveGame(InputStream& stream) {
         pLocalHouse = house[pLocalPlayer->getHouse()->getHouseID()].get();
     }
 
+    if(isSpectating()) setupSpectatorView();
     if(!pLocalPlayer || !pLocalHouse) THROW(std::runtime_error, "Cannot assign the local co-op player.");
 
     debug = stream.readBool();
@@ -4369,6 +4471,16 @@ bool Game::loadSaveGame(InputStream& stream) {
     logLoadStage("command history");
     cmdManager.load(stream);
 
+    if(lateJoinLoad) {
+        gameInitSettings.clearHouseInfo();
+        for(const auto& info : oldHouseInfoList) gameInitSettings.addHouseInfo(info);
+        for(auto& actual : houseInfoListSetup)
+            for(const auto& requested : oldHouseInfoList)
+                if(actual.houseID==requested.houseID) actual.playerInfoList=requested.playerInfoList;
+        for(const auto& h : house) if(h) for(const auto& p : h->getPlayerList())
+            if(auto* human=dynamic_cast<HumanPlayer*>(p.get())) human->nextExpectedCommandsCycle=gameCycleCount;
+        cmdManager.discardCommandsFrom(gameCycleCount);
+    }
     if(bCoopLoad) {
         const bool campaign = isCampaignGameType(gameInitSettings.getGameType());
         gameInitSettings.enableCoop(campaign, coopServer);
@@ -4411,6 +4523,12 @@ bool Game::saveGame(const std::string& filename)
         return false;
     }
 
+    saveGame(fs);
+    fs.close();
+    return true;
+}
+
+void Game::saveGame(OutputStream& fs) {
     fs.writeUint32(SAVEMAGIC);
 
     fs.writeUint32(SAVEGAMEVERSION);
@@ -4512,10 +4630,6 @@ bool Game::saveGame(const std::string& filename)
 
     // CommandManager is at the very end of the file. DO NOT CHANGE THIS!
     cmdManager.save(fs);
-
-    fs.close();
-
-    return true;
 }
 
 
@@ -4701,6 +4815,7 @@ void Game::onPeerDisconnected(const std::string& name, bool bHost, int cause) {
 }
 
 void Game::setGameWon() {
+    if(isSpectating()) return;
     if(!bQuitGame && !finished) {
         won = true;
         finished = true;
@@ -4711,6 +4826,7 @@ void Game::setGameWon() {
 
 
 void Game::setGameLost() {
+    if(isSpectating()) return;
     if(!bQuitGame && !finished) {
         won = false;
         finished = true;
@@ -4852,16 +4968,27 @@ void Game::handleChatInput(SDL_KeyboardEvent& keyboardEvent) {
 }
 
 
-void Game::handleKeyInput(SDL_KeyboardEvent& keyboardEvent) {
+void Game::handleKeyInput(SDL_KeyboardEvent& keyboardEvent)
+{
+    if(isSpectating()) {
+        switch(keyboardEvent.keysym.sym) {
+            case SDLK_ESCAPE: case SDLK_RETURN: case SDLK_LEFT: case SDLK_RIGHT:
+            case SDLK_UP: case SDLK_DOWN: case SDLK_TAB: break;
+            default: return;
+        }
+    }
     switch(keyboardEvent.keysym.sym) {
 
         case SDLK_0: {
-            //if ctrl and 0 remove selected units from all groups
+            // Removing selection also changes selectedList: traverse a snapshot.
+            const auto previousSelection = selectedList;
             if(SDL_GetModState() & KMOD_CTRL) {
-                for(Uint32 objectID : selectedList) {
+                for(Uint32 objectID : previousSelection) {
                     ObjectBase* pObject = objectManager.getObject(objectID);
-                    pObject->setSelected(false);
-                    pObject->removeFromSelectionLists();
+                    if(pObject) {
+                        pObject->setSelected(false);
+                        selectedByOtherPlayerList.erase(objectID);
+                    }
                     for(int i=0; i < NUMSELECTEDLISTS; i++) {
                         pLocalPlayer->getGroupList(i).erase(objectID);
                     }
@@ -4870,8 +4997,8 @@ void Game::handleKeyInput(SDL_KeyboardEvent& keyboardEvent) {
                 currentGame->selectionChanged();
                 currentCursorMode = CursorMode_Normal;
             } else {
-                for(Uint32 objectID : selectedList) {
-                    objectManager.getObject(objectID)->setSelected(false);
+                for(Uint32 objectID : previousSelection) {
+                    if(auto* object = objectManager.getObject(objectID)) object->setSelected(false);
                 }
                 selectedList.clear();
                 currentGame->selectionChanged();
@@ -5003,12 +5130,49 @@ void Game::handleKeyInput(SDL_KeyboardEvent& keyboardEvent) {
         } break;
 
         case SDLK_a: {
+            if(settings.general.wasdCamera && !(keyboardEvent.keysym.mod & KMOD_SHIFT))break;
             //set object to attack
             setCursorMode(CursorMode_Attack);
         } break;
 
+        case SDLK_s: {
+            if(keyboardEvent.keysym.mod & (KMOD_CTRL|KMOD_ALT|KMOD_GUI)) break;
+            if(settings.general.wasdCamera && !(keyboardEvent.keysym.mod & KMOD_SHIFT)) break;
+            UnitBase* responder=nullptr;
+            for(Uint32 id:selectedList) {
+                auto* unit=dynamic_cast<UnitBase*>(objectManager.getObject(id));
+                if(unit && unit->getOwner()==pLocalHouse && unit->isRespondable()) {
+                    unit->handleSetAttackModeClick(STOP); responder=unit;
+                }
+            }
+            if(responder) responder->playConfirmSound();
+        } break;
+
         case SDLK_t: {
-            bShowTime = !bShowTime;
+            if(keyboardEvent.keysym.mod & (KMOD_ALT|KMOD_GUI)) break;
+            if(keyboardEvent.keysym.mod & KMOD_SHIFT) {
+                bShowTime = !bShowTime;
+                break;
+            }
+            std::set<Uint32> types;
+            for(Uint32 id:selectedList) {
+                const auto* unit=dynamic_cast<const UnitBase*>(objectManager.getObject(id));
+                if(unit && unit->getOwner()==pLocalHouse) types.insert(unit->getItemID());
+            }
+            if(types.empty()) break;
+            const bool wholeMap=(keyboardEvent.keysym.mod & KMOD_CTRL)!=0;
+            std::set<Uint32> matching;
+            for(const auto* unit:unitList) {
+                if(unit->getOwner()==pLocalHouse && unit->isRespondable() && unit->isActive()
+                    && types.count(unit->getItemID())
+                    && (wholeMap || screenborder->isTileInsideScreen(unit->getLocation())))
+                    matching.insert(unit->getObjectID());
+            }
+            unselectAll(selectedList);
+            selectedList=std::move(matching);
+            selectAll(selectedList);
+            selectionChanged();
+            currentCursorMode=CursorMode_Normal;
         } break;
 
         case SDLK_ESCAPE: {
@@ -5186,6 +5350,7 @@ void Game::handleKeyInput(SDL_KeyboardEvent& keyboardEvent) {
 
 
         case SDLK_d: {
+            if(settings.general.wasdCamera && !(keyboardEvent.keysym.mod & KMOD_SHIFT))break;
             setCursorMode(CursorMode_CarryallDrop);
         } break;
 
@@ -5547,12 +5712,36 @@ void Game::handleCityRoadPlacementClick(int xPos, int yPos) {
     soundPlayer->playSound(Sound_PlaceStructure);
 }
 
+CursorAppearance::Action Game::getHoverCursorAction() const {
+    using Action=CursorAppearance::Action;
+    if(!pLocalHouse || !screenborder || !pInterface || pInterface->hasChildWindow()
+        || chatMode || selectionMode || !screenborder->isScreenCoordInsideMap(drawnMouseX,drawnMouseY))
+        return Action::Pointer;
+    const int x=screenborder->screen2MapX(drawnMouseX),y=screenborder->screen2MapY(drawnMouseY);
+    if(!currentGameMap->tileExists(x,y)) return Action::Pointer;
+    for(Uint32 id:selectedList) {
+        const auto* unit=dynamic_cast<const UnitBase*>(objectManager.getObject(id));
+        if(!unit || unit->getOwner()!=pLocalHouse || !unit->isRespondable()) continue;
+        const auto* target=unit->getActionClickTarget(x,y);
+        if(settings.general.leftClickOrders && target && target->getOwner()==pLocalHouse) continue;
+        if(target && target->getOwner()->getTeamID()!=pLocalHouse->getTeamID()) {
+            if(unit->canAttack(target)) return Action::Attack;
+        } else {
+            const auto* structure=dynamic_cast<const StructureBase*>(target);
+            if(isHarvesterLikeUnit(unit->getItemID()) && structure && structure->getOwner()==pLocalHouse
+                && structure->acceptsHarvesterDropoff()) return Action::Return;
+        }
+    }
+    // The move symbol is reserved for the explicit Move button / M mode.
+    return Action::Pointer;
+}
+
 bool Game::handleSelectedObjectsActionClick(int xPos, int yPos) {
     //let unit handle right click on map or target
     ObjectBase  *pResponder = nullptr;
     for(Uint32 objectID : selectedList) {
         ObjectBase* pObject = objectManager.getObject(objectID);
-        if(pObject->getOwner() == pLocalHouse && pObject->isRespondable()) {
+        if(pObject && pObject->getOwner() == pLocalHouse && pObject->isRespondable()) {
             pObject->handleActionClick(xPos, yPos);
 
             //if this object obey the command
@@ -5561,7 +5750,14 @@ bool Game::handleSelectedObjectsActionClick(int xPos, int yPos) {
         }
     }
 
+    actionIndicatorObject=NONE_ID;
     if(pResponder) {
+        if(const auto* unit=dynamic_cast<const UnitBase*>(pResponder)) {
+            if(const auto* target=unit->getActionClickTarget(xPos,yPos)) {
+                actionIndicatorObject=target->getObjectID();
+                actionIndicatorUntil=SDL_GetTicks()+600;
+            }
+        }
         pResponder->playConfirmSound();
         return true;
     } else {
@@ -5869,16 +6065,13 @@ void Game::drawCityPlacementHint() {
 
 
 void Game::takeScreenshot() const {
-    std::string screenshotFilename;
-    int i = 1;
-    do {
-        screenshotFilename = "Screenshot" + std::to_string(i) + ".png";
-        i++;
-    } while(existsFile(screenshotFilename) == true);
-
-    sdl2::surface_ptr pCurrentScreen = renderReadSurface(renderer);
-    SavePNG(pCurrentScreen.get(), screenshotFilename.c_str());
-    currentGame->addToNewsTicker(_("Screenshot saved") + ": '" + screenshotFilename + "'");
+    std::string filename;
+    if(saveScreenshot(renderer,filename)) {
+        currentGame->addToNewsTicker(_("Screenshot saved") + ": '" + filename + "'");
+    } else {
+        SDL_Log("Screenshot failed: %s",SDL_GetError());
+        currentGame->addToNewsTicker(_("Could not save screenshot"));
+    }
 }
 
 void Game::triggerFireDisaster() {
@@ -5961,6 +6154,65 @@ bool Game::handleNetworkUpdates() {
     }
 
     pNetworkManager->update();
+    if(auto* direct=pNetworkManager->getDirectTransport(); direct && pNetworkManager->isServer()) {
+        std::set<std::string> currentRequests;
+        for(const auto& request : direct->joinRequests()) {
+            currentRequests.insert(request.id);
+            if(request.spectator) {
+                if(!pNetworkManager->lateJoinPaused() && !direct->joinDecisionPending()
+                   && !direct->manageJoin("approve_spectator",request.id)) direct->manageJoin("abort",request.id);
+                continue;
+            }
+            if(!seenJoinRequests.count(request.id)) addToNewsTicker(request.name+" wants to join. Open Options > Join requests.");
+        }
+        seenJoinRequests=std::move(currentRequests);
+    }
+    if(!pNetworkManager->lateJoinStatus().empty() && lastJoinStatus!=pNetworkManager->lateJoinStatus()) {
+        lastJoinStatus=pNetworkManager->lateJoinStatus(); addToNewsTicker(lastJoinStatus);
+    }
+    if(pNetworkManager->lateJoinReady()) { bQuitGame=true; return true; }
+    if(pNetworkManager->lateJoinPaused()) {
+        startWaitingForOtherPlayersTime=0; pWaitingForOtherPlayers.reset();
+        if(!pInGameMenu) { pInGameMenu=std::make_unique<JoinProgressWindow>(); bMenu=true; }
+        if(auto* progress=dynamic_cast<JoinProgressWindow*>(pInGameMenu.get())) progress->refresh();
+        return true;
+    }
+    if(dynamic_cast<JoinProgressWindow*>(pInGameMenu.get())) { pInGameMenu.reset(); bMenu=false; }
+
+    if(pNetworkManager->isServer()) prepareObserverStreams();
+    if(isSpectating()) {
+        if(observerCyclePrepared) return false;
+        std::string bytes;
+        if(!pNetworkManager->takeObserverCycle(gameCycleCount,bytes)) return true;
+        try {
+            IMemoryStream frame(bytes.data(),bytes.size());
+            const auto budget=frame.readUint32(); const auto fingerprint=frame.readString();
+            if(!fingerprint.empty()) {
+                GameStateDigest::Digest expected;
+                if(!GameStateDigest::decode(reinterpret_cast<const Uint8*>(fingerprint.data()),fingerprint.size(),expected)
+                   || computeStateDigest().divergesFrom(expected)) throw std::runtime_error("Spectator state diverged");
+            }
+            const auto count=frame.readUint32();
+            if(budget<kMinBudget || budget>kMaxBudget || count>4096) throw std::runtime_error("Invalid spectator tick");
+            std::vector<Command> commands; commands.reserve(count);
+            for(Uint32 i=0;i<count;++i) {
+                commands.emplace_back(frame);
+                if(!CommandValidation::isWellFormedCommand(static_cast<Uint32>(commands.back().getCommandID()),commands.back().getParameter().size()))
+                    throw std::runtime_error("Malformed spectator command");
+            }
+            if(frame.getRemainingLength()!=0) throw std::runtime_error("Extra spectator tick data");
+            negotiatedBudget=budget;
+            cmdManager.discardCommandsFrom(gameCycleCount);
+            for(const auto& command : commands) cmdManager.addCommand(command,gameCycleCount);
+            observerCyclePrepared=true;
+            skipToGameCycle=pNetworkManager->observerFrontier();
+            return false;
+        } catch(const std::exception& error) {
+            SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,"Spectator stream stopped at cycle %u: %s",gameCycleCount,error.what());
+            addToNewsTicker("The spectator view lost synchronization. Please spectate again.");
+            pNetworkManager->disconnect(); quitGame(); return true;
+        }
+    }
     bool bWaitForNetwork = false;
 
     // Check for network delays
@@ -6063,6 +6315,7 @@ GameStateDigest::Digest Game::computeStateDigest() const {
 }
 
 void Game::updateStateDigests() {
+    if(isSpectating()) return;
     if(pNetworkManager == nullptr || !pNetworkManager->isRelaySession()) {
         return;
     }
@@ -6213,4 +6466,179 @@ void Game::dumpCombatStats() {
     combatStats.launcherRocketsKillOrni = 0;
     combatStats.launcherRocketsExpired = 0;
     SDL_Log("[Combat Stats] ================================================================================");
+}
+
+void Game::drawMovementPaths() {
+    SDL_Rect previousClip{};
+    const bool clipped=SDL_RenderIsClipEnabled(renderer);
+    SDL_RenderGetClipRect(renderer,&previousClip);
+    SDL_Rect field{0,topBarPos.h,sideBarPos.x,getRendererHeight()-topBarPos.h};
+    if(clipped)SDL_IntersectRect(&field,&previousClip,&field);
+    SDL_RenderSetClipRect(renderer,&field);
+    Uint8 r,g,b,a; SDL_GetRenderDrawColor(renderer,&r,&g,&b,&a);
+    int count=0;
+    for(Uint32 id:selectedList) {
+        const auto* unit=dynamic_cast<const UnitBase*>(objectManager.getObject(id));
+        if(!unit || !unit->isActive() || unit->getOwner()!=pLocalHouse || unit->getDestination().isInvalid()
+            || unit->getDestination()==unit->getLocation())continue;
+        if(++count>64)break;
+        Coord previous(screenborder->world2screenX(unit->getRealX().lround()),screenborder->world2screenY(unit->getRealY().lround()));
+        auto segment=[&](Coord tile,bool pending) {
+            const Coord next(screenborder->world2screenX(tile.x*TILESIZE+TILESIZE/2),screenborder->world2screenY(tile.y*TILESIZE+TILESIZE/2));
+            SDL_SetRenderDrawColor(renderer,0,0,0,255);
+            SDL_RenderDrawLine(renderer,previous.x,previous.y+1,next.x,next.y+1);
+            SDL_SetRenderDrawColor(renderer,pending?180:80,230,255,255);
+            SDL_RenderDrawLine(renderer,previous.x,previous.y,next.x,next.y);
+            previous=next;
+        };
+        const auto& route=unit->getPlannedPath();
+        if(route.empty())segment(unit->getDestination(),true);
+        else { int steps=0; for(Coord tile:route) { if(++steps>512)break; segment(tile,false); } }
+        SDL_Rect marker{previous.x-2,previous.y-2,5,5};SDL_RenderDrawRect(renderer,&marker);
+    }
+    SDL_SetRenderDrawColor(renderer,r,g,b,a);
+    SDL_RenderSetClipRect(renderer,clipped ? &previousClip : nullptr);
+}
+
+void Game::toggleMovementPaths() {
+    settings.general.showMovementPaths = !settings.general.showMovementPaths;
+    INIFile config(getConfigFilepath());
+    config.setBoolValue("General","Movement Paths",settings.general.showMovementPaths);
+    config.saveChangesTo(getConfigFilepath());
+    WebRuntime::syncPersistentFiles();
+}
+
+bool Game::isSpectating() const { return pNetworkManager && pNetworkManager->isSpectating(); }
+
+void Game::setupSpectatorView() {
+    // Observation has no simulation player, controller slot or ownership. The UI's
+    // legacy non-null HumanPlayer pointer uses a detached, unregistered view object.
+    pLocalHouse=nullptr;
+    for(const auto& h : house) if(h && !h->getPlayerList().empty()) { pLocalHouse=h.get(); break; }
+    if(!pLocalHouse) THROW(std::runtime_error,"There is no house to observe.");
+    spectatorViewPlayer=std::make_unique<HumanPlayer>(pLocalHouse,getLocalPlayerName());
+    pLocalPlayer=spectatorViewPlayer.get();
+}
+
+
+std::vector<Game::JoinSlot> Game::availableJoinSlots() const {
+    std::vector<JoinSlot> result;
+    const bool coop=isCoopGameType(gameType);
+    const bool shared=coop || gameInitSettings.isMultiplePlayersPerHouse();
+    for(int h=0;h<NUM_HOUSES;++h) {
+        const auto* target=house[h].get();
+        if(!target || !target->isAlive() || (coop && h!=gameInitSettings.getHouseID())) continue;
+        const auto& controllers=target->getPlayerList();
+        if(controllers.empty()) continue;
+        int index=0;
+        for(const auto& p : controllers) {
+            if(dynamic_cast<HumanPlayer*>(p.get())==nullptr)
+                result.push_back({h,index,"Replace "+p->getPlayername()+" (house "+std::to_string(h+1)+")"});
+            ++index;
+        }
+        if(shared && controllers.size()<2)
+            result.push_back({h,index,"Share with "+controllers.front()->getPlayername()+" (house "+std::to_string(h+1)+")"});
+    }
+    return result;
+}
+
+bool Game::acceptJoinRequest(const std::string& request, const std::string& name, const JoinSlot& slot, bool spectator) {
+    if(!pNetworkManager || !pNetworkManager->isServer() || pNetworkManager->lateJoinPaused()) return false;
+    if(spectator) return pNetworkManager->getDirectTransport() && pNetworkManager->getDirectTransport()->manageJoin("approve_spectator",request);
+    const auto choices=availableJoinSlots();
+    if(!spectator && std::none_of(choices.begin(),choices.end(),[&](const auto& s){return s.house==slot.house && s.controller==slot.controller;})) return false;
+    try {
+        OMemoryStream stream; stream.open(); saveGame(stream);
+        auto snapshot=gameInitSettings.networkSnapshot(std::string(stream.getData(),stream.getDataLength()));
+        snapshot.setMultiplePlayersPerHouse(gameInitSettings.isMultiplePlayersPerHouse() || isCoopGameType(gameType));
+        for(int h=0;h<NUM_HOUSES;++h) {
+            const auto* target=house[h].get(); if(!target || target->getPlayerList().empty()) continue;
+            GameInitSettings::HouseInfo info(static_cast<HOUSETYPE>(h),target->getTeamID());
+            info.colorOfHouse=getHouseVisualHouse(h);
+            int index=0;
+            for(const auto& p : target->getPlayerList()) {
+                info.addPlayerInfo(GameInitSettings::PlayerInfo(!spectator && h==slot.house && index==slot.controller ? name : p->getPlayername(),
+                    !spectator && h==slot.house && index==slot.controller ? HUMANPLAYERCLASS : p->getPlayerclass()));
+                ++index;
+            }
+            if(!spectator && h==slot.house && slot.controller==index) info.addPlayerInfo(GameInitSettings::PlayerInfo(name,HUMANPLAYERCLASS));
+            snapshot.addHouseInfo(info);
+        }
+        return pNetworkManager->beginLateJoin(request,name,snapshot,spectator);
+    } catch(const std::exception& e) { addToNewsTicker(std::string("Could not prepare the join: ")+e.what()); return false; }
+}
+
+GameInitSettings Game::spectatorSnapshot() {
+    OMemoryStream save; save.open(); saveGame(save);
+    auto snapshot=gameInitSettings.networkSnapshot(std::string(save.getData(),save.getDataLength()));
+    snapshot.setMultiplePlayersPerHouse(gameInitSettings.isMultiplePlayersPerHouse() || isCoopGameType(gameType));
+    for(int h=0;h<NUM_HOUSES;++h) {
+        const auto* target=house[h].get(); if(!target || target->getPlayerList().empty()) continue;
+        GameInitSettings::HouseInfo info(static_cast<HOUSETYPE>(h),target->getTeamID());
+        info.colorOfHouse=getHouseVisualHouse(h);
+        for(const auto& player : target->getPlayerList()) info.addPlayerInfo({player->getPlayername(),player->getPlayerclass()});
+        snapshot.addHouseInfo(info);
+    }
+    return snapshot;
+}
+
+void Game::prepareObserverStreams() {
+    const auto pending=pNetworkManager->observersNeedingSnapshot();
+    if(pending.empty()) return;
+    try {
+        // One capture shared by viewers admitted together; no player is reloaded or paused.
+        const auto snapshot=spectatorSnapshot(); const auto runtime=saveObserverRuntime();
+        for(const auto peer : pending) if(!pNetworkManager->beginObserverSnapshot(peer,snapshot,runtime,gameCycleCount))
+            pNetworkManager->getDirectTransport()->disconnectSpectator(peer,"This game is too large to spectate.");
+    } catch(const std::exception&) {
+        for(const auto peer : pending) pNetworkManager->getDirectTransport()->disconnectSpectator(peer,"Could not prepare the spectator view.");
+    }
+}
+
+std::string Game::saveObserverRuntime() const {
+    OMemoryStream out; out.open();
+    out.writeUint32(1); out.writeUint32(gameCycleCount);
+    out.writeUint32(negotiatedBudget); out.writeUint32(cmdManager.getNetworkCycleBuffer());
+    out.writeUint32(currentGameMap->getPathingRevision());
+    out.writeUint32(targetRequestQueue.size());
+    for(const auto& request : targetRequestQueue) out.writeUint32(request.objectId);
+    out.writeUint32(pathRequestQueue.size());
+    for(const auto& request : pathRequestQueue) out.writeUint32(request.objectId);
+    out.writeUint32(unitList.size());
+    for(const auto* unit : unitList) { out.writeUint32(unit->getObjectID()); unit->saveObserverRuntime(out); }
+    std::vector<const QuantBot*> bots;
+    for(const auto& h : house) if(h) for(const auto& p : h->getPlayerList())
+        if(const auto* bot=dynamic_cast<const QuantBot*>(p.get())) bots.push_back(bot);
+    out.writeUint32(bots.size());
+    for(const auto* bot : bots) { out.writeUint8(bot->getPlayerID()); bot->saveObserverRuntime(out); }
+    return std::string(out.getData(),out.getDataLength());
+}
+
+void Game::loadObserverRuntime(const std::string& bytes) {
+    IMemoryStream in(bytes.data(),bytes.size());
+    if(in.readUint32()!=1 || in.readUint32()!=gameCycleCount) throw std::runtime_error("Invalid spectator checkpoint cycle");
+    negotiatedBudget=in.readUint32(); const auto buffer=in.readUint32();
+    if(negotiatedBudget<kMinBudget || negotiatedBudget>kMaxBudget || buffer>1000) throw std::runtime_error("Invalid spectator checkpoint budget");
+    cmdManager.setNetworkCycleBuffer(buffer);
+    currentGameMap->restoreObserverPathingRevision(in.readUint32());
+    targetRequestQueue.clear(); pendingTargetRequestIds.clear(); pathRequestQueue.clear(); pendingPathRequestIds.clear();
+    const auto targets=in.readUint32(); if(targets>unitList.size()) throw std::runtime_error("Invalid spectator targets");
+    for(Uint32 i=0;i<targets;++i) queueTargetRequest(in.readUint32());
+    const auto paths=in.readUint32(); if(paths>unitList.size()) throw std::runtime_error("Invalid spectator paths");
+    for(Uint32 i=0;i<paths;++i) queuePathRequest(in.readUint32());
+    const auto units=in.readUint32(); if(units!=unitList.size()) throw std::runtime_error("Invalid spectator units");
+    std::set<Uint32> seen;
+    for(Uint32 i=0;i<units;++i) {
+        const auto id=in.readUint32(); auto* unit=dynamic_cast<UnitBase*>(objectManager.getObject(id));
+        if(!unit || !seen.insert(id).second) throw std::runtime_error("Invalid spectator unit");
+        unit->loadObserverRuntime(in);
+    }
+    const auto bots=in.readUint32(); if(bots>NUM_HOUSES*2) throw std::runtime_error("Too many spectator controllers");
+    std::set<Uint8> seenBots;
+    for(Uint32 i=0;i<bots;++i) {
+        const auto id=in.readUint8(); auto* bot=dynamic_cast<QuantBot*>(getPlayerByID(id));
+        if(!bot || !seenBots.insert(id).second) throw std::runtime_error("Invalid spectator AI");
+        bot->loadObserverRuntime(in);
+    }
+    if(in.getRemainingLength()!=0) throw std::runtime_error("Extra spectator checkpoint data");
 }

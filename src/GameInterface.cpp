@@ -72,22 +72,20 @@ GameInterface::GameInterface() : Window(0,0,0,0) {
     windowWidget.addWidget(&sideBar, dest);
 
     // add buttons
-    windowWidget.addWidget(&topBarHBox,Point(5,5),
-                            Point(getRendererWidth() - sideBar.getSize().x, topBar.getSize().y - 10));
+    windowWidget.addWidget(&topBarHBox,Point(5,2),
+                            Point(getRendererWidth() - sideBar.getSize().x, topBar.getSize().y - 4));
 
     topBarHBox.addWidget(&newsticker, 3.0);
 
     topBarHBox.addWidget(Spacer::create());
 
-    optionsButton.setTextures(  pGFXManager->getUIGraphic(UI_Options, interfaceHouse),
-                                pGFXManager->getUIGraphic(UI_Options_Pressed, interfaceHouse));
+    optionsButton.setText(_("Options"));
     optionsButton.setOnClick(std::bind(&Game::onOptions, currentGame));
     topBarHBox.addWidget(&optionsButton);
 
     topBarHBox.addWidget(Spacer::create());
 
-    mentatButton.setTextures(   pGFXManager->getUIGraphic(UI_Mentat, interfaceHouse),
-                                pGFXManager->getUIGraphic(UI_Mentat_Pressed, interfaceHouse));
+    mentatButton.setText(_("Mentat"));
     mentatButton.setOnClick(std::bind(&Game::onMentat, currentGame));
     topBarHBox.addWidget(&mentatButton);
 
@@ -183,6 +181,14 @@ GameInterface::GameInterface() : Window(0,0,0,0) {
         Point(getRendererWidth() - sideBar.getSize().x + 24, autoRepairY),
         Point(ornithopterButtonWidth, 36));
 
+    movementPathsButton.setText(_("Movement paths"));
+    movementPathsButton.setTooltipText(_("Show or hide movement paths for selected units"));
+    movementPathsButton.setToggleButton(true);
+    movementPathsButton.setOnClick([]() { currentGame->toggleMovementPaths(); });
+    windowWidget.addWidget(&movementPathsButton,
+        Point(getRendererWidth()-sideBar.getSize().x+24,autoRepairY+40),
+        Point(ornithopterButtonWidth,36));
+
     // Local display controls: no simulation command or save-state change needed.
     auto addOverlayButton = [&](TextButton& button, const char* label,
                                 const char* tooltip, DuneCity::CityOverlayMode mode, int y) {
@@ -200,26 +206,13 @@ GameInterface::GameInterface() : Window(0,0,0,0) {
     };
     addOverlayButton(landValueOverlayButton, "Land Value",
         "Show land value: green is high, red is low. Click again to hide (Shift+5; Shift+1 off).",
-        DuneCity::CityOverlayMode::LandValue, autoRepairY + 40);
+        DuneCity::CityOverlayMode::LandValue, autoRepairY + 80);
     addOverlayButton(crimeOverlayButton, "Crime",
         "Show crime: red is high, green is low. Click again to hide (Shift+6; Shift+1 off).",
-        DuneCity::CityOverlayMode::CrimeRate, autoRepairY + 80);
+        DuneCity::CityOverlayMode::CrimeRate, autoRepairY + 120);
     addOverlayButton(pollutionOverlayButton, "Pollution",
         "Show pollution: green is clean, purple is polluted. Click again to hide (Shift+4; Shift+1 off).",
-        DuneCity::CityOverlayMode::Pollution, autoRepairY + 120);
-
-    // Build lists use the sidebar's full height; keep skip beside it.
-    const int skipWidth = std::max(ornithopterButtonWidth,
-        GUIStyle::getInstance().getMinimumButtonSize(_("Skip mission")).x);
-    skipMissionButton.setText(_("Skip mission"));
-    skipMissionButton.setTooltipText(_("Win this campaign mission and continue to the next level."));
-    skipMissionButton.setOnClick(std::bind(&Game::onSkipMission, currentGame));
-    const bool campaign = isCampaignGameType(currentGame->getGameInitSettings().getGameType());
-    skipMissionButton.setVisible(campaign);
-    skipMissionButton.setEnabled(currentGame->canSkipMission());
-    windowWidget.addWidget(&skipMissionButton,
-        Point(viewControlsRight - skipWidth, getRendererHeight() - 32),
-        Point(skipWidth, 28));
+        DuneCity::CityOverlayMode::Pollution, autoRepairY + 160);
 
     // add chat manager
     windowWidget.addWidget(&chatManager, Point(20, 60), Point(getRendererWidth() - sideBar.getSize().x, 360));
@@ -448,13 +441,16 @@ void GameInterface::draw(Point position) {
 }
 
 void GameInterface::updateObjectInterface() {
-    skipMissionButton.setEnabled(currentGame->canSkipMission());
     const auto& selection = currentGame->getSelectedList();
 
     const std::string repairText = pLocalHouse && pLocalHouse->isAutoRepairEnabled()
         ? _("Auto repair on") : _("Auto repair off");
     if (autoRepairButton.getText() != repairText) autoRepairButton.setText(repairText);
     autoRepairButton.setVisible(selection.empty() && pLocalHouse && pLocalPlayer);
+    movementPathsButton.setVisible(selection.empty());
+    movementPathsButton.setToggleState(settings.general.showMovementPaths);
+    const std::string pathsText=settings.general.showMovementPaths ? _("Paths on") : _("Paths off");
+    if(movementPathsButton.getText()!=pathsText) movementPathsButton.setText(pathsText);
     const bool showOverlayButtons = selection.empty() && currentGame->isCitySimEnabled();
     landValueOverlayButton.setVisible(showOverlayButtons);
     crimeOverlayButton.setVisible(showOverlayButtons);
