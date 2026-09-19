@@ -146,12 +146,29 @@ provides **LAN / direct connection** for legacy connections.
 4. The host picks a map or campaign mission. Game-room chat remains separate from
    public lobby chat. Start Game and campaign continuation follow the normal flow.
 
-Public chat is ephemeral, with a 90-second idle / 30-minute absolute session expiry, 120-byte UTF-8 messages,
+Public chat displays bounded recent history, with a 90-second idle / 30-minute absolute session expiry, 120-byte UTF-8 messages,
 4 sends per 10 seconds per session, and bounded recent history. It is shared by players with
 matching protocol/content, not by private room code. It pauses while nested map/game menus own
 the event loop; on return, an expired session reconnects automatically using the
-Settings name. Changing mods resets chat to the matching content lobby. No chat text,
-names, room codes, host control tokens or chat tokens are added to analytics.
+Settings name. Changing active mods resets chat to the matching content lobby.
+
+Since 1.0.725, **All mods** is the directory default. A specific mod selection only
+filters the list; joining selects an installed mod and checks the content fingerprint
+before admission. The service still refuses incompatible joins. Older service
+versions provide only their original compatible-content directory.
+
+**Players waiting** shows the count and up to twelve names across mods with the same
+game protocol. It uses the existing five-second chat poll; a session drops from
+presence after twenty seconds without activity. This counts active waiting sessions,
+including yourself, not players already in a match. Sessions retain their existing
+ninety-second identity lease. Older services show “Online count unavailable”.
+
+The current PHP signaling deployment can record accepted public chat (name, text,
+time), public game creation/join names, and the admitted roster at match start in
+`analytics_public_activity`. These durable server records are separate from bounded
+chat history and optional client diagnostics. Private game activity is omitted from
+this named table. Invitation codes, control/chat tokens and addresses are never
+included. See tools/p2p-signaling/README.md for the trusted hook contract.
 
 ## 7. What relay v1 deliberately does not do
 

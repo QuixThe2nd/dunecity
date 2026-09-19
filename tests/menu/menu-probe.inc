@@ -281,7 +281,7 @@ int runMenuProbe() {
         menuRequire(menu.hasChildWindow(),"Campaign hosting bypasses the settings player name");
         menu.closeChildWindow(); menu.processChildWindowOpenCloses();
         settings.general.playerName = settingsName;
-        menuRequire(menu.playerNameValue.getText()==settingsName,"Join Online does not display the settings name");
+        menuRequire(menu.playerNameValue.getText()==settingsName,"Play Online does not display the settings name");
         menuRequire(CustomPlaySetup().publicGame && menu.visibilityChoice.getSelectedIndex()==1,"New games should default to public");
         menuRequire(menu.chatHistory.getParent()==&menu.windowWidget && menu.publicGameList.getParent()==&menu.windowWidget,
             "Chat and game list must share the first screen");
@@ -291,7 +291,18 @@ int runMenuProbe() {
         PublicRelayGame coop, custom;
         coop.mode="coop"; coop.hostName="Campaign host"; coop.roomCode="AAAA-BBBB-CCCC"; coop.players=1; coop.maxPeers=2;
         custom.mode="custom"; custom.hostName="Custom host"; custom.roomCode="DDDD-EEEE-FFFF"; custom.players=2; custom.maxPeers=4;
+        coop.modName="vanilla"; custom.modName="dunecity";
+        menuRequire(menu.modFilter.getSelectedEntryIntData()==-1,"All mods must be the default");
         menu.allPublicGames={coop,custom}; menu.refreshDirectory();
+        menuRequire(menu.publicGames.size()==2,"All mods hides another mod");
+        for(int i=0;i<static_cast<int>(menu.availableMods.size());++i) {
+            if(menu.availableMods[i].name!="dunecity") continue;
+            menu.modFilter.setSelectedItem(i+1); menu.refreshDirectory();
+            menuRequire(menu.publicGames.size()==1 && menu.publicGames[0].modName=="dunecity",
+                "Specific mod filter includes other mods");
+            menuRequire(ModManager::instance().getActiveModName()=="vanilla","Filtering changes active mod");
+        }
+        menu.modFilter.setSelectedItem(0); menu.refreshDirectory();
         menu.modeFilter.setSelectedItem(1); menu.refreshDirectory();
         menuRequire(menu.publicGames.size()==1 && menu.publicGames[0].mode=="coop","Campaign filter includes custom games");
         menu.modeFilter.setSelectedItem(2); menu.refreshDirectory();
@@ -316,9 +327,22 @@ int runMenuProbe() {
         menu.update();
         menuRequire(menu.chatAction==AdmissionOperation::ChatEnter,
             "Expired chat requires manual name confirmation");
+        menu.chat.cancel(); menu.chatPending=true; menu.chatAction=AdmissionOperation::ChatPoll;
+        menu.chat.status_=RoomAdmissionClient::Status::Succeeded;
+        menu.chat.response_=AdmissionResponse(); menu.chat.response_.ok=true;
+        menu.chat.response_.hasPresence=true; menu.chat.response_.onlineCount=2;
+        menu.chat.response_.waitingNames={"Alice","Bob"};
+        menu.updateLobbyChat();
+        menuRequire(menu.waitingLabel.getText()=="Players waiting: 2", "Waiting count not shown");
+        menuRequire(menu.waitingNames.getText()=="Alice, Bob", "Waiting names not shown");
         menu.chatHistory.setText("Alice: Looking for a campaign partner.\nBob: I can join after this match.");
         menu.chatLabel.setText("Chatting as " + settingsName);
         menuCapture(menu,"public-chat");
+        menu.chatPending=true; menu.chatAction=AdmissionOperation::ChatPoll;
+        menu.chat.status_=RoomAdmissionClient::Status::Failed;
+        menu.updateLobbyChat();
+        menuRequire(menu.waitingLabel.getText()=="Players waiting"
+            && menu.waitingNames.getText()=="Unable to refresh online players", "Failed poll leaves a stale count");
     }
     {
         GameInitSettings networkInit(getBasename(map,true),readCompleteFile(map),"Prepared custom",false,setup.rules);

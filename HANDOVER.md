@@ -1,3 +1,54 @@
+## 2026-09-19 — All mods, waiting players and public activity; unified 1.0.725
+
+Stefan requested All mods as the default discovery filter, waiting-player count
+and names, and named public-chat/public-game history in metaserver data. The
+combined native/browser 725 also retains 724's Play Online rename/position below
+Continue, 723's integrated chat/settings identity/public default, and all prior
+performance/visual/settings work. No simulation or node-budget changes.
+
+Discovery opts into all same-protocol content hashes with mod metadata. All mods
+is the default; selecting a mod filters locally without changing the active mod.
+Joining switches only to an installed mod with a matching content fingerprint;
+a mismatch restores the previous mod, and authoritative admission checks remain.
+Older service responses retain their original compatible-content behavior.
+
+Players waiting appears below chat with a count and up to twelve names across
+mods. The existing five-second chat poll carries presence, with a twenty-second
+activity window. It counts waiting sessions, including yourself, not people in
+matches. Failed polls clear stale counts; older services explicitly report count
+unavailable. No presence records or extra polling loop are added.
+
+The PHP service emits separate trusted public-activity events for accepted chat
+(session name/text/time), newly seated public host/client names, and the roster
+at public match start. The website receiver in ../dunelegacy.com persists these
+in analytics_public_activity via PDO or Python, separate from anonymous lifecycle
+and existing match data. Private games are excluded from the named table; tokens,
+codes and addresses are omitted. Server analytics_enabled controls capture,
+independent of client diagnostics. Game events deduplicate retries. No historical
+backfill or outage retry journal; storage errors do not block accepted actions.
+The new service and website receiver are prepared locally, NOT yet deployed.
+Publishing needs the explicit push request required by AGENTS.md. Normal website
+deployment packages the private service; do not bypass it with an untracked upload.
+
+Validation: native/browser builds and dependency/version checks pass; all seven
+CTest suites pass, including 640/854/1280 real-menu renders, All mods versus a
+specific mod, settings identity, waiting display and stale-count clearing.
+Seven new real-HTTP service tests plus all 166 existing service tests pass.
+Website tests cover PHP/Python validation, both database paths, UTF-8, retries,
+conflicts, roster persistence and old-table preservation; existing analytics
+Python/PHP tests pass (one existing environment skip). Real service-generated
+create/join/start/chat events were also passed through both website storage paths
+and deduplicated to four rows in a disposable database.
+
+Unmodified browser assets tested on a fresh loopback origin: Settings name
+Browser tester, automatic chat entry, All mods listing Vanilla and Dune City,
+specific Dune City filtering, Players waiting: 2 / Alice, Bob. No public posts or
+rooms; original desktop match/profile untouched. Browser test tabs/servers closed.
+Screenshots: ../outputs/interface-725/. Build/test logs: ../outputs/interface-725-*,
+public-activity-tests.log, signaling-725-tests.log, public-activity-725-integration.log,
+relay-analytics-725* and analytics-runtime-725.log. Canonical app remains
+build-714/bin/dunecity.app; browser remains build-714/emscripten/bin.
+
 ## 2026-09-19 — Play Online immediately below Continue, unified 1.0.724
 
 Renamed Join Online to Play Online on home and the lobby heading. Home order is

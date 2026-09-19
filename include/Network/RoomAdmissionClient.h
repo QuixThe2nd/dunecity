@@ -54,6 +54,8 @@ struct PublicRelayGame {
     std::string roomCode;
     std::string hostName;
     std::string mode;
+    std::string modName;
+    std::string contentHash;
     unsigned players = 0;
     unsigned maxPeers = 0;
 };
@@ -74,6 +76,9 @@ struct AdmissionResponse {
     std::string chatSession;
     std::uint64_t chatCursor = 0;
     bool chatGap = false;
+    bool hasPresence = false;
+    unsigned onlineCount = 0;
+    std::vector<std::string> waitingNames;
     std::vector<LobbyChatMessage> messages;
 
     // Only when ok == false.
@@ -84,7 +89,7 @@ struct AdmissionResponse {
 namespace RoomAdmission {
 
 constexpr std::size_t kMaxResponseBytes  = 8192;
-constexpr std::size_t kMaxResponseLines  = 16;
+constexpr std::size_t kMaxResponseLines  = 48;
 constexpr std::size_t kMaxLineBytes      = 512;
 constexpr std::size_t kMaxKeyBytes       = 32;
 constexpr std::size_t kMaxValueBytes     = 480;
@@ -120,15 +125,22 @@ inline bool parseChatNumber(const std::string& text, std::uint64_t& value) {
 }
 
 inline bool parsePublicGame(const std::string& value, PublicRelayGame& game) {
-    std::array<std::string, 5> fields;
+    std::vector<std::string> fields;
     std::size_t start = 0;
-    for(unsigned i = 0; i < 4; ++i) {
+    for(;;) {
         const auto end = value.find('|', start);
-        if(end == std::string::npos) return false;
-        fields[i] = value.substr(start, end - start);
-        start = end + 1;
+        fields.push_back(value.substr(start, end == std::string::npos ? end : end-start));
+        if(fields.size()>7) return false;
+        if(end == std::string::npos) break;
+        start = end+1;
     }
-    fields[4] = value.substr(start);
+    if(fields.size()!=5 && fields.size()!=7) return false;
+    game.modName.clear(); game.contentHash.clear();
+    if(fields.size()==7) {
+        if(fields[5].empty() || fields[5].size()>128 || !RoomRelay::isLowercaseHex(fields[5])) return false;
+        game.contentHash=fields[5];
+        if(!fields[6].empty() && !decodeHexText(fields[6],64,game.modName)) return false;
+    }
     if(!RoomRelay::isAcceptableRoomCode(fields[0])
        || (fields[3] != "custom" && fields[3] != "coop")) return false;
     const auto count = [](const std::string& text, unsigned& result) {
@@ -285,6 +297,19 @@ inline bool parseAdmissionResponse(const std::string& body, AdmissionResponse& o
                     }
                 }
                 out.games.push_back(std::move(game));
+            } else if(key == "online") {
+                std::uint64_t count = 0;
+                if(operation != AdmissionOperation::ChatPoll || out.hasPresence || !parseChatNumber(value,count) || count>10000) {
+                    error="The online player list is malformed."; return false;
+                }
+                out.hasPresence=true; out.onlineCount=static_cast<unsigned>(count);
+            } else if(key == "waiting") {
+                std::string name;
+                if(operation != AdmissionOperation::ChatPoll || out.waitingNames.size()>=12 || !decodeHexText(value,64,name)
+                   || !RoomRelay::isAcceptableDisplayName(name)) {
+                    error="The online player list is malformed."; return false;
+                }
+                out.waitingNames.push_back(std::move(name));
             } else if(key == "visibility") {
                 if(sawVisibility || (value != "public" && value != "private")) {
                     error = "The game visibility answer is malformed."; return false;
@@ -384,6 +409,9 @@ inline bool parseAdmissionResponse(const std::string& body, AdmissionResponse& o
         error = "This version of the game cannot use that game service.";
         return false;
     }
+    if((!out.waitingNames.empty() && !out.hasPresence) || out.waitingNames.size()>out.onlineCount) {
+        error="The online player list is malformed."; return false;
+    }
     if(operation != AdmissionOperation::Room) {
         const bool valid = operation == AdmissionOperation::Visibility ? sawVisibility
             && (out.roomCode.empty() || RoomRelay::isAcceptableRoomCode(out.roomCode))
@@ -460,6 +488,9 @@ struct AdmissionRequest {
     bool publicOnly = false;
     bool        hosting  = true;
     bool        listing = false;
+    bool        allMods = false;
+    bool        presence = false;
+    std::string modName;
     unsigned    listOffset = 0;
     bool        publicRoom = false;
     std::uint8_t maxPeers = 2;

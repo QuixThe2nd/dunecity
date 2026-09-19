@@ -67,9 +67,12 @@ std::string buildFormBody(const AdmissionRequest& request) {
         body += "&name=" + RoomAdmission::hexText(request.displayName);
         body += "&text=" + RoomAdmission::hexText(request.chatText);
         body += "&cursor=" + std::to_string(request.chatCursor);
+        if(request.presence) body += "&presence=1";
     } else if(request.listing) {
         body += "&offset=" + std::to_string(request.listOffset);
+        if(request.allMods) body += "&allMods=1";
     } else if(request.hosting) {
+        body += "&mod=" + RoomAdmission::encodeFormValue(RoomAdmission::hexText(request.modName));
         body += "&maxPeers=" + std::to_string(static_cast<unsigned>(request.maxPeers));
         body += "&mode=" + RoomAdmission::encodeFormValue(request.mode);
         body += request.publicRoom ? "&visibility=public" : "&visibility=private";

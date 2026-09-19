@@ -2,7 +2,7 @@
 """Serve unchanged browser assets with a local chat fixture; no public messages.
 
 Open the printed URL in a fresh browser profile, set the name in Settings, then
-Join Online. Requests are printed for verifying automatic entry and polling.
+Play Online. Requests are printed for verifying automatic entry and polling.
 Room creation and message sending are deliberately unsupported in this fixture.
 """
 import argparse
@@ -26,15 +26,23 @@ class Handler(SimpleHTTPRequestHandler):
     def do_POST(self):
         fields = parse_qs(self.rfile.read(int(self.headers['Content-Length'])).decode())
         print(json.dumps({'path': self.path, 'name': fields.get('name'),
-                          'runtime': fields.get('runtime')}), flush=True)
+                          'runtime': fields.get('runtime'), 'allMods': fields.get('allMods'),
+                          'presence': fields.get('presence')}), flush=True)
         body = 'status=ok\nprotocol=1\n'
         if self.path == '/v1/admission/list':
             body += 'next=0\n'
+            if fields.get('allMods') == ['1']:
+                for code, name, mod in [('H4PQ-7T2M-9XKB', 'Alice', 'vanilla'),
+                                        ('J5QR-8V3N-2YKC', 'Bob', 'dunecity')]:
+                    body += f'game={code}|1|4|custom|{name.encode().hex()}|abcdef|{mod.encode().hex()}\n'
+
         elif self.path == '/v1/lobby/enter':
             body += 'session=' + 'a'*64 + '\ncursor=0\n'
         elif self.path == '/v1/lobby/poll':
             body += 'cursor=1\ngap=0\nchat=1|' + 'Local fixture'.encode().hex()
             body += '|' + 'Browser chat connected automatically.'.encode().hex() + '\n'
+            if fields.get('presence') == ['1']:
+                body += 'online=2\nwaiting=416c696365\nwaiting=426f62\n'
         else:
             self.send_error(400, 'Unsupported fixture action')
             return

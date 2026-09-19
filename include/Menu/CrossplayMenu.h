@@ -147,6 +147,8 @@ private:
     TextButton      privateInviteButton;
     Label           chatLabel;
     TextView        chatHistory;
+    Label           waitingLabel;
+    TextView        waitingNames;
     HBox            chatInputHBox;
     TextBox         chatInput;
     TextButton      chatSendButton;

@@ -411,10 +411,14 @@ class ServiceFixture:
         env = dict(os.environ, DUNECITY_P2P_CONFIG=self.config, PHP_CLI_SERVER_WORKERS="4")
         self.server_log = open(os.path.join(self.tmp, "php-server.log"), "w+b")
         self.notification_log = os.path.join(self.tmp, "notifications.jsonl")
+        self.activity_log = os.path.join(self.tmp, "public-activity.jsonl")
         router = os.path.join(self.tmp, "router.php")
         Path(router).write_text("<?php\nfunction dunecityP2PNotifyLobby($kind, $event) {\n"
             "file_put_contents(" + php_literal(self.notification_log) + ", json_encode([$kind,$event]).\"\\n\", FILE_APPEND|LOCK_EX);\n"
             "if (file_exists(" + php_literal(os.path.join(self.tmp, "fail-notifications")) + ")) throw new RuntimeException('fixture');\n"
+            "}\nfunction dunecityP2PRecordPublicActivity($event) {\n"
+            "file_put_contents(" + php_literal(self.activity_log) + ", json_encode($event).\"\\n\", FILE_APPEND|LOCK_EX);\n"
+            "if (file_exists(" + php_literal(os.path.join(self.tmp, "fail-public-activity")) + ")) throw new RuntimeException('fixture');\n"
             "}\nrequire " + php_literal(os.path.join(ROOT, "bin", "router.php")) + ";\n")
         self.proc = subprocess.Popen(
             [PHP_BIN, "-d", "error_log=" + os.path.join(self.tmp, "php-error.log"),

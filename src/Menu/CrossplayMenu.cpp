@@ -102,19 +102,15 @@ CrossplayMenu::CrossplayMenu() : MenuBase() {
     modeFilter.setSelectedItem(0);
     modeFilter.setOnSelectionChange([this](bool interactive) { if(interactive) refreshDirectory(); });
     availableMods = ModManager::instance().listMods();
-    for(size_t i = 0; i < availableMods.size(); ++i) {
+    modFilter.addEntry(_("All mods"), -1);
+    for(size_t i=0; i<availableMods.size(); ++i)
         modFilter.addEntry(availableMods[i].displayName, static_cast<int>(i));
-        if(availableMods[i].name == ModManager::instance().getActiveModName()) modFilter.setSelectedItem(i);
-    }
-    modFilter.setOnSelectionChange([this](bool interactive) {
-        const int index = modFilter.getSelectedIndex();
-        if(!interactive || stage != Stage::Choosing || index < 0 || index >= static_cast<int>(availableMods.size())) return;
-        if(ModManager::instance().setActiveMod(availableMods[index].name)) {
-            effectiveGameOptions = ModManager::instance().loadEffectiveGameOptions(settings.gameOptions);
-            directory.cancel(); directoryPending = false;
-            allPublicGames.clear(); refreshDirectory(); refreshPublicGames();
-        }
-    });
+    modFilter.setSelectedItem(0);
+    modFilter.setOnSelectionChange([this](bool interactive) { if(interactive) refreshDirectory(); });
+    waitingLabel.setText(_("Players waiting"));
+    waitingLabel.setTextFontSize(14);
+    waitingNames.setText(_("Connecting..."));
+    waitingNames.setTextFontSize(12);
     refreshGamesButton.setText(_("Refresh"));
     refreshGamesButton.setOnClick([this]() { refreshPublicGames(); });
     moreGamesButton.setText(_("More"));
@@ -204,7 +200,9 @@ void CrossplayMenu::layoutControls() {
         place(&joinButton,x+leftWidth-125,h-138,125,28);
         place(&chatTitle,chatX,49,chatWidth,26);
         place(&chatLabel,chatX,78,chatWidth,32);
-        place(&chatHistory,chatX,114,chatWidth,h-260);
+        place(&chatHistory,chatX,114,chatWidth,h-338);
+        place(&waitingLabel,chatX,h-218,chatWidth,24);
+        place(&waitingNames,chatX,h-192,chatWidth,46);
         place(&chatInput,chatX,h-138,chatWidth-65,28);
         place(&chatSendButton,chatX+chatWidth-60,h-138,60,28);
         place(&hostCoopButton,x,h-99,(w-10)/2,28);
@@ -225,10 +223,18 @@ void CrossplayMenu::refreshDirectory() {
     publicGameList.clearAllEntries();
     publicGames.clear();
     const int filter = modeFilter.getSelectedIndex();
+    const int selectedMod = modFilter.getSelectedEntryIntData();
     for(const auto& game : allPublicGames) {
+        if(selectedMod >= 0 && selectedMod < static_cast<int>(availableMods.size())) {
+            const auto& wanted=availableMods[selectedMod].name;
+            if(!game.modName.empty() ? game.modName != wanted
+                : wanted != ModManager::instance().getActiveModName() || (!game.contentHash.empty() && game.contentHash != contentFingerprint())) continue;
+        }
         if((filter == 1 && game.mode != "coop") || (filter == 2 && game.mode != "custom")) continue;
+        std::string modLabel=game.modName;
+        for(const auto& mod : availableMods) if(mod.name==game.modName) { modLabel=mod.displayName; break; }
         publicGames.push_back(game);
-        publicGameList.addEntry(game.hostName + " - " + (game.mode == "coop" ? _("Campaign co-op") : _("Custom game"))
+        publicGameList.addEntry(game.hostName + (modLabel.empty() ? "" : " - " + modLabel) + " - " + (game.mode == "coop" ? _("Campaign co-op") : _("Custom game"))
             + " - " + std::to_string(game.players) + "/" + std::to_string(game.maxPeers));
         if(game.roomCode == selectedRoom) publicGameList.setSelectedItem(static_cast<int>(publicGames.size())-1);
     }
@@ -307,9 +313,6 @@ void CrossplayMenu::refreshControls() {
 }
 
 void CrossplayMenu::refreshPublicGames(unsigned offset) {
-    // Returning from Create Campaign/Custom may have changed the active mod.
-    for(size_t i=0; i<availableMods.size(); ++i)
-        if(availableMods[i].name == ModManager::instance().getActiveModName()) modFilter.setSelectedItem(i);
     if((stage != Stage::Choosing && stage != Stage::HostReady && stage != Stage::ClientWaiting)
        || directoryPending) return;
     nextDirectoryRefresh = SDL_GetTicks() + 15000;
@@ -341,6 +344,7 @@ void CrossplayMenu::refreshPublicGames(unsigned offset) {
     request.runtime = "native";
 #endif
     request.listing = true;
+    request.allMods = true;
     request.listOffset = offset;
     directoryPending = true;
     directoryLabel.setText(_("Finding public games..."));
@@ -353,6 +357,20 @@ void CrossplayMenu::joinPublicGame() {
     const int index = publicGameList.getSelectedIndex();
     if(stage != Stage::Choosing || directoryPending || index < 0
        || static_cast<std::size_t>(index) >= publicGames.size()) return;
+    const auto& game=publicGames[index];
+    if(!game.modName.empty()) {
+        auto found=std::find_if(availableMods.begin(),availableMods.end(),[&](const ModInfo& mod){return mod.name==game.modName;});
+        if(found==availableMods.end()) { setStatus(_("Install this game's mod before joining.")); return; }
+        auto& mods=ModManager::instance();
+        const auto previous=mods.getActiveModName();
+        if(!mods.setActiveMod(game.modName)) { setStatus(_("This game's mod could not be loaded.")); return; }
+        effectiveGameOptions=mods.loadEffectiveGameOptions(settings.gameOptions);
+        if(!game.contentHash.empty() && contentFingerprint()!=game.contentHash) {
+            mods.setActiveMod(previous);
+            effectiveGameOptions=mods.loadEffectiveGameOptions(settings.gameOptions);
+            setStatus(_("This game's mod files differ from your installed copy.")); return;
+        }
+    }
     beginAdmission(false, true);
 }
 
@@ -426,6 +444,16 @@ void CrossplayMenu::updateLobbyChat() {
         chatPending = false;
         if(chat.status() == RoomAdmissionClient::Status::Succeeded) {
             const auto& response = chat.response();
+            if(response.hasPresence) {
+                waitingLabel.setText(_("Players waiting: ") + std::to_string(response.onlineCount));
+                std::string names;
+                for(const auto& name : response.waitingNames) { if(!names.empty()) names += ", "; names += name; }
+                if(response.onlineCount > response.waitingNames.size()) names += " (+" + std::to_string(response.onlineCount-response.waitingNames.size()) + ")";
+                waitingNames.setText(names.empty() ? _("No players waiting") : names);
+            } else if(chatAction==AdmissionOperation::ChatPoll) {
+                waitingLabel.setText(_("Players waiting"));
+                waitingNames.setText(_("Online count unavailable"));
+            }
             if(chatAction == AdmissionOperation::ChatEnter) {
                 chatSession = response.chatSession;
                 chatCursor = response.chatCursor;
@@ -454,6 +482,8 @@ void CrossplayMenu::updateLobbyChat() {
             nextChatPoll = SDL_GetTicks() + (chatAction == AdmissionOperation::ChatPoll ? 5000 : 0);
         } else {
             chatLabel.setText(chat.errorMessage());
+            waitingLabel.setText(_("Players waiting"));
+            waitingNames.setText(_("Unable to refresh online players"));
             if(chat.response().errorCode == "session_expired") chatSession.clear();
             nextChatPoll = SDL_GetTicks() + 15000;
         }
@@ -463,6 +493,7 @@ void CrossplayMenu::updateLobbyChat() {
     if(!chatPending && !chatSession.empty() && SDL_TICKS_PASSED(SDL_GetTicks(), nextChatPoll)) {
         auto request = lobbyRequest();
         request.operation = AdmissionOperation::ChatPoll;
+        request.presence = true;
         request.chatSession = chatSession;
         request.chatCursor = chatCursor;
         chatAction = request.operation;
@@ -539,6 +570,7 @@ void CrossplayMenu::beginAdmission(bool hosting, bool publicJoin) {
     if(hosting) {
         // Co-op is a two-player arrangement; a custom game uses the lobby's own limit.
         request.mode = hostingCoop ? "coop" : "custom";
+        request.modName = ModManager::instance().getActiveModName();
         request.maxPeers = hostingCoop ? 2 : 4;
     } else {
         request.publicOnly = publicJoin;
