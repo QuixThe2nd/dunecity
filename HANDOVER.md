@@ -1,3 +1,30 @@
+## 2026-09-19 — Developer ID ready; first notarization awaits Air submission
+
+Stefan renewed his individual Developer Program membership through September 20,
+2027 (team 34X7AYJZ93). Developer ID Application certificate was matched to the
+mini-generated CSR and installed. Certificate expiry is February 1, 2027 (G1),
+separate from membership renewal. Encrypted key/archive material stays outside
+git in the mini's protected Library/Application Support/DuneCity Signing folder;
+the Air has only the public certificate. Never print passwords or key contents.
+A dedicated DuneCity-Signing keychain also holds the identity for codesign.
+
+After Stefan approved the mini's codesign prompt, the staged 1.0.730 bundle and
+all 30 Mach-O files were Developer ID signed with hardened runtime and secure
+timestamps. cmake --install bundled portable dylibs first; strict deep signature
+verification passed on both Macs. The running game/build bundle was unchanged.
+
+The signed ZIP is in session work/notarization-730 and on the Air under
+Documents/projects/outputs/DuneCity-730-Notarization. SHA256:
+8b06f0342bcc3a5745b7d8275dbb8b434d0170c854a659e416c003b95e5f409c.
+Stefan ran the credential setup shortcut, but the Air login keychain is locked
+over SSH, so remote notarytool cannot verify/use profile DuneCityNotarization.
+Air Desktop/DuneCity-Submit-to-Apple.command runs in his local Terminal, submits
+the ZIP, records submission.json/status.json/apple-log.json, then staples and
+validates only after Accepted. Retries reuse the submission ID. At this handoff
+no submission has been confirmed; inspect those files before claiming success.
+Final artifact is DuneCity-1.0.730-notarized.zip after successful completion.
+No game push, public release, CI secret upload or CI signing change occurred.
+
 ## 2026-09-19 — Visible play approvals and shared control (unreleased 730)
 
 Stefan confirmed the live Air promotion worked. The host approved Replace
