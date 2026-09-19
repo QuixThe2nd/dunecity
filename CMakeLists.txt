@@ -1,7 +1,10 @@
 cmake_minimum_required(VERSION 3.15)
 
 # Project name and version
-project(DuneCity VERSION 1.0.730 LANGUAGES C CXX)
+project(DuneCity VERSION 1.0.731 LANGUAGES C CXX)
+if(APPLE)
+    enable_language(OBJCXX)
+endif()
 
 # Set C++ standard
 set(CMAKE_CXX_STANDARD 17)
@@ -309,6 +312,7 @@ elseif(NOT APPLE)
 endif()
 
 # CPack configuration for packaging
+set(CPACK_VERBATIM_VARIABLES ON)
 set(CPACK_PACKAGE_NAME ${PROJECT_NAME})
 set(CPACK_PACKAGE_VENDOR "Dune City Team")
 set(CPACK_PACKAGE_DESCRIPTION_SUMMARY ${PROJECT_DESCRIPTION})
@@ -319,7 +323,7 @@ set(CPACK_RESOURCE_FILE_README "${CMAKE_CURRENT_SOURCE_DIR}/README")
 
 if(WIN32)
     set(CPACK_GENERATOR "NSIS;ZIP")
-    set(CPACK_NSIS_ENABLE_UNINSTALL_BEFORE_INSTALL ON)
+    set(CPACK_NSIS_ENABLE_UNINSTALL_BEFORE_INSTALL OFF)
     set(CPACK_NSIS_MODIFY_PATH OFF)
     set(CPACK_NSIS_MUI_ICON "${CMAKE_CURRENT_SOURCE_DIR}/dunecity.ico")
     set(CPACK_NSIS_MUI_UNIICON "${CMAKE_CURRENT_SOURCE_DIR}/dunecity.ico")
@@ -327,38 +331,26 @@ if(WIN32)
     set(CPACK_NSIS_DISPLAY_NAME "Dune City")
     set(CPACK_NSIS_PACKAGE_NAME "Dune City")
     set(CPACK_PACKAGE_INSTALL_DIRECTORY "DuneCity")
+    set(CPACK_PACKAGE_INSTALL_REGISTRY_KEY "DuneCity")
     set(CPACK_PACKAGE_FILE_NAME "DuneCity-${PROJECT_VERSION}-Windows-x64")
     set(CPACK_NSIS_EXECUTABLES_DIRECTORY ".")
     set(CPACK_NSIS_MUI_FINISHPAGE_RUN "dunecity.exe")
     
-    # Add checkbox to view release notes on finish page
-    set(CPACK_NSIS_EXTRA_INSTALL_COMMANDS "
-        WriteRegStr HKLM \\\"Software\\\\Microsoft\\\\Windows\\\\CurrentVersion\\\\App Paths\\\\dunecity.exe\\\" \\\"\\\" \\\"$INSTDIR\\\\dunecity.exe\\\"
-        WriteRegStr HKLM \\\"Software\\\\Microsoft\\\\Windows\\\\CurrentVersion\\\\App Paths\\\\dunecity.exe\\\" \\\"Path\\\" \\\"$INSTDIR\\\"
-    ")
-    set(CPACK_NSIS_EXTRA_UNINSTALL_COMMANDS "
-        DeleteRegKey HKLM \\\"Software\\\\Microsoft\\\\Windows\\\\CurrentVersion\\\\App Paths\\\\dunecity.exe\\\"
-    ")
-    
-    # Custom NSIS code for release notes checkbox on finish page
-    set(CPACK_NSIS_DEFINES "
-        !define MUI_FINISHPAGE_SHOWREADME \\\"$INSTDIR\\\\Release_Notes.md\\\"
-        !define MUI_FINISHPAGE_SHOWREADME_TEXT \\\"View Release Notes\\\"
-        !define MUI_FINISHPAGE_SHOWREADME_NOTCHECKED
-    ")
-    
-    # Create Start Menu shortcuts
-    set(CPACK_NSIS_CREATE_ICONS_EXTRA "
-        CreateShortCut \\\"$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\Dune City.lnk\\\" \\\"$INSTDIR\\\\dunecity.exe\\\"
-        CreateShortCut \\\"$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\Release Notes.lnk\\\" \\\"$INSTDIR\\\\Release_Notes.md\\\"
-        CreateShortCut \\\"$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\Readme.lnk\\\" \\\"$INSTDIR\\\\README\\\"
-    ")
-    set(CPACK_NSIS_DELETE_ICONS_EXTRA "
-        Delete \\\"$SMPROGRAMS\\\\$MUI_TEMP\\\\Dune City.lnk\\\"
-        Delete \\\"$SMPROGRAMS\\\\$MUI_TEMP\\\\Release Notes.lnk\\\"
-        Delete \\\"$SMPROGRAMS\\\\$MUI_TEMP\\\\Readme.lnk\\\"
-    ")
-    
+    # Bracket quoting preserves NSIS variables and Windows paths in CPack's
+    # generated configuration. Updating never uninstalls user content first.
+    set(CPACK_NSIS_EXTRA_INSTALL_COMMANDS [=[
+        WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\App Paths\dunecity.exe" "" "$INSTDIR\dunecity.exe"
+        WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\App Paths\dunecity.exe" "Path" "$INSTDIR"
+        FileOpen $0 "$INSTDIR\dunecity-installed.txt" w
+        FileWrite $0 "Dune City installer-managed installation"
+        FileClose $0
+    ]=])
+    set(CPACK_NSIS_EXTRA_UNINSTALL_COMMANDS [=[
+        DeleteRegKey HKLM "Software\Microsoft\Windows\CurrentVersion\App Paths\dunecity.exe"
+        Delete "$INSTDIR\dunecity-installed.txt"
+    ]=])
+    set(CPACK_PACKAGE_EXECUTABLES "dunecity;Dune City")
+
     # Add custom target for Windows installer
     add_custom_target(installer
         COMMAND ${CMAKE_COMMAND} -E echo "Cleaning CPack cache and install directory..."

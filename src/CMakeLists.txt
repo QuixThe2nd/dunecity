@@ -616,6 +616,8 @@ if(APPLE)
     )
 endif()
 
+include(${CMAKE_SOURCE_DIR}/cmake/DesktopUpdater.cmake)
+
 # Compiler options
 target_compile_options(dunecity
     PRIVATE
@@ -882,7 +884,7 @@ elseif(APPLE)
     # invokes the install rules in a staging tree, so BundleUtilities copies
     # every non-system dylib into Contents/Frameworks and rewrites its load
     # commands before the final signature is applied.
-    set(DUNECITY_MACOS_DEPENDENCY_DIRS "")
+    set(DUNECITY_MACOS_DEPENDENCY_DIRS "${dunecity_sparkle_SOURCE_DIR}")
     if(DEFINED VCPKG_INSTALLED_DIR AND DEFINED VCPKG_TARGET_TRIPLET)
         list(APPEND DUNECITY_MACOS_DEPENDENCY_DIRS
             "${VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}/lib")
@@ -894,12 +896,26 @@ elseif(APPLE)
     install(CODE "
         include(BundleUtilities)
         set(BU_CHMOD_BUNDLE_ITEMS ON)
+        set(BU_COPY_FULL_FRAMEWORK_CONTENTS ON)
         message(STATUS \"Bundling macOS runtime dependencies...\")
         fixup_bundle(
             \"\${CMAKE_INSTALL_PREFIX}/dunecity.app\"
             \"\"
             \"${DUNECITY_MACOS_DEPENDENCY_DIRS}\"
         )
+        # BundleUtilities flattens framework-root executable symlinks. Restore
+        # Sparkle's complete, already portable framework before signing, keeping
+        # the game's rewritten dependency paths and the bundled game dylibs.
+        if(EXISTS \"${dunecity_sparkle_SOURCE_DIR}/Sparkle.framework\")
+            file(REMOVE_RECURSE \"\${CMAKE_INSTALL_PREFIX}/dunecity.app/Contents/Frameworks/Sparkle.framework\")
+            execute_process(COMMAND /usr/bin/ditto
+                \"${dunecity_sparkle_SOURCE_DIR}/Sparkle.framework\"
+                \"\${CMAKE_INSTALL_PREFIX}/dunecity.app/Contents/Frameworks/Sparkle.framework\"
+                RESULT_VARIABLE _sparkle_copy_result)
+            if(NOT _sparkle_copy_result EQUAL 0)
+                message(FATAL_ERROR \"Could not preserve the Sparkle framework\")
+            endif()
+        endif()
         message(STATUS \"Re-codesigning installed dunecity.app...\")
         execute_process(
             COMMAND codesign --force --deep --sign - \"\${CMAKE_INSTALL_PREFIX}/dunecity.app\"

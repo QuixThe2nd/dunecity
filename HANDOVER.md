@@ -1,3 +1,48 @@
+## 2026-09-19 — Cross-platform desktop updater (unreleased 731)
+
+Implemented main-menu update checks, Install/Later confirmation, signed Ed25519
+metadata and native Sparkle (Mac) / WinSparkle (Windows EXE) integration. Linux
+AppImages verify the download and atomically replace the original with a retained
+backup before relaunch. DEB/RPM users receive manual package-update guidance;
+no package repository was provisioned. Updates do not run during a match or
+replace the separate saves/settings directory. Browser/Android builds exclude
+the updater. See docs/desktop-updates.md for behavior, trust and recovery limits.
+
+Stable-release CI now prepares notarized Mac DMG/ZIP, Windows EXE/ZIP and signed
+platform feeds; it uploads to a draft before publication. Existing published
+releases cannot be overwritten. SourceForge adds the Windows EXE from 731 while
+preserving older backfill layouts. No push, tag, CI run or publication occurred.
+The initial updater edition still requires a manual install on each machine.
+
+The encrypted update-signing key and its password are outside Git, under the
+mini's protected Library/Application Support/DuneCity Signing/updates directory.
+Only the public key is tracked. Back up those protected files securely.
+Apple signing identity is already installed, but the mini's dedicated keychain
+still lacks the DuneCityNotarization credential profile (verified this session).
+Stefan has been asked to run Desktop/DuneCity-Automatic-Updates-Setup.command on
+the mini. The Air's existing login-keychain profile does not configure the mini.
+Never print key/password contents. The new 731 DMG is a local ad-hoc test build,
+not a newly Developer ID signed/notarized release.
+
+Validation: native build and dependency audits pass; all eight CTest suites pass.
+After the final no-thread compilation guards, menu/security suites pass again
+and the Emscripten build passes. Signed-feed tests and nine SourceForge tests
+pass. The HTTPS AppImage fixture passes success, corruption, truncation,
+tampered signature, downgrade, wrong platform and untrusted TLS cases. On this
+Mac it exercises the production POSIX replacement path, not Linux runtime launch.
+Windows adapters cross-compile with MinGW; a dummy CPack/NSIS fixture validates
+installer syntax only. Native Mac bundle installation and DMG portability checks
+pass; Sparkle initializes and reaches its unpublished-feed error UI. The rendered
+640-pixel update confirmation was inspected. Evidence is under this task's work/
+directory (updater-* logs/artifacts). Dummy Windows fixtures are not game builds.
+
+Before public release: provision mini notarization credentials and validate the
+new signed/notarized packages; perform real old-to-new upgrades on Mac, Windows
+and Linux, including relaunch, retained user data and multiplayer compatibility.
+Windows Authenticode is not provisioned. Older Mac compatibility remains untested:
+local Homebrew dependencies produce newer minimum-OS warnings. The running 730
+Chrome/native game was left untouched; no 731 build was transferred to the Air.
+
 ## 2026-09-19 — Developer ID signing and first notarization verified
 
 Stefan renewed his individual Developer Program membership through September 20,

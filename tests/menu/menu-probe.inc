@@ -10,6 +10,7 @@
 #include <Menu/DisplayMenu.h>
 #include <GUI/dune/GameOptionsWindow.h>
 #include <GUI/MsgBox.h>
+#include <GUI/QstBox.h>
 #include <Menu/PlaySetup.h>
 #include <mod/ModManager.h>
 #include <misc/FileSystem.h>
@@ -105,7 +106,12 @@ int runMenuProbe() {
         menuCapture(menu,"home-continue");
         menu.canContinue=false; menu.refreshContextButtons();
         SDL_Event tab{}; tab.type=SDL_KEYDOWN; tab.key.keysym.sym=SDLK_TAB;
-        for(auto* expected : {&menu.campaignButton,&menu.customButton,&menu.loadButton,&menu.optionsButton,&menu.modesButton,&menu.quitButton,&menu.onlineButton}) {
+        std::vector<TextButton*> tabOrder{&menu.campaignButton,&menu.customButton,&menu.loadButton,&menu.optionsButton,&menu.modesButton,&menu.quitButton};
+#if defined(DUNECITY_DESKTOP_UPDATER)
+        tabOrder.push_back(&menu.updateButton);
+#endif
+        tabOrder.push_back(&menu.onlineButton);
+        for(auto* expected : tabOrder) {
             menu.handleInput(tab);
             menuRequire(menu.windowWidget.pActiveChildWidget==expected,"Home Tab order reaches a hidden destination or disagrees with screen order");
             menuRequire(expected->keyboardFocusVisible,"Keyboard navigation lost its visible focus");
@@ -120,6 +126,27 @@ int runMenuProbe() {
         menu.campaignButton.handleMouseMovement(-1,-1,false);
         menuRequire(!menu.campaignButton.bHover,"Campaign hover stuck after pointer left");
         menuCapture(menu,"home-pointer");
+#if defined(DUNECITY_DESKTOP_UPDATER)
+        auto& updater = DesktopUpdater::instance();
+        updater.state_ = DesktopUpdater::State::Available;
+        updater.manifest_.version = "9.0.0";
+        menu.bFirstLaunchPromptChecked = true;
+        menu.update();
+        menuRequire(menu.updateButton.getText()=="Update available", "Update notice missing");
+        menu.onUpdate();
+        auto* question = dynamic_cast<QstBox*>(menu.pChildWindow);
+        menuRequire(question && menu.updatePromptOpen, "Update confirmation missing");
+        menuCapture(menu,"update-confirmation");
+        question->onButton(QSTBOX_BUTTON2);
+        menu.processChildWindowOpenCloses();
+        menuRequire(!menu.updatePromptOpen && !updater.busy(), "Later started an installation");
+        updater.state_ = DesktopUpdater::State::Installing;
+        auto* active = menu.windowWidget.pActiveChildWidget;
+        menu.handleInput(tab);
+        menuRequire(menu.windowWidget.pActiveChildWidget == active, "Installation allowed game-entry navigation");
+        updater.state_ = DesktopUpdater::State::Current;
+#endif
+
     }
     {
         HouseChoiceMenu menu;

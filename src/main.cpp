@@ -39,6 +39,7 @@
 #include <GUI/dune/DuneStyle.h>
 
 #include <Menu/MainMenu.h>
+#include <misc/DesktopUpdater.h>
 #include <Menu/OptionsMenu.h>
 
 #include <misc/DiscordManager.h>
@@ -1664,5 +1665,6 @@ int main(int argc, char *argv[]) {
         return EXIT_FAILURE;
     }
 
+    DesktopUpdater::relaunchAfterShutdown();
     return EXIT_SUCCESS;
 }
