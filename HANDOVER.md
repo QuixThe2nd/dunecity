@@ -1,3 +1,40 @@
+## 2026-09-19 — Fix packaged SDL3 startup failure (unreleased 732)
+
+Stefan's 731 installer failed at startup with "Failed loading SDL3 library."
+Homebrew's SDL2 target resolves to sdl2-compat, which dlopens libSDL3.dylib.
+BundleUtilities sees linked libraries only, so 731 omitted SDL3 even though its
+signatures, notarization and static dependency checks passed. Do not recommend
+the 731 package. The previous validation was insufficient to establish launch.
+
+Mac install rules now detect the compatibility library, require SDL3 and its
+license, copy it beside SDL2 as libSDL3.dylib and include it in dependency fixup
+and signing. Added --check-desktop-runtime before profile/game initialization:
+it initializes SDL video/timers, renders a hidden window and reports the loaded
+SDL paths. scripts/verify-macos-runtime.py rejects missing SDL3, external SDL
+libraries and startup/render failures. The signing pipeline checks the hardened
+runtime app before Apple submission; the DMG verifier runs the same check from
+the mounted package. The new verifier correctly rejects the broken 731 package.
+Also corrected the DMG dependency parser to ignore universal-binary headers.
+
+Native dependency audits/build, all eight CTest suites and Emscripten build pass.
+The installed, Developer ID signed and final mounted packages pass runtime checks.
+Launched the final ZIP's app with an isolated profile; native screenshot shows
+v1.0.732 and the rendered main menu/first-run welcome dialog. This establishes
+launch and rendering, not an end-to-end gameplay or updater test. The temporary
+test process was stopped afterward. Existing installs/profiles were not replaced.
+
+Apple accepted app 5800889c-1175-4955-bb70-9e31bd123429 and DMG
+a4c2b5de-c8e9-49fb-be76-b2b335633eb7; both stapled and Gatekeeper accepted.
+Task work/notarization-732 contains the final ZIP, DMG and acceptance evidence.
+DMG SHA256: cab6635ffebb4c88b461e84e6a32449a824b16a04eb309f0697930649319cc9b
+ZIP SHA256: 15ef90d5e8f418763b7454247b58924a360a2b8cc9beabd2ff52ae7d8c7532db
+The identical DMG is on BOTH Macs at Desktop/DuneCity-1.0.732-macOS.dmg.
+On the Air (macOS 26.5.2), SHA256, stapler, Gatekeeper, strict deep app signature
+and the packaged SDL initialization/render probe pass (dummy video/audio driver
+for the remote probe; no user game/profile opened). All four SDL libraries,
+including SDL3, load from the mounted app. No push, tag or publication occurred.
+Real old-to-new updater tests remain separate work.
+
 ## 2026-09-19 — Updater edition 731 signed and notarized on the mini
 
 Stefan completed the mini credential shortcut. DuneCityNotarization in the

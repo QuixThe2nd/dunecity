@@ -73,6 +73,12 @@ not publish stable feeds. `DUNECITY_ENABLE_UPDATER=OFF` excludes the dependencie
 Normal local builds remain ad-hoc signed on macOS. `cmake --install` first bundles
 portable dependencies. It preserves the complete Sparkle framework, including
 the updater app/XPC services and framework symlinks, before final signing.
+From 1.0.732, packaging detects SDL2 compatibility builds and explicitly includes
+their dynamically loaded SDL3 library and license. Static linker dependency
+inspection alone does not find this dependency. Mac package verification launches
+the app's isolated `--check-desktop-runtime` mode, checks hidden-window rendering,
+and confirms that every loaded SDL library comes from the app bundle. The same
+check runs after Developer ID signing and before submission to Apple.
 
 `scripts/package-signed-macos.py` copies an installed bundle, signs all nested
 Mach-O files and bundles with hardened runtime/timestamps, notarizes and staples

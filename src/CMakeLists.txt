@@ -890,6 +890,17 @@ elseif(APPLE)
             "${VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}/lib")
     endif()
 
+    # Homebrew SDL2 may be sdl2-compat, which dlopens SDL3 instead of linking
+    # it. BundleUtilities cannot discover that runtime-only dependency.
+    find_library(DUNECITY_MACOS_SDL3_LIBRARY NAMES SDL3)
+    if(DUNECITY_MACOS_SDL3_LIBRARY)
+        get_filename_component(_sdl3_real "${DUNECITY_MACOS_SDL3_LIBRARY}" REALPATH)
+        get_filename_component(_sdl3_libdir "${_sdl3_real}" DIRECTORY)
+        find_file(DUNECITY_MACOS_SDL3_LICENSE NAMES LICENSE.txt
+            HINTS "${_sdl3_libdir}/.." "${_sdl3_libdir}/../share/licenses/SDL3"
+            NO_DEFAULT_PATH)
+    endif()
+
     # Re-sign last because dependency fixup changes the executable and copied
     # libraries. The signature is ad-hoc until Developer ID credentials are
     # added to the runner, but it is internally valid and supports Open Anyway.
@@ -897,10 +908,28 @@ elseif(APPLE)
         include(BundleUtilities)
         set(BU_CHMOD_BUNDLE_ITEMS ON)
         set(BU_COPY_FULL_FRAMEWORK_CONTENTS ON)
+        set(_runtime_libraries \"\")
+        execute_process(COMMAND /usr/bin/strings \"$<TARGET_FILE:SDL2::SDL2>\"
+            OUTPUT_VARIABLE _sdl2_strings RESULT_VARIABLE _sdl2_result)
+        if(NOT _sdl2_result EQUAL 0)
+            message(FATAL_ERROR \"Could not inspect SDL2 runtime requirements\")
+        endif()
+        if(_sdl2_strings MATCHES \"SDL2COMPAT_DEBUG_LOGGING\")
+            if(NOT EXISTS \"${DUNECITY_MACOS_SDL3_LIBRARY}\" OR NOT EXISTS \"${DUNECITY_MACOS_SDL3_LICENSE}\")
+                message(FATAL_ERROR \"sdl2-compat requires SDL3 and its license for packaging\")
+            endif()
+            set(_sdl3_bundle \"\${CMAKE_INSTALL_PREFIX}/dunecity.app/Contents/Frameworks/libSDL3.dylib\")
+            file(MAKE_DIRECTORY \"\${CMAKE_INSTALL_PREFIX}/dunecity.app/Contents/Frameworks\")
+            configure_file(\"${DUNECITY_MACOS_SDL3_LIBRARY}\" \"\${_sdl3_bundle}\" COPYONLY)
+            list(APPEND _runtime_libraries \"\${_sdl3_bundle}\")
+            file(MAKE_DIRECTORY \"\${CMAKE_INSTALL_PREFIX}/dunecity.app/Contents/Resources/licenses\")
+            configure_file(\"${DUNECITY_MACOS_SDL3_LICENSE}\"
+                \"\${CMAKE_INSTALL_PREFIX}/dunecity.app/Contents/Resources/licenses/SDL3-LICENSE.txt\" COPYONLY)
+        endif()
         message(STATUS \"Bundling macOS runtime dependencies...\")
         fixup_bundle(
             \"\${CMAKE_INSTALL_PREFIX}/dunecity.app\"
-            \"\"
+            \"\${_runtime_libraries}\"
             \"${DUNECITY_MACOS_DEPENDENCY_DIRS}\"
         )
         # BundleUtilities flattens framework-root executable symlinks. Restore

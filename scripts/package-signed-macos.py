@@ -9,6 +9,7 @@ import json
 from pathlib import Path
 import plistlib
 import subprocess
+import sys
 import tempfile
 
 
@@ -70,6 +71,7 @@ def main():
         for p in sorted(bundles, key=lambda p: len(p.parts), reverse=True): run(*sign, p)
         run(*sign, app)
         run("codesign", "--verify", "--deep", "--strict", app)
+        run(sys.executable, Path(__file__).with_name("verify-macos-runtime.py"), app)
         upload = root / "submission.zip"
         run("ditto", "-c", "-k", "--sequesterRsrc", "--keepParent", app, upload)
         notarize(upload, args.notary_profile, args.notary_keychain, args.output / "app-notarization.json")
