@@ -158,9 +158,13 @@ int runMenuProbe() {
         menuRequire(browser.getSelectedMapPath() == setup.maps[setup.map], "Map browser lost selected map");
         menuRequire(browser.mainVBox.getMinimumSize().x <= browser.mainVBox.getSize().x, "Map browser controls exceed menu width");
         menuRequire(browser.mainVBox.getMinimumSize().y <= browser.mainVBox.getSize().y, "Map browser controls exceed menu height");
+        menuRequire(browser.allowJoinAfterStartCheckbox.isChecked(),"Late join must be enabled by default");
+        menuRequire(browser.allowJoinAfterStartCheckbox.isVisible()==online,"Late join setting is shown for an offline game");
         menuCapture(browser, online ? "map-browser-online" : "map-browser-offline");
+        browser.allowJoinAfterStartCheckbox.setChecked(false);
         browser.onNext();
         menuRequire(browser.retVal == MENU_SETUP_PLAYERS, "Map selection did not proceed to players");
+        menuRequire(!mapSetup.allowJoinAfterStart,"Late join opt-out was lost");
         menuRequire(mapSetup.online == online && mapSetup.map == setup.map, "Map browser changed mode or map");
     }
     const auto map = setup.maps.front();
@@ -292,6 +296,8 @@ int runMenuProbe() {
         coop.mode="coop"; coop.hostName="Campaign host"; coop.roomCode="AAAA-BBBB-CCCC"; coop.players=1; coop.maxPeers=2;
         custom.mode="custom"; custom.hostName="Custom host"; custom.roomCode="DDDD-EEEE-FFFF"; custom.players=2; custom.maxPeers=4;
         coop.modName="vanilla"; custom.modName="dunecity";
+        coop.mapName="Atreides mission 4"; custom.mapName="Habbanya-Autumn";
+        custom.running=true; custom.allowLateJoin=true; custom.elapsedSeconds=620;
         menuRequire(menu.modFilter.getSelectedEntryIntData()==-1,"All mods must be the default");
         menu.allPublicGames={coop,custom}; menu.refreshDirectory();
         menuRequire(menu.publicGames.size()==2,"All mods hides another mod");

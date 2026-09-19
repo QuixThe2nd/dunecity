@@ -136,11 +136,19 @@ bool relayPeerNamesAreBound = true;
 } // namespace
 
 void NetworkManager::installSessionBridges() {
+    pOnJoinSync=[this](Uint32 peer,Uint32 operation,Uint32 transaction,Uint32 offset,const std::string& data) {
+        receiveJoinSync(peer,operation,transaction,offset,data);
+    };
     pOnStartGameBridge = [this](unsigned int timeLeft) {
         // The packet router has already verified that STARTGAME came from the host.
         // Freeze now, before the countdown allows a membership change to alter this match.
         if(auto* direct = getDirectTransport()) {
             if(!direct->acceptStartCallback()) return;
+        }
+        if(joinStage==JoinStage::Starting || joinStage==JoinStage::Receiving) {
+            if(joinSnapshot) { joinStage=JoinStage::Ready; joinStatus="Resuming with the new player..."; }
+            else abortLateJoin("The game snapshot was not ready.");
+            return;
         }
         if(pOnStartGame) pOnStartGame(timeLeft);
     };
@@ -561,6 +569,7 @@ void NetworkManager::update()
 {
     if(isRelaySession()) {
         updateRelaySession();
+        updateLateJoin();
         return;
     }
 
@@ -977,6 +986,7 @@ NetworkSessionCallbacks NetworkManager::sessionCallbacks() const {
     callbacks.onReceiveGameInfo        = &pOnReceiveGameInfo;
     callbacks.onReceiveChangeEventList = &pOnReceiveChangeEventList;
     callbacks.onStartGame              = &pOnStartGameBridge;
+    callbacks.onJoinSync               = &pOnJoinSync;
     callbacks.onReceiveCommandList     = &pOnReceiveCommandList;
     callbacks.onReceiveSelectionList   = &pOnReceiveSelectionList;
     callbacks.onReceiveClientStats     = &pOnReceiveClientStats;
@@ -1138,6 +1148,10 @@ void NetworkManager::updateRelaySession() {
             } break;
 
             case RoomSessionTransport::Event::Type::PeerLeft: {
+                if(event.name==joinName && event.role!=RoomRelay::Role::Host) {
+                    if(lateJoinPaused()) abortLateJoin("The new player disconnected.");
+                    break;
+                }
                 debugNetwork("Relay peer '%s' left (reason %u)\n", event.name.c_str(),
                              static_cast<unsigned>(event.reason));
                 if(pOnPeerDisconnected) {
@@ -1245,6 +1259,8 @@ void NetworkManager::handleRelayGamePayload(std::uint32_t peerId,
 
     try {
         const Uint32 packetType = packetStream.readUint32();
+        if(lateJoinPaused() && (packetType==NETWORKPACKET_COMMANDLIST || packetType==NETWORKPACKET_SELECTIONLIST
+            || packetType==NETWORKPACKET_CLIENTSTATS || packetType==NETWORKPACKET_SETPATHBUDGET)) return;
 
         // The central admission policy applies unchanged. On the relay a peer is always fully
         // established (the relay would not route for anybody else) and "the host connection"
@@ -2132,6 +2148,7 @@ std::unique_ptr<GameInitSettings> NetworkManager::takeCoopMission() {
 }
 
 void NetworkManager::beginSimulation(Uint32 seed) {
+    if(joinLoading) { seed=resumeSeed; joinLoading=false; }
     simulationSeed = seed;
     bGameInProgress = true;
 

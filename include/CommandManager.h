@@ -78,6 +78,7 @@ public:
         \param  stream  the stream to read from
     */
     void load(InputStream& stream);
+    void discardCommandsFrom(Uint32 cycle) { if(timeslot.size()>cycle) timeslot.resize(cycle); }
 
 
     Uint32 getNetworkCycleBuffer() const { return networkCycleBuffer; }

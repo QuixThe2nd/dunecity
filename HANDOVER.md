@@ -1,3 +1,48 @@
+## 2026-09-19 — Host-approved hot joining; unified 1.0.726
+
+Stefan requested an enabled-by-default checkbox, subsequently named **Allow hot
+join**, on online custom-game setup. The lobby now lists waiting and joinable
+running games with map/mod/status or elapsed minutes; selecting a row shows full
+metadata. Running entries send a request rather than seating a stranger.
+The host receives a news notification and uses Options → Join requests to choose
+an eligible living house/controller, replace an AI, or share with an existing
+human/AI where shared-house/co-op rules permit. Existing humans cannot be replaced.
+
+This is direct-session synchronization, not just listing/UI. The host captures
+an in-memory checkpoint, pauses existing peers, approves a name-bound service
+grant, and transfers the bounded checkpoint over WebRTC. The existing roster
+barrier commits the enlarged mesh, then every peer reloads the same checkpoint.
+Original player state, teams, ownership and house colors remain; commands from
+the old simulation epoch are discarded. A progress dialog allows the host to
+cancel before commitment; aborted joins resume the original match. General
+admission remains closed after start. Server-side named activity logs record the
+new public participant and resumed roster without counting another new match.
+
+Protocol is now 6; all participants need compatible 726 clients. Save version is
+unchanged. Transport capacity remains eight humans and shared houses retain two
+controllers. Network saves retain the existing 4 MiB cap; oversized checkpoints
+fail before pausing. Listed minutes are wall time since first start, including
+pauses. ENet/LAN and legacy relay hot join are not implemented. Details and bounds
+are documented in docs/late-join-protocol.md.
+
+Validation: final native build/dependency audit and all seven CTest suites pass;
+181 real-HTTP service tests pass. Three-process local WebRTC probes cover AI
+replacement, sharing with a human, sharing with AI, and cancellation, with matching
+post-resume simulation digests. Menu probes cover 640×480, 854×480 and 1280×720.
+Final browser build passes. An actual Chrome 726 newcomer discovered the running
+native two-player match, requested entry, and loaded the assigned Harkonnen house
+after approval. Original native peers matched at cycle 150; the browser was
+visually verified, not included in the digest comparison. The fixture intentionally
+stops natives at cycle 150, after which the browser waits for their commands.
+The browser probe uses a same-origin local HTTP proxy to preserve the production
+CSP; its first separate-origin attempt was blocked by that policy, not hot join.
+
+All earlier performance/UI/logging changes remain in the same native and browser
+726 build trees. No pathfinding node-budget changes. No production deployment or
+public binary release is authorized by this local implementation request; the
+previous authorization applied to the already-deployed 725 metaserver. User
+settings/saves and any original match were not used by integration probes.
+
 ## 2026-09-19 — All mods, waiting players and public activity; unified 1.0.725
 
 Stefan requested All mods as the default discovery filter, waiting-player count

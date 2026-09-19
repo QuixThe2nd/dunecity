@@ -246,6 +246,33 @@ void House::save(OutputStream& stream) const {
 
 
 
+void House::configureNetworkPlayers(const std::vector<std::pair<std::string, std::string>>& desired) {
+    if(desired.empty() || desired.size()>2 || desired.size()<players.size())
+        THROW(std::runtime_error,"Invalid resumed controller roster.");
+    auto existing=players.begin();
+    for(size_t i=0;i<desired.size();++i) {
+        const auto& [name, type]=desired[i];
+        if(existing==players.end()) {
+            if(type!=HUMANPLAYERCLASS) THROW(std::runtime_error,"Only a human may join a running house.");
+            const auto* factory=PlayerFactory::getByPlayerClass(type);
+            addPlayer(factory->create(this,name));
+            break;
+        }
+        Player* previous=existing->get();
+        if(previous->getPlayerclass()!=type || previous->getPlayername()!=name) {
+            if(dynamic_cast<HumanPlayer*>(previous) || type!=HUMANPLAYERCLASS)
+                THROW(std::runtime_error,"A join request cannot replace an existing human.");
+            auto replacement=PlayerFactory::getByPlayerClass(type)->create(this,name);
+            replacement->playerID=previous->getPlayerID();
+            currentGame->unregisterPlayer(previous);
+            *existing=std::move(replacement);
+            currentGame->registerPlayer(existing->get());
+        }
+        ++existing;
+    }
+    ai=std::none_of(players.begin(),players.end(),[](const auto& p){return dynamic_cast<HumanPlayer*>(p.get())!=nullptr;});
+}
+
 void House::configureCoopPlayers(const std::vector<std::pair<std::string, std::string>>& desired) {
     if(desired.size() != 2 || desired.front().second != HUMANPLAYERCLASS || players.empty()
        || dynamic_cast<HumanPlayer*>(players.front().get()) == nullptr)

@@ -52,12 +52,14 @@
 #define NETWORKPACKET_KEEPALIVE             19  // Periodic ping to keep NAT mappings alive
 
 #define NETWORKPACKET_COOP_MISSION          20
+#define NETWORKPACKET_JOIN_SYNC             21
+#define NETWORKPACKET_JOIN_ACK              22
 
 // Network protocol version - increment when packet formats change
 // Version 2: Added simMsAvg to NETWORKPACKET_CLIENTSTATS (5 fields instead of 4)
 // Version 3: Added mod transfer packets (MOD_INFO, MOD_REQUEST, MOD_CHUNK, MOD_COMPLETE)
 // Version 4: Fixed nine-house deterministic state and versioned visibility storage
-#define NETWORK_PROTOCOL_VERSION            5
+#define NETWORK_PROTOCOL_VERSION            6
 
 // Mod transfer limits
 #define MAX_MOD_TRANSFER_SIZE   (10 * 1024 * 1024)  // 10MB max mod size

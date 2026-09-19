@@ -30,6 +30,7 @@
 
 #include <GUI/MsgBox.h>
 #include <GUI/QstBox.h>
+#include <GUI/dune/JoinRequestsWindow.h>
 #include <GUI/dune/InGameSettingsMenu.h>
 #include <GUI/dune/LoadSaveWindow.h>
 
@@ -42,7 +43,8 @@ InGameMenu::InGameMenu(bool bMultiplayer, int color)
  : Window(0,0,0,0), bMultiplayer(bMultiplayer), color(color) {
     const bool onlineContinues = pNetworkManager && pNetworkManager->isRelaySession();
     const bool canSkip = currentGame->canSkipMission();
-    const int buttons = 3 + (bMultiplayer ? 0 : 3) + (canSkip ? 1 : 0);
+    const bool canJoin=pNetworkManager && pNetworkManager->isServer() && pNetworkManager->getDirectTransport() && pNetworkManager->getDirectTransport()->allowsLateJoin();
+    const int buttons = (canJoin ? 4 : 3) + (bMultiplayer ? 0 : 3) + (canSkip ? 1 : 0);
     const int width = std::min(440,getRendererWidth()-32);
     const int height = 92 + buttons*40 + (buttons-1)*6;
     sdl2::surface_ptr background{SDL_CreateRGBSurfaceWithFormat(0,width,height,32,SCREEN_FORMAT)};
@@ -74,6 +76,9 @@ InGameMenu::InGameMenu(bool bMultiplayer, int color)
     };
     auto gap=[&]() { mainVBox.addWidget(VSpacer::create(6)); };
     addButton(resumeButton,onlineContinues ? _("Back to Game") : _("Resume Game"),std::bind(&InGameMenu::onResume,this));
+    if(canJoin) {
+        gap(); addButton(joinRequestsButton,"Join requests ("+std::to_string(pNetworkManager->getDirectTransport()->joinRequests().size())+")",[this](){openWindow(JoinRequestsWindow::create());});
+    }
     if(canSkip) {
         gap();addButton(skipMissionButton,_("Skip mission..."),std::bind(&InGameMenu::onSkipMission,this));
     }

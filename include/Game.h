@@ -214,6 +214,12 @@ public:
         \return true on success, false on failure
     */
     bool saveGame(const std::string& filename);
+    void saveGame(OutputStream& stream);
+    struct JoinSlot { int house, controller; std::string label; };
+    std::set<std::string> seenJoinRequests;
+    std::string lastJoinStatus;
+    std::vector<JoinSlot> availableJoinSlots() const;
+    bool acceptJoinRequest(const std::string& request, const std::string& name, const JoinSlot& slot);
 
     /**
         This method starts the game. Will return when the game is finished or aborted.

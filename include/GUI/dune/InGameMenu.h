@@ -67,6 +67,7 @@ private:
     Label   title;
     Label   onlineNotice;
 
+    InGameMenuButton  joinRequestsButton;
     InGameMenuButton  resumeButton;
     InGameMenuButton  gameSettingsButton;
     InGameMenuButton  restartGameButton;

@@ -102,6 +102,7 @@ private:
     ListBox         mapList;
     HBox            optionsHBox;
     Checkbox        multiplePlayersPerHouseCheckbox;
+    Checkbox        allowJoinAfterStartCheckbox;
     TextButton      gameOptionsButton;
 
     // right VBox with mini map

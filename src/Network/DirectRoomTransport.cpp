@@ -1,3 +1,5 @@
+#include <Network/RoomAdmissionClient.h>
+#include <sstream>
 /*
  *  This file is part of Dune Legacy.
  *
@@ -212,6 +214,7 @@ void DirectRoomTransport::update() {
     const std::uint32_t nowMs = now();
     pumpSignaling(nowMs);
     pumpConnections(nowMs);
+    pumpJoinRequests(nowMs);
     if(status_ == Status::Joined && startStage_ != StartStage::Idle && startStage_ != StartStage::Committed
        && SDL_TICKS_PASSED(nowMs, startDeadline_)) {
         finish(RoomRelay::Close::Timeout, "The players could not confirm the start. Please host a new game.");
@@ -356,7 +359,7 @@ void DirectRoomTransport::beginNextSignalingRequest(std::uint32_t nowMs) {
     // drops to a trickle rather than keeping a conversation going for its own sake.
     const bool settled = !negotiating && matchStarted_ && !links_.empty();
     const std::uint32_t interval = negotiating ? kNegotiatingPollMs
-                                 : settled ? kMatchPollMs
+                                 : settled ? (config_.allowLateJoin ? kConnectedPollMs : kMatchPollMs)
                                  : (links_.empty() ? kIdlePollMs : kConnectedPollMs);
     if(nowMs - lastPollMs_ < interval) {
         return;
@@ -485,6 +488,7 @@ void DirectRoomTransport::handlePollResult(const BoundedHttpClient::Result& resu
                 }
                 continue;
             }
+            if(!joinName_.empty() && member.name!=joinName_ && !isFrozenMember(member.id)) continue;
             Peer peer;
             peer.id      = member.id;
             peer.role    = member.role;
@@ -1350,7 +1354,7 @@ void DirectRoomTransport::dropLink(std::uint32_t peerId, const std::string& reas
                    : reason);
         return;
     }
-    if(matchStarted_ && isFrozenMember(peerId)) {
+    if((matchStarted_ || !joinName_.empty()) && isFrozenMember(peerId)) {
         finish(RoomRelay::Close::Normal,
                name.empty() ? "A player left, so the match cannot continue."
                             : name + " left, so the match cannot continue.");
@@ -1502,4 +1506,61 @@ std::size_t DirectRoomTransport::connectedPeerCount() const {
         }
     }
     return count;
+}
+
+
+bool DirectRoomTransport::openJoinWindow(const std::string& name) {
+    if(status_ != Status::Joined || !RoomRelay::isAcceptableDisplayName(name) || !joinName_.empty()) return false;
+    joinName_=name;
+    matchStarted_=false;
+    startStage_=StartStage::Idle; startCallbackAccepted_=false;
+    startId_.clear(); startRoster_.clear(); startPayload_.clear(); startAcks_.clear();
+    phaseUpdatePending_=false;
+    phase_=RoomRelay::Phase::Lobby;
+    readinessDirty_=true; lastPollMs_=0;
+    return true;
+}
+
+void DirectRoomTransport::abortJoinWindow() {
+    if(joinName_.empty()) return;
+    std::vector<std::uint32_t> remove;
+    for(const auto& peer : peers_) if(!isFrozenMember(peer.id)) remove.push_back(peer.id);
+    for(auto id : remove) dropLink(id,"The host cancelled the join request.");
+    joinName_.clear();
+    matchStarted_=true; phase_=RoomRelay::Phase::Match;
+    startStage_=StartStage::Committed; startCallbackAccepted_=true;
+    phaseUpdatePending_=false;
+}
+
+bool DirectRoomTransport::manageJoin(const std::string& action, const std::string& request) {
+    if(!isHost() || !isJoined() || (action!="approve" && action!="decline" && action!="abort")
+       || request.size()!=64 || !RoomRelay::isLowercaseHex(request)) return false;
+    if(!joinAction_.empty() && joinAction_!="list" && action!="abort") return false;
+    if(!joinHttp_) joinHttp_=dependencies_.httpFactory();
+    if(!joinHttp_) return false;
+    joinHttp_->cancel(); joinAction_=action; joinRequestId_=request; joinDecisionOK_=false;
+    auto req=signalingRequest(); req.url=endpoint("/v1/p2p/join-requests"); req.sessionToken=sessionToken_;
+    req.body="action="+action+"&request="+request; req.maxResponseBytes=4096;
+    joinHttp_->begin(req);
+    return true;
+}
+
+void DirectRoomTransport::pumpJoinRequests(std::uint32_t nowMs) {
+    if(!isHost() || !isJoined() || !config_.allowLateJoin) return;
+    if(!joinHttp_) joinHttp_=dependencies_.httpFactory();
+    if(!joinHttp_) return;
+    joinHttp_->update();
+    BoundedHttpClient::Result result;
+    if(joinHttp_->poll(result)) {
+        std::vector<JoinRequest> requests;
+        const bool valid=result.httpStatus==200 && LateJoinPolicy::parseQueue(result.body,requests);
+        if(joinAction_=="list") { if(valid) joinRequests_=std::move(requests); }
+        else joinDecisionOK_=valid;
+        joinAction_.clear(); nextJoinPoll_=nowMs+3000;
+    }
+    if(joinAction_.empty() && matchStarted_ && SDL_TICKS_PASSED(nowMs,nextJoinPoll_)) {
+        auto req=signalingRequest(); req.url=endpoint("/v1/p2p/join-requests"); req.sessionToken=sessionToken_;
+        req.body="action=list"; req.maxResponseBytes=4096;
+        joinAction_="list"; joinHttp_->begin(req);
+    }
 }

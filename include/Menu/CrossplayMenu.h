@@ -52,7 +52,7 @@
 class CrossplayMenu : public MenuBase {
 public:
     CrossplayMenu();
-    CrossplayMenu(const GameInitSettings& game, bool publicGame, const ChangeEventList& players = {});
+    CrossplayMenu(const GameInitSettings& game, bool publicGame, const ChangeEventList& players = {}, bool allowLateJoin = true);
     ~CrossplayMenu() override;
 
     void update() override;
@@ -60,6 +60,7 @@ public:
 private:
     enum class Stage {
         Choosing,       ///< nothing in flight
+        WaitingForApproval,
         Requesting,     ///< waiting for the game service to answer
         Connecting,     ///< opening the game connection
         HostReady,      ///< in the room as host; may now choose what to play
@@ -101,11 +102,16 @@ private:
 
     std::unique_ptr<GameInitSettings> preparedGame;
     ChangeEventList preparedPlayers;
+    bool allowLateJoin = true, joiningRunning = false;
+    std::string joinTicket;
+    bool joinPollPending = false;
+    Uint32 nextJoinPoll = 0, joinRequestDeadline = 0;
     bool autoHostRequested = false;
     DropDownBox modeFilter, modFilter;
     std::vector<ModInfo> availableMods;
     TextButton otherConnections;
     TextView preparedSummary;
+    TextView selectedGameDetails;
     std::vector<PublicRelayGame> allPublicGames;
     Stage       stage = Stage::Choosing;
     bool        hostingCoop = false;

@@ -16,6 +16,7 @@ struct CustomPlaySetup {
     int mod = 0;
     bool online = false;
     bool publicGame = true;
+    bool allowJoinAfterStart = true;
     bool sharedHouse = false;
     SettingsClass::GameOptionsClass rules;
     ChangeEventList players;

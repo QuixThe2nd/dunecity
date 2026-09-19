@@ -43,6 +43,7 @@
 */
 
 #include <Network/DirectPeerConnection.h>
+#include <Network/LateJoinPolicy.h>
 #include <Network/BoundedHttpClient.h>
 #include <Network/P2PSignalingProtocol.h>
 #include <Network/NetworkPacketPolicy.h>
@@ -69,6 +70,7 @@ public:
         std::string   runtime;                  ///< "native" or "browser"
         std::uint16_t gameProtocolVersion = 0;
         bool          allowLoopbackPlaintext = false;
+        bool          allowLateJoin = false;
     };
 
     /// Injection points, so the tests can drive the real state machine without a socket or a NIC.
@@ -182,6 +184,17 @@ public:
     /// True once the signaling service has stopped answering. Not fatal to a running match.
     bool signalingLost() const { return signalingLost_; }
 
+    using JoinRequest=LateJoinPolicy::Request;
+    const std::vector<JoinRequest>& joinRequests() const { return joinRequests_; }
+    bool manageJoin(const std::string& action, const std::string& request);
+    bool joinDecisionPending() const { return !joinAction_.empty(); }
+    bool joinDecisionSucceeded() const { return joinDecisionOK_; }
+    bool allowsLateJoin() const { return config_.allowLateJoin; }
+    // Only the authenticated host's synchronization packet may call this on a client.
+    bool openJoinWindow(const std::string& name);
+    void abortJoinWindow();
+    void completeJoinWindow() { joinName_.clear(); }
+
     std::size_t queuedEventCount() const { return events_.size(); }
 
 private:
@@ -277,6 +290,12 @@ private:
     std::string endpoint(const char* path) const;
     BoundedHttpClient::Request signalingRequest() const;
 
+    void pumpJoinRequests(std::uint32_t nowMs);
+    std::unique_ptr<BoundedHttpClient> joinHttp_;
+    std::vector<JoinRequest> joinRequests_;
+    std::string joinAction_, joinRequestId_, joinName_;
+    bool joinDecisionOK_ = false;
+    std::uint32_t nextJoinPoll_ = 0;
     Dependencies dependencies_;
     Config       config_;
     std::unique_ptr<BoundedHttpClient> http_;

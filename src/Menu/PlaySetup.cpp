@@ -165,6 +165,6 @@ void playCustomGame(bool online) {
         if(result == MENU_SETUP_MAP || result == MENU_QUIT_DEFAULT) { chooseMap = true; continue; }
         if(result != MENU_SETUP_HOST) return;
         GameInitSettings networkInit(getBasename(path, true), readCompleteFile(path), settings.general.playerName + "'s custom game", setup.sharedHouse, setup.rules);
-        if(CrossplayMenu(networkInit, setup.publicGame, setup.players).showMenu() == MENU_QUIT_GAME_FINISHED) return;
+        if(CrossplayMenu(networkInit, setup.publicGame, setup.players, setup.allowJoinAfterStart).showMenu() == MENU_QUIT_GAME_FINISHED) return;
     }
 }

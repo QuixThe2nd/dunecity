@@ -50,6 +50,7 @@ public:
     virtual void save(OutputStream& stream) const;
 
     void addPlayer(std::unique_ptr<Player> newPlayer);
+    void configureNetworkPlayers(const std::vector<std::pair<std::string, std::string>>& desired);
     void configureCoopPlayers(const std::vector<std::pair<std::string, std::string>>& desired);
 
     inline int getHouseID() const { return houseID; }

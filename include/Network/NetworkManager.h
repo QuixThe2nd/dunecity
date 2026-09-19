@@ -222,6 +222,15 @@ public:
         transfers, stop being accepted from this point on.
         \param  seed    the shared simulation seed
     */
+    bool beginLateJoin(const std::string& requestId, const std::string& name, const GameInitSettings& snapshot);
+    bool canCancelLateJoin() const { return bIsServer && lateJoinPaused() && joinStage!=JoinStage::Starting && joinStage!=JoinStage::Ready; }
+    void cancelLateJoin() { if(canCancelLateJoin()) abortLateJoin("The host cancelled the join request."); }
+    bool lateJoinPaused() const { return joinStage != JoinStage::Idle; }
+    bool lateJoinReady() const { return joinStage == JoinStage::Ready; }
+    bool lateJoinLoading() const { return joinLoading; }
+    const std::string& lateJoinStatus() const { return joinStatus; }
+    std::unique_ptr<GameInitSettings> takeLateJoin();
+    void expectLateJoin() { joinExpected=true; }
     void beginSimulation(Uint32 seed);
     void sendCommandList(const CommandList& commandList);
 
@@ -436,6 +445,19 @@ public:
     }
 
 private:
+    enum class JoinStage { Idle, Preparing, Admission, Connecting, Sending, Receiving, Starting, Ready };
+    JoinStage joinStage = JoinStage::Idle;
+    Uint32 joinTotal = 0, joinTransaction = 0, joinDeadline = 0, joinOffset = 0, joinNextOffset = 0, resumeSeed = 0;
+    bool joinExpected = false, joinLoading = false;
+    std::string joinRequestId, joinName, joinBytes, joinStatus;
+    std::vector<Uint32> joinOriginalPeers;
+    std::map<Uint32,Uint32> joinAcks;
+    std::unique_ptr<GameInitSettings> joinSnapshot;
+    std::function<void (Uint32, Uint32, Uint32, Uint32, const std::string&)> pOnJoinSync;
+    void receiveJoinSync(Uint32 peer, Uint32 operation, Uint32 transaction, Uint32 offset, const std::string& data);
+    void updateLateJoin();
+    void abortLateJoin(const std::string& reason);
+    bool sendJoinSync(Uint32 operation, Uint32 offset, const std::string& data, Uint32 recipient = 0);
     bool publicRelayRoom = false;
     static void debugNetwork(PRINTF_FORMAT_STRING const char* fmt, ...) PRINTF_VARARG_FUNC(1);
 

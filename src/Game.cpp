@@ -16,6 +16,8 @@
  */
 
 #include <Game.h>
+#include <misc/OMemoryStream.h>
+#include <GUI/dune/JoinProgressWindow.h>
 #include <GUI/dune/FeedbackWindow.h>
 #include <misc/CampaignControls.h>
 #include <main.h>
@@ -2408,6 +2410,7 @@ void Game::doInput()
             }*/
         }
 
+        if(pNetworkManager && pNetworkManager->lateJoinPaused() && event.type!=SDL_QUIT && dynamic_cast<JoinProgressWindow*>(pInGameMenu.get())==nullptr) continue;
         if(pInGameMenu != nullptr) {
             pInGameMenu->handleInput(event);
 
@@ -2947,10 +2950,10 @@ void Game::runMainLoop() {
             }
 
             const Uint64 commandsStart=SDL_GetPerformanceCounter();
-            cmdManager.update();
+            if(!pNetworkManager || !pNetworkManager->lateJoinPaused()) cmdManager.update();
             commandsMsThisFrame+=getElapsedMs(commandsStart,SDL_GetPerformanceCounter());
 
-            if(!bWaitForNetwork && !bPause) {
+            if(!bWaitForNetwork && !bPause && (!pNetworkManager || !pNetworkManager->lateJoinPaused())) {
                 // Time the core simulation step for CPU load detection
                 const Uint64 simStart = SDL_GetPerformanceCounter();
                 try {
@@ -2986,7 +2989,7 @@ void Game::runMainLoop() {
                 } else {
                     frameTime -= getGameSpeed();
                 }
-            } else if(bWaitForNetwork || bPause) {
+            } else if(bWaitForNetwork || bPause || (pNetworkManager && pNetworkManager->lateJoinPaused())) {
                 // When waiting for network or paused, measure the wait time
                 if(bWaitForNetwork) {
                     Uint64 networkWaitEnd = SDL_GetPerformanceCounter();
@@ -4143,6 +4146,7 @@ bool Game::loadSaveGame(InputStream& stream) {
     }
 
     // if this is a multiplayer load we need to save some information before we overwrite gameInitSettings with the settings saved in the savegame
+    const bool lateJoinLoad=pNetworkManager && pNetworkManager->lateJoinLoading();
     const bool bCoopLoad = gameInitSettings.getGameType() == GameType::LoadCoop;
     const std::string coopServer = gameInitSettings.getServername();
     bool bMultiplayerLoad = (gameInitSettings.getGameType() == GameType::LoadMultiplayer || bCoopLoad);
@@ -4249,7 +4253,15 @@ bool Game::loadSaveGame(InputStream& stream) {
     // Single-player saves contain a local-player byte even when hosted online.
     Uint8 savedLocalPlayerID = 0;
     if(!savedNetworkLayout) savedLocalPlayerID = stream.readUint8();
-    if(bCoopLoad) {
+    if(lateJoinLoad) {
+        for(const auto& info : oldHouseInfoList) {
+            auto* target=getHouse(info.houseID);
+            if(!target) THROW(std::runtime_error,"The requested house no longer exists.");
+            std::vector<std::pair<std::string,std::string>> desired;
+            for(const auto& p : info.playerInfoList) desired.emplace_back(p.playerName,p.playerClass);
+            target->configureNetworkPlayers(desired);
+        }
+    } else if(bCoopLoad) {
         for(const auto& info : oldHouseInfoList) {
             if(info.houseID != gameInitSettings.getHouseID()) continue;
             House* shared = getHouse(info.houseID);
@@ -4432,6 +4444,16 @@ bool Game::loadSaveGame(InputStream& stream) {
     logLoadStage("command history");
     cmdManager.load(stream);
 
+    if(lateJoinLoad) {
+        gameInitSettings.clearHouseInfo();
+        for(const auto& info : oldHouseInfoList) gameInitSettings.addHouseInfo(info);
+        for(auto& actual : houseInfoListSetup)
+            for(const auto& requested : oldHouseInfoList)
+                if(actual.houseID==requested.houseID) actual.playerInfoList=requested.playerInfoList;
+        for(const auto& h : house) if(h) for(const auto& p : h->getPlayerList())
+            if(auto* human=dynamic_cast<HumanPlayer*>(p.get())) human->nextExpectedCommandsCycle=gameCycleCount;
+        cmdManager.discardCommandsFrom(gameCycleCount);
+    }
     if(bCoopLoad) {
         const bool campaign = isCampaignGameType(gameInitSettings.getGameType());
         gameInitSettings.enableCoop(campaign, coopServer);
@@ -4474,6 +4496,12 @@ bool Game::saveGame(const std::string& filename)
         return false;
     }
 
+    saveGame(fs);
+    fs.close();
+    return true;
+}
+
+void Game::saveGame(OutputStream& fs) {
     fs.writeUint32(SAVEMAGIC);
 
     fs.writeUint32(SAVEGAMEVERSION);
@@ -4575,10 +4603,6 @@ bool Game::saveGame(const std::string& filename)
 
     // CommandManager is at the very end of the file. DO NOT CHANGE THIS!
     cmdManager.save(fs);
-
-    fs.close();
-
-    return true;
 }
 
 
@@ -6093,6 +6117,26 @@ bool Game::handleNetworkUpdates() {
     }
 
     pNetworkManager->update();
+    if(auto* direct=pNetworkManager->getDirectTransport(); direct && pNetworkManager->isServer()) {
+        std::set<std::string> currentRequests;
+        for(const auto& request : direct->joinRequests()) {
+            currentRequests.insert(request.id);
+            if(!seenJoinRequests.count(request.id)) addToNewsTicker(request.name+" wants to join. Open Options > Join requests.");
+        }
+        seenJoinRequests=std::move(currentRequests);
+    }
+    if(!pNetworkManager->lateJoinStatus().empty() && lastJoinStatus!=pNetworkManager->lateJoinStatus()) {
+        lastJoinStatus=pNetworkManager->lateJoinStatus(); addToNewsTicker(lastJoinStatus);
+    }
+    if(pNetworkManager->lateJoinReady()) { bQuitGame=true; return true; }
+    if(pNetworkManager->lateJoinPaused()) {
+        startWaitingForOtherPlayersTime=0; pWaitingForOtherPlayers.reset();
+        if(!pInGameMenu) { pInGameMenu=std::make_unique<JoinProgressWindow>(); bMenu=true; }
+        if(auto* progress=dynamic_cast<JoinProgressWindow*>(pInGameMenu.get())) progress->refresh();
+        return true;
+    }
+    if(dynamic_cast<JoinProgressWindow*>(pInGameMenu.get())) { pInGameMenu.reset(); bMenu=false; }
+
     bool bWaitForNetwork = false;
 
     // Check for network delays
@@ -6385,4 +6429,50 @@ void Game::toggleMovementPaths() {
     config.setBoolValue("General","Movement Paths",settings.general.showMovementPaths);
     config.saveChangesTo(getConfigFilepath());
     WebRuntime::syncPersistentFiles();
+}
+
+std::vector<Game::JoinSlot> Game::availableJoinSlots() const {
+    std::vector<JoinSlot> result;
+    const bool coop=isCoopGameType(gameType);
+    const bool shared=coop || gameInitSettings.isMultiplePlayersPerHouse();
+    for(int h=0;h<NUM_HOUSES;++h) {
+        const auto* target=house[h].get();
+        if(!target || !target->isAlive() || (coop && h!=gameInitSettings.getHouseID())) continue;
+        const auto& controllers=target->getPlayerList();
+        if(controllers.empty()) continue;
+        int index=0;
+        for(const auto& p : controllers) {
+            if(dynamic_cast<HumanPlayer*>(p.get())==nullptr)
+                result.push_back({h,index,"Replace "+p->getPlayername()+" (house "+std::to_string(h+1)+")"});
+            ++index;
+        }
+        if(shared && controllers.size()<2)
+            result.push_back({h,index,"Share with "+controllers.front()->getPlayername()+" (house "+std::to_string(h+1)+")"});
+    }
+    return result;
+}
+
+bool Game::acceptJoinRequest(const std::string& request, const std::string& name, const JoinSlot& slot) {
+    if(!pNetworkManager || !pNetworkManager->isServer() || pNetworkManager->lateJoinPaused()) return false;
+    const auto choices=availableJoinSlots();
+    if(std::none_of(choices.begin(),choices.end(),[&](const auto& s){return s.house==slot.house && s.controller==slot.controller;})) return false;
+    try {
+        OMemoryStream stream; stream.open(); saveGame(stream);
+        auto snapshot=gameInitSettings.networkSnapshot(std::string(stream.getData(),stream.getDataLength()));
+        snapshot.setMultiplePlayersPerHouse(gameInitSettings.isMultiplePlayersPerHouse() || isCoopGameType(gameType));
+        for(int h=0;h<NUM_HOUSES;++h) {
+            const auto* target=house[h].get(); if(!target || target->getPlayerList().empty()) continue;
+            GameInitSettings::HouseInfo info(static_cast<HOUSETYPE>(h),target->getTeamID());
+            info.colorOfHouse=getHouseVisualHouse(h);
+            int index=0;
+            for(const auto& p : target->getPlayerList()) {
+                info.addPlayerInfo(GameInitSettings::PlayerInfo(h==slot.house && index==slot.controller ? name : p->getPlayername(),
+                    h==slot.house && index==slot.controller ? HUMANPLAYERCLASS : p->getPlayerclass()));
+                ++index;
+            }
+            if(h==slot.house && slot.controller==index) info.addPlayerInfo(GameInitSettings::PlayerInfo(name,HUMANPLAYERCLASS));
+            snapshot.addHouseInfo(info);
+        }
+        return pNetworkManager->beginLateJoin(request,name,snapshot);
+    } catch(const std::exception& e) { addToNewsTicker(std::string("Could not prepare the join: ")+e.what()); return false; }
 }
