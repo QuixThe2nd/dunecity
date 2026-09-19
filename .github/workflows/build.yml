@@ -190,6 +190,19 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      - name: Install NSIS
+        run: choco install nsis --no-progress -y
+
+      - name: Preflight Windows installer configuration
+        run: |
+          cmake -S tests/windows-installer -B installer-preflight
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cpack --config installer-preflight/CPackConfig.cmake -G NSIS -B installer-preflight/package
+          if ($LASTEXITCODE -ne 0) {
+            Get-ChildItem installer-preflight -Recurse -Filter NSISOutput.log | ForEach-Object { Get-Content $_.FullName }
+            exit 1
+          }
+
       - name: Setup vcpkg
         uses: lukka/run-vcpkg@v11
         with:
@@ -212,14 +225,30 @@ jobs:
           $probe = Start-Process -FilePath $game.FullName -ArgumentList '--check-relay-support' -Wait -PassThru -NoNewWindow
           if ($probe.ExitCode -ne 0) { exit $probe.ExitCode }
 
-      - name: Install NSIS
-        run: choco install nsis --no-progress -y
-
       - name: Create Installer Package
         run: |
           cd build
           cmake --install . --prefix install --config Release
-          cpack -G "NSIS;ZIP" -C Release
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cpack -G ZIP -C Release
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cpack -G NSIS -C Release
+          if ($LASTEXITCODE -ne 0) {
+            Get-ChildItem _CPack_Packages -Recurse -Filter NSISOutput.log | ForEach-Object { Get-Content $_.FullName }
+            exit 1
+          }
+
+      - name: Preserve installer diagnostics on failure
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: Windows-installer-diagnostics
+          path: |
+            installer-preflight/package/**/NSISOutput.log
+            installer-preflight/package/**/project.nsi
+            build/_CPack_Packages/**/NSISOutput.log
+            build/_CPack_Packages/**/project.nsi
+            build/*.zip
 
       - name: Upload Installer
         uses: actions/upload-artifact@v7
