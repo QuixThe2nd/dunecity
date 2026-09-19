@@ -1,3 +1,31 @@
+## 2026-09-20 — Release 732 publication and signing setup recovery
+
+PR59 is merged at a319a104b83d9b53ce31ffcf7ee7d171cc5bad2e and v1.0.732 points
+at that source. Stable run 35474893099 passed Linux/Windows/browser and test jobs;
+Mac signing failed in attempts 1 and 2. No stable 732 assets are published yet.
+Website PR9 contains matching browser artifacts and download copy, has passed
+checks and awaits desktop publication before merge.
+
+The dedicated signing keychain was absent from the user search list. A successful
+GUI signing probe used a duplicate login identity and did not establish runner
+access. The saved dedicated-keychain password also failed once the keychain was
+locked. Preserved the original keychain and saved password in the protected
+signing directory, restored the identity from its encrypted P12, and verified an
+explicit lock/unlock cycle. Prepending the dedicated keychain while preserving
+existing search entries makes a SessionCreate=true LaunchAgent signing probe
+pass. No runner session setting was changed.
+
+The original notarization credential remains in the preserved, locked keychain.
+User re-entry initially received Apple's HTTP 401. Verified Chrome's Apple
+account is icloudlogin@fastmail.com and the regenerated DuneCity Mac mini entry
+exists. Added setup-macos-notarization.py to check paste formatting, use a hidden
+TTY instead of password process arguments, and retain a separate encrypted
+notarization profile after successful authentication. Its local prompt transport,
+redaction, input validation and timeout cleanup pass with fake credentials.
+The user completed the revised setup; both stored profiles pass independent
+notarytool history authentication. Stable run attempt 3 is now rebuilding Mac.
+Publication remains pending that run. See the runner runbook.
+
 ## 2026-09-19 — Fix packaged SDL3 startup failure (unreleased 732)
 
 Stefan's 731 installer failed at startup with "Failed loading SDL3 library."
