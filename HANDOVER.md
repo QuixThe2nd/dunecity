@@ -36,6 +36,15 @@ user has been asked to open the Desktop test app, join, then Request to Play.
 His own stable join and promotion remain unverified; automated promotion is not
 confirmation of his session. No initial setup help is currently needed.
 
+Live follow-up: the Air launched updated 730 (PID 26400), was admitted to the
+fresh host and advanced past cycle 13800 with no spectator mismatch/disconnect
+in its current log. A separate native viewer also followed this Chrome host
+from cycle 7755 through 8974 without mismatch, then was deliberately stopped.
+The host Options menu still showed Join requests (0); Stefan's Request to Play
+has not arrived yet. Host was left running, with the temporary console hook
+removed. The restart-resistant Air capture remains in session
+work/air-live-monitor.log for the next live attempt.
+
 ## 2026-09-19 — Live Request to Play needs the matching service update
 
 Stefan's Air successfully spectates but clicking Request to Play closes its menu
