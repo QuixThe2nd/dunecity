@@ -1,43 +1,39 @@
-## 2026-09-19 — Passive spectator implementation, 1.0.729/protocol 8 (release held)
+## 2026-09-19 — Passive spectators verified, 1.0.729/protocol 8
 
-Stefan clarified that spectators must have no gameplay actions and must never
-make active players wait. The unreleased 728 synchronized-observer design has
-therefore been replaced. Remote release authorization remains in force, but PR
-57 must not be merged/tagged until the remaining browser verification below.
+Stefan requires spectators to have no gameplay actions and never make active
+players wait. Protocol 8 replaces the unreleased synchronized-observer design.
+Spectators have a host-only connection, independent checkpoint/canonical tick
+stream, bounded history/bandwidth/ACK windows and isolated timeout handling.
+They are excluded from controller readiness, start barriers, timing and budgets.
+Only the viewer loads and catches up; periodic state fingerprints drop a
+divergent viewer alone. Rejected play requests become spectators. Actual player
+hot joining retains its barrier, excluding viewers. Save format and pathfinding
+node budgets are unchanged. See docs/late-join-protocol.md.
 
-Protocol 8 service grants bind a passive observer role, preserve match phase and
-controller epoch, and restrict observer signaling to the host. Players omit
-spectators from readiness/start barriers, timing, backlog and broadcast traffic.
-The host captures one checkpoint, preserves network-only runtime continuation
-state, and streams canonical tick commands/budgets to the viewer with bounded
-history, ACK windows, bandwidth and timeouts. Only the viewer loads/catches up.
-Periodic state fingerprints disconnect a divergent viewer without stopping the
-match. Viewer chat is forwarded with its original name; gameplay commands and
-performance votes are rejected. Actual player hot joining retains its barrier,
-excluding viewers. Disk-save format and pathfinding node budgets are unchanged.
-See docs/late-join-protocol.md for the wire and resource limits.
+Verification on production source 423e403: native and Emscripten builds,
+dependency/version checks, all seven CTest suites and 188 real-HTTP service tests.
+The busy three-peer test includes armies, AI construction and a five-second
+non-reading spectator: original players advance over 100 cycles during the delay,
+all peers match at cycle 1800, and original players match at 1900 after departure.
+A 40-second unresponsive viewer is disconnected alone while the original players
+continue identically. Reject-to-spectate passes; AI-replacement hot joining still
+matches at cycle 150. Evidence: ../outputs/spectator-729-{busy2,stall2,rejected},
+../outputs/spectator-729-tests-final.log, spectator-729-service-final.log and
+../outputs/hotjoin-729-regression.log.
 
-Verified so far: native build/dependency/version checks; 188 real-HTTP service
-tests; all seven client suites before the final fingerprint/bandwidth refinement;
-real three-peer passive observation through cycle 1800, including a five-second
-non-reading observer and identical original-player state at 1900 after exit.
-The busy test exercises moving armies and AI construction. Reject-to-spectate
-also matches at 1800 and after exit. Protocol 8 AI-replacement hot joining still
-matches at 150. Evidence: ../outputs/spectator-729-{busy2,rejected,service-final}
-and ../outputs/hotjoin-729-regression. Ordinary save loading resets some AI plans
-and pathfinding state: those now have a separate observer-only continuation
-record. The delayed-observer probe proves player progress, not just eventual
-post-reload equality.
+Actual browser 1.0.729 on isolated public HTTPS staging chose Spectate, loaded
+automatically, received moving armies and new AI construction, moved its camera
+across the full map and exited cleanly. The original native players continued;
+their cycle-1800 digests match. Browser integrity checks remained connected, but
+the browser itself is not included in the fixture's file-digest comparison.
+Evidence: ../outputs/spectator-729-https-browser3 and its adjacent log. Browser
+profile name restored. Test markers now use atomic rename and the interactive
+fixture continues beyond the digest checkpoint to permit live browser inspection.
 
-Still running/pending: final CTest/menu probe, Emscripten build, explicit
-unresponsive-viewer timeout completion and actual public-HTTPS browser QA.
-Two harness-only failures were fixed: a fixed absolute cycle threshold falsely
-claimed players had waited, and a busy host repeatedly queued orders while
-intentionally parked at the comparison cycle. A timeout test also incorrectly
-required a departed spectator to remain in the transport roster; it now checks
-that no controller slot was taken. Do not treat those failed fixture runs as
-release verification. No 729 source or client publication has happened yet;
-production service remains the previously verified protocol-7-capable package.
+Remote release remains authorized and is being completed through PR 57. At this
+checkpoint no 729 stable tag/client publication exists; production service still
+runs the earlier protocol-7-capable package. All service tests use isolated state
+with notifications and analytics disabled. No local installed app was replaced.
 
 ## 2026-09-19 — Browser-host admission regression found before release
 

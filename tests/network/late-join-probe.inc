@@ -15,7 +15,7 @@
 #include <chrono>
 
 static std::string joinRead(const std::string& path) { std::ifstream f(path,std::ios::binary); return std::string(std::istreambuf_iterator<char>(f),{}); }
-static void joinWrite(const std::string& path,const std::string& bytes) { std::ofstream f(path,std::ios::binary); f<<bytes; }
+static void joinWrite(const std::string& path,const std::string& bytes) { { std::ofstream f(path+".tmp",std::ios::binary); f<<bytes; } std::filesystem::rename(path+".tmp",path); }
 int runLateJoinProbe() {
     const std::string role=std::getenv("JOIN_ROLE"), out=std::getenv("JOIN_OUT"), endpoint=std::getenv("JOIN_ENDPOINT");
     const std::string mode=std::getenv("JOIN_MODE") ? std::getenv("JOIN_MODE") : "replace";
@@ -109,7 +109,7 @@ int runLateJoinProbe() {
     const bool checkDeparture=observer && !std::getenv("JOIN_BROWSER");
     while(!SDL_TICKS_PASSED(SDL_GetTicks(),deadline)) {
         if(std::filesystem::exists(out+"/done")) break;
-        const Uint32 target=checkDeparture && !newcomer && std::filesystem::exists(out+"/Newcomer-left") ? verifyCycle+100 : verifyCycle;
+        const Uint32 target=std::getenv("JOIN_BROWSER") ? 30000 : (checkDeparture && !newcomer && std::filesystem::exists(out+"/Newcomer-left") ? verifyCycle+100 : verifyCycle);
         const bool waiting=game->handleNetworkUpdates();
         if(observer && !newcomer && (network.lateJoinPaused() || network.lateJoinReady())) throw std::runtime_error("spectator paused a player");
         if(observer && !newcomer && std::filesystem::exists(out+"/observer-delaying") && game->getGameCycleCount()>std::stoul(joinRead(out+"/observer-delaying"))+100) joinWrite(out+"/"+role+"-advanced",std::to_string(game->getGameCycleCount()));
