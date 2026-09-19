@@ -15,6 +15,7 @@ root = Path(__file__).resolve().parents[2]
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('--build-dir', type=Path, default=root / 'build')
 parser.add_argument('--output-dir', type=Path)
+parser.add_argument('--endpoint', help='Explicit isolated HTTPS test service; never use the production lobby.')
 parser.add_argument('--browser',action='store_true',help='Use the browser game as Newcomer; connect using browser.json, then create browser-observed after inspection.')
 parser.add_argument('--mode', choices=['replace','share_ai','share_human','abort','spectate','reject_spectate'],default='replace')
 args = parser.parse_args()
@@ -68,9 +69,13 @@ with (out / 'build.log').open('w') as log:
 import sys, time
 sys.path.insert(0,str(root/'tools/p2p-signaling/test'))
 from test_signaling import ServiceFixture
-service=ServiceFixture()
+service=None if args.endpoint else ServiceFixture()
+if args.endpoint:
+    from urllib.parse import urlsplit
+    if urlsplit(args.endpoint).scheme!='https' or urlsplit(args.endpoint).hostname!='dunelegacy.com' or '/play-test-' not in urlsplit(args.endpoint).path:
+        raise RuntimeError('Remote probe requires an isolated HTTPS play-test path')
 processes=[]; logs=[]
-if args.browser:
+if args.browser and not args.endpoint:
     import http.server, threading, json
     class BrowserFiles(http.server.SimpleHTTPRequestHandler):
         def __init__(self,*a,**kw): super().__init__(*a,directory=str(build/'emscripten/bin'),**kw)
@@ -98,10 +103,14 @@ if args.browser:
     threading.Thread(target=web.serve_forever,daemon=True).start()
     (out/'browser.json').write_text(json.dumps({'url':origin+'/dunecity.html?relay='+origin+'&relaydev=1'}))
 
+if args.browser and args.endpoint:
+    import json
+    from urllib.parse import quote
+    (out/'browser.json').write_text(json.dumps({'url':args.endpoint.rsplit('/p2p',1)[0]+'/?relay='+quote(args.endpoint,safe='')}))
 try:
     for role in (('Host','Partner') if args.browser else ('Host','Partner','Newcomer')):
         log=(out/(role+'.log')).open('w'); logs.append(log)
-        env=dict(os.environ,DUNECITY_USERDIR=str(out/('profile-'+role)),SDL_VIDEODRIVER='dummy',SDL_AUDIODRIVER='dummy',JOIN_ROLE=role,JOIN_MODE=args.mode,JOIN_OUT=str(out),JOIN_ENDPOINT='http://127.0.0.1:'+str(service.port))
+        env=dict(os.environ,DUNECITY_USERDIR=str(out/('profile-'+role)),SDL_VIDEODRIVER='dummy',SDL_AUDIODRIVER='dummy',JOIN_ROLE=role,JOIN_MODE=args.mode,JOIN_OUT=str(out),JOIN_ENDPOINT=args.endpoint or ('http://127.0.0.1:'+str(service.port)))
         if args.browser: env['JOIN_BROWSER']='1'
         processes.append(subprocess.Popen([str(binary),'--window','--showlog'],cwd=out,env=env,stdout=log,stderr=subprocess.STDOUT))
     deadline=time.monotonic()+(620 if args.browser else 170)
@@ -129,5 +138,5 @@ finally:
         try: p.wait(timeout=5)
         except subprocess.TimeoutExpired: p.kill()
     for log in logs: log.close()
-    service.stop()
-    if args.browser: web.shutdown()
+    if service: service.stop()
+    if args.browser and not args.endpoint: web.shutdown()
