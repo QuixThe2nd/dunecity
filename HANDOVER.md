@@ -20,7 +20,16 @@ probe passes at 640/854/1280 widths, asserting popup presence, both version numb
 screen bounds, return to lobby and single dismissal for normal/hot join. Visually
 checked the 640×480 popup in outputs/version-727-prompt.png. An initial probe-only
 compile error (missing MsgBox include in the test harness) was fixed and rerun.
-Browser build and deployment completion are recorded below after verification.
+Final browser build and bundled-mod validation pass. Follow-up metaserver package
+04c3c0bc5b1ac6f89a2a84577942aa73ba8aedba deployed successfully in run 35414815966:
+https://github.com/VR48/dunelegacy.com/actions/runs/35414815966
+All fourteen live service files match game source
+2b5287af923c8345b2a1a1a9bbc48f8b57fd25bd; live health is OK. Installer and website
+security/hash checks pass. No production test lobbies/chat were created. This is
+the requested version-check follow-up to the authorized hot-join service update.
+The local native/browser builds are 1.0.727; the hosted browser remains 1.0.707.
+Restart the local app for the popup; older clients still see the server refusal
+in their existing status area.
 
 ## 2026-09-19 — Host-approved hot joining; unified 1.0.726
 
