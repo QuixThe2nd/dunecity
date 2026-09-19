@@ -133,10 +133,12 @@ UnitBase::UnitBase(InputStream& stream) : ObjectBase(stream) {
 
     deviationTimer = stream.readSint32();
 
-    if(findTargetTimer < 0) {
+    // A spectator restores the pending work queues as well as the saved
+    // units. Keep their negative queued-work sentinels until that work runs.
+    if(findTargetTimer < 0 && !currentGame->isSpectating()) {
         findTargetTimer = 0;
     }
-    if(recalculatePathTimer < 0) {
+    if(recalculatePathTimer < 0 && !currentGame->isSpectating()) {
         recalculatePathTimer = 0;
     }
 }

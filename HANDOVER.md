@@ -1,3 +1,36 @@
+## 2026-09-19 — Disconnect after map appears: spatial lookup drift (unreleased 730)
+
+Stefan's Air loaded the map, then disconnected on the next spectator fingerprint.
+The same failure reproduced in an automated native viewer of the Chrome host.
+The extended native Twin Cities probe reproduced it at cycle 60200: matching RNG,
+counts and house state, but launcher 980 chose a different target after loading.
+The checkpoint's ordinary object bytes round-tripped exactly after preserving
+queued-work timer sentinels; resetting those alone did not fix the disconnect.
+
+The targeting spatial grid was stale for aircraft, carryall pickup adjustments
+and infantry movement. These paths now update it like ordinary ground movement.
+Loading excludes inactive cargo/repair-yard units that retain their old location.
+Cell query results use stable object-ID order: reversing a populated checkpoint's
+cell entries previously changed four units' target choices with no other changes.
+Spectator loads retain negative target/path timer sentinels for restored queues.
+No save or wire format changes; both endpoints need the matching simulation build.
+
+Regression coverage: JOIN_FAST_WARMUP, JOIN_SEED and JOIN_CHECK_SPATIAL in the
+real-peer fixture reproduce battles efficiently and check each active unit's grid
+cell plus target-choice invariance under reversed cell insertion order. The check
+caught carryall 13's pickup movement at cycle 127 before its correction. The final
+seed 118705914 Twin Cities run joined at 60147, matched through 63000 (seed
+1f8fb888, 699 objects, digest 8fbb2992f2d692a7/ebccff888fc2a4b8), then verified the
+host continued after viewer departure. Three-peer city promotion matched cycle
+1800 (seed 7292527d, 51 objects). All seven CTest suites, native dependency audits,
+native build and pinned Emscripten build pass. Evidence: session work/aged-*;
+the successful extended run is aged-all-grid, promotion is aged-fix-promotion.
+
+The earlier live service update is already deployed (website PR8 / 01ebe6a).
+This game fix has not been pushed or released. Air rebuild and a fresh Chrome
+host are being prepared; the user's own stable join and Request to Play remain
+to be verified. Do not treat automated promotion as confirmation of his session.
+
 ## 2026-09-19 — Live Request to Play needs the matching service update
 
 Stefan's Air successfully spectates but clicking Request to Play closes its menu

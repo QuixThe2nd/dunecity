@@ -205,3 +205,27 @@ For the populated 256x256 regression, run
 `python3 tests/network/run-late-join-probe.py --mode spectate --city --twin-cities --solo`.
 Set `JOIN_AT_CYCLE=1400` to cover loading after production and carryall bookings;
 `JOIN_TRACE=1` retains per-peer state summaries every 200 cycles for diagnosis.
+
+For a battle in progress, use a reproducible seed and accelerated host warm-up:
+
+```sh
+JOIN_FAST_WARMUP=1 JOIN_CHECK_SPATIAL=1 JOIN_SEED=118705914 \
+JOIN_AT_CYCLE=60147 JOIN_VERIFY_CYCLE=63000 \
+python3 tests/network/run-late-join-probe.py --mode spectate --city --twin-cities --solo
+```
+
+Warm-up is restricted to a solo host and spectator-only modes. It runs without
+frame delays until the requested checkpoint, then resumes normal cadence once
+the spectator transfer begins. The viewer still deliberately stops reading for
+five seconds. Spatial checks verify moving units remain indexed at their current
+positions and that reversing cell insertion order leaves target selection
+unchanged. The final comparison also checks that the host continues after the
+viewer leaves. `JOIN_SEED` sets only the integration fixture's initial RNG seed.
+
+Aircraft, carryall pickup adjustments and infantry movement must update the
+spatial grid just as ordinary ground movement does. Checkpoint loads rebuild it
+from active objects, excluding cargo and units inside repair yards. Cell queries
+use object-ID order, so target ties do not depend on movement history. Spectator
+loads also preserve negative targeting/path timer sentinels alongside their
+restored work queues. These changes leave the save and spectator wire layouts
+unchanged; both peers need the matching simulation build.

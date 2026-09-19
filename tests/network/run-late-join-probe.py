@@ -26,6 +26,8 @@ parser.add_argument('--mode', choices=['replace','share_ai','share_human','abort
 args = parser.parse_args()
 if args.twin_cities and not args.city:
     parser.error('--twin-cities requires --city')
+if os.environ.get('JOIN_FAST_WARMUP') and (not args.solo or args.mode not in ('spectate', 'reject_spectate')):
+    parser.error('JOIN_FAST_WARMUP requires --solo and a spectator-only mode')
 build = args.build_dir.resolve()
 out = args.output_dir.resolve() if args.output_dir else Path(tempfile.mkdtemp(prefix='dunecity-late-join-probe-'))
 out.mkdir(parents=True, exist_ok=True)
@@ -129,7 +131,7 @@ try:
         if args.busy: env['JOIN_BUSY']='1'
         if args.stall: env['JOIN_STALL']='1'
         processes.append(subprocess.Popen([str(binary),'--window','--showlog'],cwd=out,env=env,stdout=log,stderr=subprocess.STDOUT))
-    deadline=time.monotonic()+(620 if args.browser else 170)
+    deadline=time.monotonic()+(620 if args.browser or os.environ.get('JOIN_FAST_WARMUP') else 170)
     while time.monotonic()<deadline:
         compared=originals if args.mode=='abort' or args.browser or args.stall else roles
         if all((out/(role+'-digest')).exists() for role in compared) and (args.mode!='abort' or (out/'Newcomer-cancelled').exists()):

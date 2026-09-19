@@ -8,6 +8,7 @@
 #include <Menu/CrossplayMenu.h>
 #include <players/HumanPlayer.h>
 #include <units/UnitBase.h>
+#include <SpatialGrid.h>
 #include <misc/OMemoryStream.h>
 #include <misc/IMemoryStream.h>
 #include <fstream>
@@ -33,7 +34,8 @@ int runLateJoinProbe() {
     bool promotionCommitted=false;
     settings.general.playerName=role;
     settings.network.metaServer="http://127.0.0.1:1/";
-    const Uint32 deadline=SDL_GetTicks()+(std::getenv("JOIN_BROWSER") ? 600000 : 160000);
+    const bool fastWarmup=std::getenv("JOIN_FAST_WARMUP");
+    const Uint32 deadline=SDL_GetTicks()+((std::getenv("JOIN_BROWSER") || fastWarmup) ? 600000 : 160000);
     auto wait=[&](auto condition) { while(!condition()) { if(SDL_TICKS_PASSED(SDL_GetTicks(),deadline)) throw std::runtime_error("probe wait timeout"); SDL_Delay(5); } };
     AdmissionRequest request;
     request.baseUrl=endpoint; request.allowLoopbackPlaintext=true; request.appVersion=VERSIONSTRING;
@@ -80,6 +82,7 @@ int runLateJoinProbe() {
                 +",Tank,256,"+std::to_string((i%50)*29+10)+",64,Area Guard\n";
         }
         init=GameInitSettings("join.ini",map,"Host",true,effectiveGameOptions);
+        if(std::getenv("JOIN_SEED")) init.randomSeed=std::stoul(std::getenv("JOIN_SEED"));
         GameInitSettings::HouseInfo humans(HOUSE_ATREIDES,1); humans.addPlayerInfo({"Host",HUMANPLAYERCLASS}); if(!solo && mode!="share_human") humans.addPlayerInfo({"Partner",HUMANPLAYERCLASS}); else if(city) humans.addPlayerInfo({"Host AI","qBotHard"}); init.addHouseInfo(humans);
         GameInitSettings::HouseInfo enemy(HOUSE_HARKONNEN,2); enemy.addPlayerInfo({mode=="share_human" ? "Partner" : "Enemy AI",mode=="share_human" ? HUMANPLAYERCLASS : (city ? "qBotHard" : "qBotEasy")}); init.addHouseInfo(enemy);
         if(city) {
@@ -128,10 +131,44 @@ int runLateJoinProbe() {
     std::string declinedRequest;
     Uint32 lastProgress=0;
     Uint32 lastOrdersCycle=~Uint32(0);
+    bool targetOrderChecked=false;
+    bool warmupReleased=false;
     const bool checkDeparture=observer && !promotion && !std::getenv("JOIN_BROWSER");
     const Uint32 joinCycle=std::getenv("JOIN_AT_CYCLE") ? std::stoul(std::getenv("JOIN_AT_CYCLE")) : 60;
     while(!SDL_TICKS_PASSED(SDL_GetTicks(),deadline)) {
         if(std::filesystem::exists(out+"/done")) break;
+        if(std::getenv("JOIN_CHECK_SPATIAL")) {
+            auto* grid=game->getSpatialGrid();
+            for(const auto* unit : unitList) {
+                if(!unit->isActive()) continue;
+                const auto cell=grid->clampToCell(unit->getLocation());
+                if(grid->isCellCoordValid(cell) &&
+                   (!unit->getGridHandle().isValid() || unit->getGridHandle().cell!=cell)) {
+                    SDL_Log("Unit index mismatch: id=%u cycle=%u location=%d,%d expected=%d,%d actual=%d,%d valid=%d",
+                        unit->getObjectID(),game->getGameCycleCount(),unit->getLocation().x,unit->getLocation().y,
+                        cell.x,cell.y,unit->getGridHandle().cell.x,unit->getGridHandle().cell.y,unit->getGridHandle().isValid());
+                    throw std::runtime_error("unit targeting index did not follow movement");
+                }
+            }
+            if(host && !targetOrderChecked && game->getGameCycleCount()>=joinCycle) {
+                std::map<Uint32,Uint32> targets;
+                for(const auto* unit : unitList) {
+                    const auto* target=unit->findTarget();
+                    targets[unit->getObjectID()]=target ? target->getObjectID() : NONE_ID;
+                }
+                // Model a different movement history with exactly the same
+                // objects and positions. Target selection must not change.
+                for(auto& row : grid->grid) for(auto& cell : row) std::reverse(cell.begin(),cell.end());
+                bool same=true;
+                for(const auto* unit : unitList) {
+                    const auto* target=unit->findTarget();
+                    same &= targets[unit->getObjectID()]==(target ? target->getObjectID() : NONE_ID);
+                }
+                for(auto& row : grid->grid) for(auto& cell : row) std::reverse(cell.begin(),cell.end());
+                if(!same) throw std::runtime_error("target selection depends on grid insertion order");
+                targetOrderChecked=true;
+            }
+        }
         if(std::getenv("JOIN_TRACE") && game->getGameCycleCount()%200==0) {
             const auto path=out+"/"+role+"-state-"+std::to_string(game->getGameCycleCount());
             if(!std::filesystem::exists(path)) {
@@ -151,6 +188,7 @@ int runLateJoinProbe() {
         }
         const Uint32 target=std::getenv("JOIN_BROWSER") ? 30000 : (checkDeparture && !newcomer && std::filesystem::exists(out+"/Newcomer-left") ? verifyCycle+100 : verifyCycle);
         const bool waiting=game->handleNetworkUpdates();
+        if(!network.observerTransfers.empty()) warmupReleased=true;
         if(newcomer && !network.getRelayClient()->isJoined())
             throw std::runtime_error("newcomer lost its session before state verification");
         if(SDL_GetTicks()-lastProgress>5000) {
@@ -219,7 +257,8 @@ int runLateJoinProbe() {
                         Uint32((game->getGameCycleCount()/150)%2 ? 42 : 8),Uint32(15),Uint32(1)));
             }
             game->cmdManager.update();
-            if(!waiting && game->getGameCycleCount()<target && (resumed || game->getGameCycleCount()<65)) game->updateGameState();
+            if(!waiting && game->getGameCycleCount()<target && (resumed || game->getGameCycleCount()<65)
+               && (!fastWarmup || !host || game->getGameCycleCount()<joinCycle || warmupReleased)) game->updateGameState();
         }
         if(checkDeparture && !newcomer && game->getGameCycleCount()==verifyCycle+100) {
             if(!network.getRelayClient()->isJoined() || network.getConnectedPeers().size()!=(solo ? 0u : 1u)) throw std::runtime_error("spectator departure damaged the match");
@@ -244,7 +283,7 @@ int runLateJoinProbe() {
             }
             if(std::filesystem::exists(out+"/done")) break;
         }
-        SDL_Delay(16);
+        SDL_Delay(fastWarmup && host && game->getGameCycleCount()<joinCycle ? 0 : 16);
     }
     if(!std::filesystem::exists(out+"/"+role+"-digest")) throw std::runtime_error("simulation did not resume: "+network.lateJoinStatus());
     network.setOnPeerDisconnected({}); game.reset(); currentGame=nullptr; pNetworkManager.reset();
