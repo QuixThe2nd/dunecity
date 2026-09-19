@@ -1134,7 +1134,9 @@ void NetworkManager::updateRelaySession() {
                 debugNetwork("Relay peer '%s' joined (%s, %s)\n", event.name.c_str(),
                              event.role == RoomRelay::Role::Host ? "host" : "client",
                              event.runtime.c_str());
-                if(bIsServer && pGameInitSettings != nullptr) {
+                if(bIsServer && pGameInitSettings != nullptr && !bGameInProgress && !lateJoinPaused()) {
+                    // A late join receives the authoritative checkpoint. Sending the original
+                    // lobby here would reopen its player-assignment callback during a match.
                     // The lobby state is what a joining player needs first, exactly as on the
                     // mesh transport - only addressed to a relay peer id instead of an address.
                     ENetPacketOStream packetStream(ENET_PACKET_FLAG_RELIABLE);

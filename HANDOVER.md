@@ -1,3 +1,21 @@
+## 2026-09-19 — Browser-host admission regression found before release
+
+A real three-browser HTTPS test exposed a production-lobby interaction absent
+from the initial native harness: when the spectator's channel arrived, the host
+sent its original waiting-lobby settings and called its seat-assignment callback.
+The newcomer's CrossplayMenu entered the old lobby instead of consuming the
+synchronized checkpoint. The original players continued but the observer waited.
+Stable release is held until this regression is retested.
+
+The host now suppresses waiting-lobby delivery while a match or join transaction
+is active, and a running-game newcomer ignores old lobby setup packets. The menu
+probe checks both late-join rejection and normal waiting-lobby acceptance. The
+real-peer fixture now retains the actual lobby setup/callback and fails if a
+late newcomer invokes assignment. No version beyond the unreleased 1.0.728 is
+needed. Production PHP was deployed successfully as website 3fb0090 in run
+35416871576; all service hashes and request routes were read back. Client
+publication, website installer links and SourceForge remain pending.
+
 ## 2026-09-19 — Spectator candidate 1.0.728; release paused for the addition
 
 Stefan paused the authorized remote publication to add a play/spectate choice for

@@ -895,8 +895,8 @@ void CrossplayMenu::update() {
 
 void CrossplayMenu::onReceiveGameInfo(const GameInitSettings& gameInitSettings,
                                       const ChangeEventList& changeEventList) {
-    if(pendingHosting || pendingGameInfo || !pendingDisconnectReason.empty()) {
-        return;     // a host does not take a lobby from anybody
+    if(joiningRunning || pendingHosting || pendingGameInfo || !pendingDisconnectReason.empty()) {
+        return;     // running joins use the checkpoint, never the original waiting lobby
     }
 
     pendingGameInfo = std::make_unique<GameInitSettings>(gameInitSettings);

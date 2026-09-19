@@ -330,6 +330,14 @@ int runMenuProbe() {
         choice->finish(JoinModeWindow::Choice::Cancel); menu.processChildWindowOpenCloses();
         menuRequire(menu.stage==CrossplayMenu::Stage::Choosing && menu.joinTicket.empty(),"Cancelling choice requests admission");
 
+        menu.joiningRunning=true;
+        menu.onReceiveGameInfo(init,ChangeEventList());
+        menuRequire(!menu.pendingGameInfo,"Original lobby setup hijacks checkpoint admission");
+        menu.joiningRunning=false;
+        menu.onReceiveGameInfo(init,ChangeEventList());
+        menuRequire(menu.pendingGameInfo!=nullptr,"Waiting-game setup no longer opens its lobby");
+        menu.pendingGameInfo.reset();
+
         for(bool hotJoin : {false,true}) {
             menu.stage=CrossplayMenu::Stage::Requesting;
             menu.joiningRunning=hotJoin;

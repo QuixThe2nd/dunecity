@@ -64,6 +64,13 @@ int runLateJoinProbe() {
         init=GameInitSettings("join.ini",map,"Host",true,settings.gameOptions);
         GameInitSettings::HouseInfo humans(HOUSE_ATREIDES,1); humans.addPlayerInfo({"Host",HUMANPLAYERCLASS}); if(mode!="share_human") humans.addPlayerInfo({"Partner",HUMANPLAYERCLASS}); init.addHouseInfo(humans);
         GameInitSettings::HouseInfo enemy(HOUSE_HARKONNEN,2); enemy.addPlayerInfo({mode=="share_human" ? "Partner" : "Enemy AI",mode=="share_human" ? HUMANPLAYERCLASS : "qBotEasy"}); init.addHouseInfo(enemy);
+        // Retain a real waiting-lobby setup/callback, as the production menu does.
+        // Newcomers during a match must never invoke lobby seat assignment.
+        network.setGetChangeEventListForNewPlayerCallback([](const std::string& name) {
+            if(name=="Newcomer") throw std::runtime_error("late join reopened waiting-lobby assignment");
+            return ChangeEventList();
+        });
+        network.startServer(false,"Join probe",role,&init,2,4);
         OMemoryStream bytes; bytes.open(); init.save(bytes); joinWrite(out+"/init",std::string(bytes.getData(),bytes.getDataLength()));
     } else if(!newcomer) {
         wait([&](){network.update();return std::filesystem::exists(out+"/init");});
