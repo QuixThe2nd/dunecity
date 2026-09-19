@@ -11,11 +11,17 @@ The website checkout /Users/stefan/Documents/projects/dunelegacy.com now has loc
 branch fix/spectator-play-requests-730 with the candidate service packaged from
 game commit 2697bf1f. Only p2p-service/{SOURCE.json,public/index.php,src/LateJoin.php}
 change. All 190 real-HTTP service tests, the atomic installer/config-preservation
-test and website security/artifact checks pass. Publication is awaiting explicit
-user authorization; no push, PR or live service change has occurred. Once deployed,
-verify play_status is recognized, then have Stefan request play and approve him
-through the still-running host's UI. The live host is the Chrome tab 1889836980;
-verify its current state before acting. No client rebuild is needed for this step.
+test and website security/artifact checks pass.
+
+Stefan explicitly approved deployment. Website PR8 merged as 01ebe6a; production
+deployment 35432271746 succeeded and installed manifest
+c83e70232a0a96cb7a422fb3d7749ad99f96a699eb7ef19833d70bda808c0593. Live health is OK.
+The host's authenticated play_status probe now returns the expected HTTP 403,
+"Only a spectator can request to play," rather than rejecting the action syntax.
+The host and Air continued running across deployment. A fresh Request to Play
+click is still needed after the earlier rejection; then approve through the UI.
+The live host is Chrome tab 1889836980; verify its current state before acting.
+No client rebuild is needed. The website checkout is clean on main at 01ebe6a.
 
 ## 2026-09-19 — Slow spectator checkpoint transfer (unreleased 730)
 
