@@ -20,6 +20,11 @@ at cycle 1800. Native rendered captures inspected in session
 work/join-notice-promote/{host-pending,requester-pending,host-approval}.png.
 The current live Chrome/Air match is intentionally left running on its existing
 code; refreshed binaries take effect on next launch. No game push or release.
+The pinned Emscripten build also passes. The Air fast-forwarded to 894f6fe9;
+its native rebuild, before/after dependency audits and strict deep codesign
+verification pass. Desktop/DuneCity-730-Test.app still points to that rebuilt
+build-714 bundle. Both sides must relaunch/reload for the new UI; the current
+match was not restarted.
 
 ## 2026-09-19 — Disconnect after map appears: spatial lookup drift (unreleased 730)
 
