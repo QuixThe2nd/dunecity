@@ -6,6 +6,7 @@
 #include <GUI/DropDownBox.h>
 #include <GUI/TextButton.h>
 #include <Game.h>
+#include <House.h>
 #include <Network/NetworkManager.h>
 #include <globals.h>
 
@@ -23,15 +24,21 @@ public:
     JoinRequestsWindow() : Window(0,0,540,270) {
         setWindowWidget(&box);
         setCurrentPosition((getRendererWidth()-540)/2,(getRendererHeight()-270)/2,540,270);
-        title.setText("Request to play"); title.setTextFontSize(22); box.addWidget(&title,36);
-        help.setText("Choose a player and the house they will control."); box.addWidget(&help,36);
+        title.setText("Requests waiting approval"); title.setTextFontSize(22); box.addWidget(&title,36);
+        help.setText("Share keeps the current player. Replace removes the AI."); box.addWidget(&help,36);
         if(pNetworkManager && pNetworkManager->getDirectTransport()) pending=pNetworkManager->getDirectTransport()->joinRequests();
         pending.erase(std::remove_if(pending.begin(),pending.end(),[](const auto& r){return r.spectator;}),pending.end());
         choices=currentGame->availableJoinSlots();
         for(const auto& p : pending) requests.addEntry(p.name);
         for(const auto& s : choices) slots.addEntry(s.label);
         if(!pending.empty()) requests.setSelectedItem(0);
-        if(!choices.empty()) slots.setSelectedItem(0);
+        if(!choices.empty()) {
+            // Prefer adding a second controller over removing an existing AI.
+            auto shared=std::find_if(choices.begin(),choices.end(),[](const auto& slot) {
+                return slot.controller==static_cast<int>(currentGame->getHouse(slot.house)->getPlayerList().size());
+            });
+            slots.setSelectedItem(shared==choices.end() ? 0 : static_cast<int>(shared-choices.begin()));
+        }
         box.addWidget(&requests,32); box.addWidget(&slots,32);
         accept.setText("Allow player to join"); accept.setEnabled(!pending.empty() && !choices.empty());
         accept.setOnClick([this]() {

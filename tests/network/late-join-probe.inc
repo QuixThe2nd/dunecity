@@ -19,6 +19,13 @@
 
 static std::string joinRead(const std::string& path) { std::ifstream f(path,std::ios::binary); return std::string(std::istreambuf_iterator<char>(f),{}); }
 static void joinWrite(const std::string& path,const std::string& bytes) { { std::ofstream f(path+".tmp",std::ios::binary); f<<bytes; } std::filesystem::rename(path+".tmp",path); }
+static void joinCapture(Game& game, const std::string& path) {
+    if(!std::getenv("JOIN_CAPTURE_UI")) return;
+    game.drawScreen();
+    sdl2::surface_ptr image{SDL_CreateRGBSurfaceWithFormat(0,getRendererWidth(),getRendererHeight(),32,SDL_PIXELFORMAT_ARGB8888)};
+    if(!image || SDL_RenderReadPixels(renderer,nullptr,image->format->format,image->pixels,image->pitch)!=0
+       || SDL_SaveBMP(image.get(),path.c_str())!=0) throw std::runtime_error("could not capture join UI");
+}
 int runLateJoinProbe() {
     const std::string role=std::getenv("JOIN_ROLE"), out=std::getenv("JOIN_OUT"), endpoint=std::getenv("JOIN_ENDPOINT");
     const std::string mode=std::getenv("JOIN_MODE") ? std::getenv("JOIN_MODE") : "replace";
@@ -222,7 +229,19 @@ int runLateJoinProbe() {
             } else if(!requests.empty()) {
                 if(promotion) {
                     if(requests[0].id==declinedRequest) continue;
-                    if(!dynamic_cast<JoinRequestsWindow*>(game->pInGameMenu.get())) throw std::runtime_error("host was not prompted automatically");
+                    game->getGameInterface().updateJoinRequestButton();
+                    auto& notice=game->getGameInterface().joinRequestButton;
+                    if(!notice.isVisible() || notice.getText().find("waiting approval")==std::string::npos)
+                        throw std::runtime_error("host has no persistent approval notice");
+                    if(game->pInGameMenu) throw std::runtime_error("request interrupted host with an automatic dialog");
+                    joinCapture(*game,out+"/host-pending.bmp");
+                    notice.pOnClick();
+                    auto* dialog=dynamic_cast<JoinRequestsWindow*>(game->pInGameMenu.get());
+                    if(!dialog) throw std::runtime_error("approval notice did not open host controls");
+                    const auto& selected=dialog->choices.at(dialog->slots.getSelectedIndex());
+                    if(selected.controller!=static_cast<int>(game->getHouse(selected.house)->getPlayerList().size()))
+                        throw std::runtime_error("approval dialog default would replace an existing player");
+                    joinCapture(*game,out+"/host-approval.bmp");
                     if(!rejected) {
                         if(!network.getDirectTransport()->manageJoin("decline",requests[0].id)) throw std::runtime_error("decline play failed");
                         rejected=true; declinedRequest=requests[0].id;
@@ -240,6 +259,11 @@ int runLateJoinProbe() {
             auto* direct=network.getDirectTransport();
             if(!playRequested || (!retried && direct->playRequestState()=="declined")) {
                 if(!direct->requestToPlay()) throw std::runtime_error("request to play failed");
+                game->getGameInterface().updateJoinRequestButton();
+                const auto& notice=game->getGameInterface().joinRequestButton;
+                if(!notice.isVisible() || notice.getText()!="Request waiting approval")
+                    throw std::runtime_error("requester has no persistent approval notice");
+                joinCapture(*game,out+"/requester-pending.bmp");
                 if(playRequested) retried=true;
                 playRequested=true;
             }
@@ -276,6 +300,11 @@ int runLateJoinProbe() {
                 }
             }
             if(promotion && (!game->getPlayerByName("Newcomer") || (newcomer && network.isSpectating()))) throw std::runtime_error("spectator was not promoted");
+            if(promotion) {
+                if(!game->getPlayerByName("Enemy AI")) throw std::runtime_error("shared promotion removed AI");
+                game->getGameInterface().updateJoinRequestButton();
+                if(game->getGameInterface().joinRequestButton.isVisible()) throw std::runtime_error("approval notice remains after promotion");
+            }
             if(mode=="abort" && (!network.getRelayClient()->isJoined() || !game->getPlayerByName("Enemy AI") || game->getPlayerByName("Newcomer"))) throw std::runtime_error("abort changed the original match");
             if(!std::filesystem::exists(out+"/"+role+"-digest")) joinWrite(out+"/"+role+"-digest",GameStateDigest::describe(game->computeStateDigest()));
             if(checkDeparture && newcomer && std::filesystem::exists(out+"/Host-digest") && (solo || std::filesystem::exists(out+"/Partner-digest"))) {

@@ -169,8 +169,11 @@ Joining a running public game now enters as a spectator directly. In Options,
 the viewer can Request to play or cancel a pending request. The authenticated
 viewer session uses `/v1/p2p/join-requests` actions `request_play`, `cancel_play`
 and `play_status`; no new admission ticket or second connection is created.
-The host's join-request window opens automatically. Declining leaves the viewer
-watching and permits a later request. Cancelling likewise preserves observation.
+Both host and requester see a persistent flashing approval button on the game
+screen while a play request is pending. The host clicks it to review, approve or
+decline; it does not interrupt play with an automatic dialog. The requester can
+click their notice for request options. Declining leaves a visible status and
+permits a later request. Cancelling likewise preserves observation.
 The protocol-8 admission behavior described above remains for older clients.
 
 Approval selects an eligible controller slot and uses the existing checkpoint
@@ -178,6 +181,12 @@ transaction. A viewer requires both an authenticated service roster change and
 the host's prepare packet before becoming a controller. It then discovers and
 connects to all original controllers. Other viewers remain excluded from the
 barrier. A declined request never grants gameplay authority.
+
+Shared house (Multiple players per house) enables a second controller alongside
+an existing human or AI, up to two controllers per house. The approval dialog
+prefers a share slot where available and distinguishes keeping the existing
+player from replacing/removing an AI. Choosing Replace still transfers that AI's
+house entirely to the new human.
 
 Start preparation fixes the expected roster but waits up to 30 seconds for the
 local mesh's readiness reports before acknowledging. Peer channels have no
@@ -194,8 +203,11 @@ the fourth house could retain -1, serialized as 255, causing the spectator
 checkpoint validator to reject it. The map and checkpoint limits are unchanged;
 checkpoint policy rejection now logs its reason on the host.
 
-The `promote --city` probe exercises decline, retry, automatic host prompting,
-and matching resumed simulation state. With `--browser`, set the browser player
+The `promote --city` probe exercises decline, retry, persistent notices on both
+peers, opening the host dialog from the notice, default sharing, retaining the AI,
+clearing the notice after promotion and matching resumed simulation state.
+Set `JOIN_CAPTURE_UI=1` to save native rendered BMPs of both pending notices and
+the approval dialog in the probe output directory. With `--browser`, set the browser player
 name to Newcomer in Settings before joining. The original peers compare state
 300 ticks after the promotion checkpoint, allowing time for manual browser
 interaction. Create `browser-observed` only after verifying the browser view and

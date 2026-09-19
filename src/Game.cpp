@@ -3889,6 +3889,17 @@ void Game::onOptions()
     }
 }
 
+void Game::onJoinRequests() {
+    if(!pNetworkManager || !pNetworkManager->getDirectTransport()
+       || pNetworkManager->lateJoinPaused() || pInGameMenu || pInGameMentat) return;
+    if(pNetworkManager->isServer()) {
+        pInGameMenu = std::make_unique<JoinRequestsWindow>();
+        bMenu = true; // Choosing a controller does not pause an online game.
+    } else if(isSpectating()) {
+        onOptions();
+    }
+}
+
 void Game::cycleDune2RZoom() {
     if(!ModManager::instance().isInitialized()
        || ModManager::instance().getActiveModName() != "Dune2R") {
@@ -6170,23 +6181,12 @@ bool Game::handleNetworkUpdates() {
 
     pNetworkManager->update();
     if(auto* direct=pNetworkManager->getDirectTransport(); direct && pNetworkManager->isServer()) {
-        std::set<std::string> currentRequests;
         for(const auto& request : direct->joinRequests()) {
-            currentRequests.insert(request.id);
             if(request.spectator) {
                 if(!pNetworkManager->lateJoinPaused() && !direct->joinDecisionPending()
                    && !direct->manageJoin("approve_spectator",request.id)) direct->manageJoin("abort",request.id);
                 continue;
             }
-            if(!seenJoinRequests.count(request.id) && !pInGameMenu && !pInGameMentat
-               && !pNetworkManager->lateJoinPaused()) {
-                pInGameMenu=std::make_unique<JoinRequestsWindow>();
-                bMenu=true; // Online simulation continues while the host chooses a slot.
-                for(const auto& pending : direct->joinRequests()) if(!pending.spectator) seenJoinRequests.insert(pending.id);
-            }
-        }
-        for(auto it=seenJoinRequests.begin();it!=seenJoinRequests.end();) {
-            if(!currentRequests.count(*it)) it=seenJoinRequests.erase(it); else ++it;
         }
     }
     if(auto* direct=pNetworkManager->getDirectTransport(); direct && isSpectating()) {
@@ -6568,14 +6568,14 @@ std::vector<Game::JoinSlot> Game::availableJoinSlots() const {
         if(!target || !target->isAlive() || (coop && h!=gameInitSettings.getHouseID())) continue;
         const auto& controllers=target->getPlayerList();
         if(controllers.empty()) continue;
+        if(shared && controllers.size()<2)
+            result.push_back({h,static_cast<int>(controllers.size()),"Share with "+controllers.front()->getPlayername()+" (keep existing player)"});
         int index=0;
         for(const auto& p : controllers) {
             if(dynamic_cast<HumanPlayer*>(p.get())==nullptr)
-                result.push_back({h,index,"Replace "+p->getPlayername()+" (house "+std::to_string(h+1)+")"});
+                result.push_back({h,index,"Replace "+p->getPlayername()+" (remove AI)"});
             ++index;
         }
-        if(shared && controllers.size()<2)
-            result.push_back({h,index,"Share with "+controllers.front()->getPlayername()+" (house "+std::to_string(h+1)+")"});
     }
     return result;
 }
