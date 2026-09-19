@@ -38,10 +38,17 @@ The browser probe uses a same-origin local HTTP proxy to preserve the production
 CSP; its first separate-origin attempt was blocked by that policy, not hot join.
 
 All earlier performance/UI/logging changes remain in the same native and browser
-726 build trees. No pathfinding node-budget changes. No production deployment or
-public binary release is authorized by this local implementation request; the
-previous authorization applied to the already-deployed 725 metaserver. User
-settings/saves and any original match were not used by integration probes.
+726 build trees. No pathfinding node-budget changes. Stefan then explicitly authorized deployment of the new hot-join metaserver.
+Website commit 98ec581f878e7c65d7f57a9eb2b973ada4d4be29 was pushed to main;
+Deploy to Droplet run 35414236527 succeeded:
+https://github.com/VR48/dunelegacy.com/actions/runs/35414236527
+All fourteen installed service files and the manifest match game source
+30c6e6d9161c74806d7c64e4b8a8439f56aa5601; live /p2p/v1/health is OK.
+Installer integrity, browser security/hash, public activity and notification
+fixture tests passed. No fabricated public chat/game records were inserted.
+The hosted browser remains 1.0.707; only the metaserver was deployed. Local
+native/browser 726 clients are ready; no public binary release was requested.
+User settings/saves and any original match were not used by integration probes.
 
 ## 2026-09-19 — All mods, waiting players and public activity; unified 1.0.725
 
