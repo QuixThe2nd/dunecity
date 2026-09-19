@@ -1,3 +1,33 @@
+## 2026-09-19 — Combined 1.0.729 published and verified
+
+PR 57 merged as 8416d26c; stable tag v1.0.729 points to that commit. All builds
+and tests passed in release run 35421479427. GitHub publishes six desktop assets
+(ZIP, DMG, AppImage, DEB, RPM, tar.gz) with the combined online/performance notes.
+SourceForge run 35422575737 read back and verified all eight files, published
+`dunecity-v1.0.729`, advanced `dunecity` from 52fe7aca to 8416d26c and confirmed
+all three OS download defaults. Legacy master and historical releases are intact.
+
+Website 2197473 deployed successfully in run 35422620015. Its browser is the
+exact DuneCity-Emscripten artifact from stable run 35421479427, packaged from
+8416d26c; redundant browser rebuild 35422575654 was cancelled. Live verification
+matched all seven browser artifact hashes and the manifest, both release pages
+and all six installer links, all 14 private signaling files and public route
+parity. Health is OK. The earlier service-only rollout was e5dac6e/run35420385656.
+The current public activity schema records named spectator seating but does not
+store a separate spectator flag; committed start rosters contain controllers.
+
+The exact release browser showed 1.0.729, applied 4:3, retained it after reload,
+restored 1280x720/16:9 and rendered fullscreen at an enlarged viewport. Diagnostics
+were off. The browser key-injection tool did not establish native Escape exit;
+closing that temporary tab restored normal layout. Original settings/name were
+restored; temporary public previews were removed. No local installed app was
+replaced. Android remains 0.2.25. Gameplay/source verification is below.
+
+Evidence: ../outputs/release-729-live-verification.json,
+release-729-sourceforge.log, release-729-browser-qa.json and release-729-github.json.
+The source-verified hot-join/protocol document was distributed as shared revision
+4 of dunecity-hot-join-protocol-6; completion was confirmed for all destinations.
+
 ## 2026-09-19 — Passive spectators verified, 1.0.729/protocol 8
 
 Stefan requires spectators to have no gameplay actions and never make active
