@@ -24,7 +24,9 @@ def verify(app):
         raise RuntimeError("Packaged runtime failed: " + result.stdout + result.stderr)
     libraries = [Path(line.split(": ", 1)[1]).resolve() for line in result.stdout.splitlines()
                  if line.startswith("SDL runtime library: ")]
-    if not libraries or any(app not in p.parents for p in libraries):
+    # vcpkg embeds SDL statically. A successful initialization/render check is
+    # valid with no SDL dylibs; any dynamically loaded SDL must still be bundled.
+    if any(app not in p.parents for p in libraries):
         raise RuntimeError("SDL runtime loaded libraries outside the app: " + repr(libraries))
     if compat and not any(p.name == "libSDL3.dylib" for p in libraries):
         raise RuntimeError("The bundled SDL3 runtime was not loaded")
