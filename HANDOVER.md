@@ -1,3 +1,26 @@
+## 2026-09-19 — Visible play approvals and shared control (unreleased 730)
+
+Stefan confirmed the live Air promotion worked. The host approved Replace
+Harkonnen, which removed its AI; this was the selected controller slot, not a
+failed shared join. Shared house / Multiple players per house already supports
+joining alongside an existing human or AI (two controllers per house).
+
+Code 894f6fe9 adds a persistent map-screen button on both host and requester while
+a play request awaits approval. Its text pulses white/gold without hiding the
+click target. The host clicks it to approve/decline; requests no longer force a
+dialog over active play. The requester clicks for request options, sees declined
+or failed status, and the notice clears after promotion or cancellation. The
+approval dialog defaults to sharing when available and explicitly labels AI
+replacement. No simulation, wire-format or service changes.
+
+Validation: all seven CTest suites, native dependency audits/build, and a real
+three-peer city promotion probe pass. The probe checks both notices, host click
+entry, decline/retry, default sharing, retained AI, notice removal and equal state
+at cycle 1800. Native rendered captures inspected in session
+work/join-notice-promote/{host-pending,requester-pending,host-approval}.png.
+The current live Chrome/Air match is intentionally left running on its existing
+code; refreshed binaries take effect on next launch. No game push or release.
+
 ## 2026-09-19 — Disconnect after map appears: spatial lookup drift (unreleased 730)
 
 Stefan's Air loaded the map, then disconnected on the next spectator fingerprint.
