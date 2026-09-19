@@ -171,6 +171,22 @@ int runMenuProbe() {
     const auto map = setup.maps.front();
     GameInitSettings init(getBasename(map,true),readCompleteFile(map),false,setup.rules);
     {
+        // This shipped map has Player1, Player2, Player3 and Player5. The
+        // fourth visible row still needs a real team before a match starts.
+        const auto sparse = dir + "4P - 128x128 - Ergsun-Odenkirk.ini";
+        auto sparseSetup = setup;
+        sparseSetup.online = true;
+        sparseSetup.sharedHouse = true;
+        sparseSetup.players = ChangeEventList{};
+        GameInitSettings sparseInit(getBasename(sparse,true),readCompleteFile(sparse),true,setup.rules);
+        CustomGamePlayers menu(sparseInit,true,false,&sparseSetup);
+        menuRequire(menu.numHouses == 4,"Sparse four-player map fixture changed");
+        for(int slot=0;slot<menu.numHouses;++slot)
+            menuRequire(menu.houseInfo[slot].teamDropDown.getSelectedEntryIntData()==slot+1,
+                "Sparse PlayerN sections left an unassigned team that becomes 255 in a checkpoint");
+        menuCapture(menu,"custom-sparse-teams");
+    }
+    {
         GameInitSettings coop(HOUSE_ATREIDES, setup.rules, 1);
         coop.enableCoop(true, "Keyboard co-op");
         auto scenario = pFileManager->openCampaignFile(coop.getFilename());

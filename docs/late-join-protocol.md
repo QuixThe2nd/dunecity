@@ -151,3 +151,41 @@ that original players advance during loading, compare at cycle 1,800, and remain
 identical after the viewer leaves. Service tests cover unchanged match phase,
 host-only viewer links, grants and old-protocol compatibility. Transport tests
 cover unready/congested viewers independently of player readiness and broadcasts.
+
+## Spectator-first entry (1.0.730, protocol 9; unreleased)
+
+Joining a running public game now enters as a spectator directly. In Options,
+the viewer can Request to play or cancel a pending request. The authenticated
+viewer session uses `/v1/p2p/join-requests` actions `request_play`, `cancel_play`
+and `play_status`; no new admission ticket or second connection is created.
+The host's join-request window opens automatically. Declining leaves the viewer
+watching and permits a later request. Cancelling likewise preserves observation.
+The protocol-8 admission behavior described above remains for older clients.
+
+Approval selects an eligible controller slot and uses the existing checkpoint
+transaction. A viewer requires both an authenticated service roster change and
+the host's prepare packet before becoming a controller. It then discovers and
+connects to all original controllers. Other viewers remain excluded from the
+barrier. A declined request never grants gameplay authority.
+
+Start preparation fixes the expected roster but waits up to 30 seconds for the
+local mesh's readiness reports before acknowledging. Peer channels have no
+shared delivery ordering, so a host prepare may precede another controller's
+readiness. Replayed preparation cannot extend this deadline; a conflicting
+roster or premature commit is rejected. New or changed readiness reports elicit
+an updated local report, recovering reports that arrived before a spectator's
+authenticated role change. Identical reports do not produce reply loops.
+
+Custom-map player sections may have gaps, such as Player1, Player2, Player3 and
+Player5 in Ergsun-Odenkirk. Team initialization scans the same slot capacity as
+house counting, assigning every occupied house a valid default team. Previously
+the fourth house could retain -1, serialized as 255, causing the spectator
+checkpoint validator to reject it. The map and checkpoint limits are unchanged;
+checkpoint policy rejection now logs its reason on the host.
+
+The `promote --city` probe exercises decline, retry, automatic host prompting,
+and matching resumed simulation state. With `--browser`, set the browser player
+name to Newcomer in Settings before joining. The original peers compare state
+300 ticks after the promotion checkpoint, allowing time for manual browser
+interaction. Create `browser-observed` only after verifying the browser view and
+successful promotion; native digests alone do not prove browser success.

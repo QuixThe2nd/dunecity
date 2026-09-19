@@ -3615,6 +3615,10 @@ void Game::resumeGame()
     if(pNetworkManager != nullptr && pNetworkManager->isRelaySession()) {
         return;
     }
+    if(bPause && settings.general.diagnosticLogs) {
+        AITelemetry::log().write(gameCycleCount,-1,-1,"pause_changed",
+            AITelemetry::Record().set("paused",false).set("source","resume"));
+    }
     bPause = false;
     
     // Notify other players in multiplayer that we resumed
@@ -3629,11 +3633,15 @@ void Game::resumeGame()
     }
 }
 
-void Game::pauseGame() {
+void Game::pauseGame(const char* source) {
     // A local pause freezes the cycle that would transmit the pause command itself.
     // Until a synchronized pause protocol exists, relay games continue behind menus.
     if(pNetworkManager != nullptr && pNetworkManager->isRelaySession()) {
         return;
+    }
+    if(!bPause && settings.general.diagnosticLogs) {
+        AITelemetry::log().write(gameCycleCount,-1,-1,"pause_changed",
+            AITelemetry::Record().set("paused",true).set("source",source).set("menu_open",bMenu));
     }
     bPause = true;
     
@@ -3876,7 +3884,7 @@ void Game::onOptions()
         Uint32 color = getHouseColorRGB(getHouseVisualHouse(pLocalHouse->getHouseID()), 3);
         pInGameMenu = std::make_unique<InGameMenu>((isNetworkGameType(gameType)), color);
         bMenu = true;
-        pauseGame();
+        pauseGame("options");
     }
 }
 
@@ -3932,7 +3940,7 @@ void Game::onMentat()
 {
     pInGameMentat = std::make_unique<MentatHelp>(pLocalHouse->getHouseID(), techLevel, gameInitSettings.getMission());
     bMenu = true;
-    pauseGame();
+    pauseGame("mentat");
 }
 
 bool Game::canSkipMission() const {
@@ -3945,7 +3953,7 @@ void Game::onSkipMission() {
     if(!canSkipMission())return;
     auto menu=std::make_unique<InGameMenu>(isNetworkGameType(gameType),COLOR_WHITE);
     menu->onSkipMission();
-    pInGameMenu=std::move(menu); bMenu=true; pauseGame();
+    pInGameMenu=std::move(menu); bMenu=true; pauseGame("skip_mission");
 }
 
 void Game::confirmSkipMission() {
@@ -3955,7 +3963,7 @@ void Game::confirmSkipMission() {
 void Game::onFeedback() {
     pInGameMenu = std::make_unique<FeedbackWindow>();
     bMenu = true;
-    pauseGame();
+    pauseGame("feedback");
 }
 
 void Game::onCityBudget()
@@ -5397,7 +5405,7 @@ void Game::handleKeyInput(SDL_KeyboardEvent& keyboardEvent)
                     pNetworkManager->sendChatMessage(message);
                 }
             } else {
-                pauseGame();
+                pauseGame(keyboardEvent.repeat ? "space_repeat" : "space");
                 const std::string message = _("Game paused!");
                 pInterface->getChatManager().addInfoMessage(message);
                 if(isMultiplayer && pNetworkManager != nullptr) {

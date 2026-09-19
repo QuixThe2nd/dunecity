@@ -220,6 +220,7 @@ void DirectRoomTransport::update() {
        && SDL_TICKS_PASSED(nowMs, startDeadline_)) {
         finish(RoomRelay::Close::Timeout, "The players could not confirm the start. Please host a new game.");
     }
+    acknowledgeStartIfReady();
 }
 
 void DirectRoomTransport::pumpSignaling(std::uint32_t nowMs) {
@@ -910,6 +911,12 @@ void DirectRoomTransport::handleReceivedValue(Link& link, const std::string& ass
         }
         case P2PWire::EnvelopeKind::Readiness:
             if(isSpectatorPeer(link.peerId) || localSpectator_) return;
+            // A peer may learn the authenticated roster after our last report,
+            // especially when a spectator becomes a controller. Reply to a new
+            // report so it can recover the readiness it previously ignored.
+            // Identical reports do not trigger replies, avoiding a ping-pong.
+            if(!link.reportedReadiness || link.rosterKey != envelope.rosterKey
+               || link.reportedConnections != envelope.connectedPeers) readinessDirty_ = true;
             link.rosterKey           = envelope.rosterKey;
             link.reportedConnections = envelope.connectedPeers;
             link.reportedReadiness   = true;
@@ -1186,15 +1193,17 @@ void DirectRoomTransport::handleStartEnvelope(Link& link, const P2PWire::Envelop
             if(e.startId != startId_ || e.rosterKey != startRoster_) finish(RoomRelay::Close::ProtocolError,"Conflicting match starts.");
             return; // exact replay does not reset deadline or countdown
         }
-        if(e.rosterKey != localRosterKey() || !meshReady()) {
+        if(e.rosterKey != localRosterKey()) {
             finish(RoomRelay::Close::Normal,"The players disagree about who is in the game."); return;
         }
         startId_ = e.startId; startRoster_ = e.rosterKey;
-        startStage_ = StartStage::Preparing; startDeadline_ = now() + 30000;
+        // Readiness and prepare are ordered on the host channel, but another
+        // controller's readiness may still be in flight on its own channel.
+        // Keep the authenticated roster fixed and withhold ACK until all pairs
+        // are ready. Repeated prepare packets never extend this deadline.
+        startStage_ = StartStage::AwaitingMesh; startDeadline_ = now() + 30000;
         freezeRoster("the host requested confirmation of this match");
         phase_ = RoomRelay::Phase::Match;
-        if(!sendEnvelopeTo(link,P2PWire::encodeStartEnvelope('a',startId_,startRoster_)))
-            finish(RoomRelay::Close::Normal,"The host could not receive the start confirmation.");
         return;
     }
     if(e.startId != startId_ || e.rosterKey != startRoster_ || startStage_ == StartStage::Idle) {
@@ -1208,9 +1217,27 @@ void DirectRoomTransport::handleStartEnvelope(Link& link, const P2PWire::Envelop
     }
     if(isHost() || link.role != RoomRelay::Role::Host) { dropLink(link.peerId,"Only the host can commit a start."); return; }
     if(startStage_ == StartStage::Committed) return;
+    if(startStage_ != StartStage::Preparing) {
+        finish(RoomRelay::Close::ProtocolError,"The host committed before this player confirmed the start."); return;
+    }
     startStage_ = StartStage::Committed;
     Event event; event.type=Event::Type::GamePayload; event.peerId=link.peerId; event.payload=e.payload;
     pushEvent(std::move(event)); // same authorized game parser as every other transport
+}
+
+void DirectRoomTransport::acknowledgeStartIfReady() {
+    if(status_ != Status::Joined || isHost() || startStage_ != StartStage::AwaitingMesh) return;
+    if(localRosterKey() != startRoster_) {
+        finish(RoomRelay::Close::ProtocolError,"The players changed while confirming the start."); return;
+    }
+    if(!meshReady()) return;
+    for(auto& link : links_) if(link->role == RoomRelay::Role::Host) {
+        if(!sendEnvelopeTo(*link,P2PWire::encodeStartEnvelope('a',startId_,startRoster_))) {
+            finish(RoomRelay::Close::Normal,"The host could not receive the start confirmation."); return;
+        }
+        startStage_ = StartStage::Preparing;
+        return;
+    }
 }
 
 void DirectRoomTransport::completeStartIfReady() {

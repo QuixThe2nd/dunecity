@@ -234,7 +234,7 @@ public:
     /**
         This method pauses the current game.
     */
-    void pauseGame();
+    void pauseGame(const char* source = "unspecified");
 
     /**
         This method resumes the current paused game.

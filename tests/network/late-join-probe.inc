@@ -26,7 +26,9 @@ int runLateJoinProbe() {
     effectiveGameOptions=ModManager::instance().loadEffectiveGameOptions(settings.gameOptions);
     const bool promotion=mode=="promote";
     const bool observer=mode=="spectate" || mode=="reject_spectate" || promotion;
-    const Uint32 verifyCycle=observer ? 1800 : 150;
+    Uint32 verifyCycle=observer ? 1800 : 150;
+    const bool browserPromotion=promotion && std::getenv("JOIN_BROWSER");
+    bool promotionCommitted=false;
     settings.general.playerName=role;
     settings.network.metaServer="http://127.0.0.1:1/";
     const Uint32 deadline=SDL_GetTicks()+(std::getenv("JOIN_BROWSER") ? 600000 : 160000);
@@ -133,6 +135,12 @@ int runLateJoinProbe() {
         if(network.lateJoinReady()) {
             auto snapshot=network.takeLateJoin(); game.reset(); currentGame=nullptr;
             game=std::make_unique<Game>(); currentGame=game.get(); game->initGame(*snapshot); game->initializeGameLoop(); resumed=true;
+            if(browserPromotion) {
+                // Manual browser interaction may take longer than 1,800 ticks.
+                // Compare both original peers at the same post-checkpoint cycle.
+                verifyCycle=game->getGameCycleCount()+300;
+                promotionCommitted=true;
+            }
             joinWrite(out+"/"+role+"-loaded","yes");
         }
         if(host && !requested && game->getGameCycleCount()>=60) {
@@ -189,7 +197,7 @@ int runLateJoinProbe() {
             if(!std::filesystem::exists(out+"/"+role+"-after-leave")) joinWrite(out+"/"+role+"-after-leave",GameStateDigest::describe(game->computeStateDigest()));
             if(std::filesystem::exists(out+"/done")) break;
         }
-        if(resumed && game->getGameCycleCount()==verifyCycle) {
+        if(resumed && (!browserPromotion || promotionCommitted) && game->getGameCycleCount()==verifyCycle) {
             if(!game->getPlayerByName("Host") || (!solo && !game->getPlayerByName("Partner")) || (mode!="abort" && !observer && !game->getPlayerByName("Newcomer")) || (mode=="replace" && game->getPlayerByName("Enemy AI")) || (mode=="share_ai" && !game->getPlayerByName("Enemy AI"))) throw std::runtime_error("controller roster wrong");
             if(observer && !promotion) {
                 if(game->getPlayerByName("Newcomer") || !game->getPlayerByName("Enemy AI") || (newcomer && !network.isSpectating())) throw std::runtime_error("spectator took a slot");

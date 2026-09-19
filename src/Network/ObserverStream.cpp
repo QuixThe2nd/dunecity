@@ -32,7 +32,10 @@ bool NetworkManager::beginObserverSnapshot(Uint32 peer, const GameInitSettings& 
     auto* direct=getDirectTransport();
     if(!direct || !bIsServer || !direct->isSpectatorPeer(peer) || observerTransfers.count(peer)) return false;
     std::string error;
-    if(!GameInitSettingsPolicy::isAcceptableReceivedGameInitSettings(snapshot,error)) return false;
+    if(!GameInitSettingsPolicy::isAcceptableReceivedGameInitSettings(snapshot,error)) {
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,"Spectator checkpoint refused: %s",error.c_str());
+        return false;
+    }
     OMemoryStream out; out.open(); snapshot.save(out); out.writeString(runtime); out.writeUint32(cycle);
     if(out.getDataLength()>maxSnapshot) return false;
     ObserverTransfer transfer;

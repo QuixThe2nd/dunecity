@@ -274,6 +274,7 @@ private:
     void beginSession();
     void queueLeave();
     void handleStartEnvelope(Link& link, const P2PWire::Envelope& envelope);
+    void acknowledgeStartIfReady();
     void completeStartIfReady();
     void beginStartPrepare(const BoundedHttpClient::Result& result);
     void freezeRoster(const char* why);
@@ -350,7 +351,7 @@ private:
         themselves, so losing the service is only a diagnostic.
     */
     bool           matchStarted_    = false;
-    enum class StartStage { Idle, ClosingRoster, Preparing, Committed };
+    enum class StartStage { Idle, ClosingRoster, AwaitingMesh, Preparing, Committed };
     StartStage startStage_ = StartStage::Idle;
     std::string startId_, startRoster_;
     std::vector<std::uint8_t> startPayload_;

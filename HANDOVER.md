@@ -1,3 +1,66 @@
+## 2026-09-19 — Mac mini spectator failure reproduced and fixed; candidate remains unreleased
+
+Work now runs locally on Stefan's Mac mini with Full Access and a connected
+Chrome extension. Checkout: `/Users/stefan/Documents/projects/dunecity-campaign-controls`.
+Native Homebrew dependencies and the pinned Emscripten 4.0.14 SDK are installed;
+native and browser candidate 1.0.730 builds succeed. Do not use the laptop UI.
+
+The reported released-729 native/browser spectator failure was reproduced using
+the downloaded 729 DMG and the production 729 browser. Download SHA-256:
+`70ce731928825498c582dbaef116995aab26d130924efc3d3d309321d324c224`.
+The map is valid: Ergsun-Odenkirk intentionally has Player1,2,3,5. The menu counted
+four houses but scanned only Player1..4 for teams, leaving the fourth team's
+selection blank (-1). The runtime converted it to 255, so spectator checkpoint
+validation rejected it before map loading. CustomGamePlayers now scans the full
+supported slot range. The actual-map menu regression failed before the fix and
+passes after it. Observer checkpoint refusal also logs the policy reason.
+No map, save format, checkpoint limits or simulation/path budgets were changed.
+
+Both released-client directions work when Team4 is selected manually for that
+fourth house: production browser host/downloaded native spectator and downloaded
+native host/production browser spectator. This isolates the menu bug without
+rebuilding either release client. The temporary public test room was closed.
+No installed app, quarantine state, production website or service was modified.
+
+A separate real-peer promotion race is fixed: prepare now waits for same-roster
+readiness across independent channels before ACK (bounded 30 seconds, no replay
+extension). Changed readiness reports refresh our own report without echoing
+identical ones, recovering reports ignored before an authenticated role change.
+Regression tests cover delayed readiness, replay, timeout, premature commit and
+conflicting roster. Two native three-peer city promotion runs matched at cycle
+1800. Chrome candidate 730 joined two native candidate peers, kept spectating
+after decline, retried, and became a Harkonnen controller with build controls.
+Original peers matched at cycle 9431, seed 1b565295, 84 objects,
+digest da2616c82add0d95/1041afe9dcdd63c3. The browser probe now compares 300 ticks
+after its promotion checkpoint, allowing manual interaction before verification.
+Protocol-9 behavior is documented in docs/late-join-protocol.md.
+
+Continue remains an investigation, not a claimed fix. Stefan confirmed the
+original action was a mouse click. The exact transferred `cities 3.dls` loads at
+329538 and runs past the laptop's paused cycle 329556 on the mini using mouse-click
+Continue in downloaded 729. The original save remains untouched; testing uses an
+isolated profile. With diagnostics enabled, candidate 730 now records actual
+pause transitions and their source (Options/Mentat/feedback/skip/Space/repeat),
+plus resume events. This will identify a future unexpected pause without changing
+pause behavior. Do not infer the cause was keyboard input.
+
+Evidence is under `/Users/stefan/Documents/Codex/2026-09-19/i-h/work/`:
+`sparse-teams-before.log`, `sparse-teams-tests.log`,
+`promote-refresh-city.log`, `promote-refresh-city2.log`,
+`browser-promote-verified.log` and its Host/Partner logs and digests.
+Final build/test logs use the `final-` prefix. Native/browser final builds and
+all seven CTest suites pass, with clean before/after native dependency audits.
+The pause diagnostic was verified in candidate 730: an intentional Space pause
+recorded source=space, menu_open=0, cycle=330855. That candidate run used keyboard
+Continue after native automation mouse clicks did not activate its menu; the
+released-729 Continue reproduction above used mouse clicks. 190 real-HTTP service
+tests also passed on this mini.
+
+Release remains pending: no push, PR, tag or deployment. Apple signing/notarization
+still needs Stefan's Apple Developer enrollment and signing identity (none found
+on either Mac). Never bypass Gatekeeper. Earlier isolated remote test directories
+listed below have not been touched by this local test pass.
+
 ## 2026-09-19 — Unreleased 1.0.730 checkpoint; move interactive testing to Mac mini
 
 Stefan asks for browser/native testing on the Mac mini so agents do not control
