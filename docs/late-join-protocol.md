@@ -107,9 +107,17 @@ simulation command. Active-player loss retains the normal fail-closed behavior.
 
 After the host-to-viewer channel opens, the host captures an in-memory network
 checkpoint without pausing or reloading any player. Only the viewer loads it.
-The existing 4 MiB save and 5 MiB total-envelope limits apply. A supplementary
-network-only record preserves path/target request queues, unit movement caches,
-stuck detection, AI planning state, current path budget and command-buffer size.
+The save remains capped at 4 MiB; the spectator envelope is capped at 8 MiB
+on both endpoints, allowing the larger runtime supplement on 256x256 maps.
+The supplementary network-only record (version 2) preserves path/target request
+queues, unit movement caches, stuck detection, AI planning state, current path
+budget, command-buffer size, live house AI flags and the exact city simulation
+caches and phase state.
+Observers retain the saved controllers and rebuild zone power draw without the
+ordinary load-time city reconciliation, which would advance growth and effects
+an extra time relative to the running host. Unit loading also retains references
+to objects that appear later in the checkpoint; resolving them prematurely used
+to clear carryall targets.
 Ordinary disk-save format and its deliberate load-time resets are unchanged.
 
 The host then streams the canonical command set and path budget for each tick
@@ -189,3 +197,8 @@ name to Newcomer in Settings before joining. The original peers compare state
 300 ticks after the promotion checkpoint, allowing time for manual browser
 interaction. Create `browser-observed` only after verifying the browser view and
 successful promotion; native digests alone do not prove browser success.
+
+For the populated 256x256 regression, run
+`python3 tests/network/run-late-join-probe.py --mode spectate --city --twin-cities --solo`.
+Set `JOIN_AT_CYCLE=1400` to cover loading after production and carryall bookings;
+`JOIN_TRACE=1` retains per-peer state summaries every 200 cycles for diagnosis.

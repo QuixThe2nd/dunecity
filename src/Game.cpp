@@ -88,6 +88,7 @@ std::mutex Game::performanceLogMutex;
 #include <sand.h>
 
 #include <structures/StructureBase.h>
+#include <structures/ZoneStructure.h>
 #include <structures/WindTrap.h>
 #include <structures/AdvancedWindTrap.h>
 #include <structures/NuclearPlant.h>
@@ -4288,7 +4289,9 @@ bool Game::loadSaveGame(InputStream& stream) {
     // Single-player saves contain a local-player byte even when hosted online.
     Uint8 savedLocalPlayerID = 0;
     if(!savedNetworkLayout) savedLocalPlayerID = stream.readUint8();
-    if(lateJoinLoad) {
+    // Passive observers retain the saved controllers exactly. Reconfiguring an
+    // unchanged mixed human/AI house can alter its AI flag and unit rally logic.
+    if(lateJoinLoad && !isSpectating()) {
         for(const auto& info : oldHouseInfoList) {
             auto* target=getHouse(info.houseID);
             if(!target) THROW(std::runtime_error,"The requested house no longer exists.");
@@ -4457,7 +4460,10 @@ bool Game::loadSaveGame(InputStream& stream) {
             citySimulation_->setCityEffectsEnabled(
                 DuneCity::shouldEnableLoadedCityEffects(hasCitySim));
             citySimulation_->load(stream);
-            citySimulation_->reconcileLoadedMapState(gameCycleCount);
+            // A passive viewer must not perform the extra effects/growth pass
+            // used to repair ordinary disk saves. Its exact live caches follow
+            // in the observer runtime supplement.
+            if(!isSpectating()) citySimulation_->reconcileLoadedMapState(gameCycleCount);
         }
     }
 
@@ -6215,8 +6221,14 @@ bool Game::handleNetworkUpdates() {
             const auto budget=frame.readUint32(); const auto fingerprint=frame.readString();
             if(!fingerprint.empty()) {
                 GameStateDigest::Digest expected;
-                if(!GameStateDigest::decode(reinterpret_cast<const Uint8*>(fingerprint.data()),fingerprint.size(),expected)
-                   || computeStateDigest().divergesFrom(expected)) throw std::runtime_error("Spectator state diverged");
+                if(!GameStateDigest::decode(reinterpret_cast<const Uint8*>(fingerprint.data()),fingerprint.size(),expected))
+                    throw std::runtime_error("Invalid spectator fingerprint");
+                const auto actual=computeStateDigest();
+                if(actual.divergesFrom(expected)) {
+                    SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,"Spectator fingerprint expected: %s; actual: %s",
+                        GameStateDigest::describe(expected).c_str(),GameStateDigest::describe(actual).c_str());
+                    throw std::runtime_error("Spectator state diverged");
+                }
             }
             const auto count=frame.readUint32();
             if(budget<kMinBudget || budget>kMaxBudget || count>4096) throw std::runtime_error("Invalid spectator tick");
@@ -6616,14 +6628,15 @@ void Game::prepareObserverStreams() {
         const auto snapshot=spectatorSnapshot(); const auto runtime=saveObserverRuntime();
         for(const auto peer : pending) if(!pNetworkManager->beginObserverSnapshot(peer,snapshot,runtime,gameCycleCount))
             pNetworkManager->getDirectTransport()->disconnectSpectator(peer,"This game is too large to spectate.");
-    } catch(const std::exception&) {
+    } catch(const std::exception& error) {
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,"Spectator checkpoint preparation failed: %s",error.what());
         for(const auto peer : pending) pNetworkManager->getDirectTransport()->disconnectSpectator(peer,"Could not prepare the spectator view.");
     }
 }
 
 std::string Game::saveObserverRuntime() const {
     OMemoryStream out; out.open();
-    out.writeUint32(1); out.writeUint32(gameCycleCount);
+    out.writeUint32(2); out.writeUint32(gameCycleCount);
     out.writeUint32(negotiatedBudget); out.writeUint32(cmdManager.getNetworkCycleBuffer());
     out.writeUint32(currentGameMap->getPathingRevision());
     out.writeUint32(targetRequestQueue.size());
@@ -6637,12 +6650,18 @@ std::string Game::saveObserverRuntime() const {
         if(const auto* bot=dynamic_cast<const QuantBot*>(p.get())) bots.push_back(bot);
     out.writeUint32(bots.size());
     for(const auto* bot : bots) { out.writeUint8(bot->getPlayerID()); bot->saveObserverRuntime(out); }
+    for(const auto& h : house) {
+        out.writeBool(h != nullptr);
+        if(h) out.writeBool(h->isAI());
+    }
+    out.writeBool(citySimulation_ != nullptr);
+    if(citySimulation_) citySimulation_->saveObserverRuntime(out);
     return std::string(out.getData(),out.getDataLength());
 }
 
 void Game::loadObserverRuntime(const std::string& bytes) {
     IMemoryStream in(bytes.data(),bytes.size());
-    if(in.readUint32()!=1 || in.readUint32()!=gameCycleCount) throw std::runtime_error("Invalid spectator checkpoint cycle");
+    if(in.readUint32()!=2 || in.readUint32()!=gameCycleCount) throw std::runtime_error("Invalid spectator checkpoint cycle");
     negotiatedBudget=in.readUint32(); const auto buffer=in.readUint32();
     if(negotiatedBudget<kMinBudget || negotiatedBudget>kMaxBudget || buffer>1000) throw std::runtime_error("Invalid spectator checkpoint budget");
     cmdManager.setNetworkCycleBuffer(buffer);
@@ -6666,5 +6685,15 @@ void Game::loadObserverRuntime(const std::string& bytes) {
         if(!bot || !seenBots.insert(id).second) throw std::runtime_error("Invalid spectator AI");
         bot->loadObserverRuntime(in);
     }
+    for(const auto& h : house) {
+        if(in.readBool() != (h != nullptr)) throw std::runtime_error("Invalid spectator house state");
+        if(h) h->restoreObserverAI(in.readBool());
+    }
+    if(in.readBool() != (citySimulation_ != nullptr)) throw std::runtime_error("Invalid spectator city state");
+    if(citySimulation_) citySimulation_->loadObserverRuntime(in);
+    // Zone constructors restore occupancy but do not register its dynamic power
+    // draw. Rebuild that derived house total without running city growth.
+    for(auto* structure : structureList)
+        if(auto* zone=dynamic_cast<ZoneStructure*>(structure)) zone->refreshZonePowerDraw();
     if(in.getRemainingLength()!=0) throw std::runtime_error("Extra spectator checkpoint data");
 }

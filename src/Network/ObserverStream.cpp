@@ -4,7 +4,10 @@
 #include <misc/IMemoryStream.h>
 
 namespace {
-constexpr Uint32 maxSnapshot=5u*1024*1024;
+// The 4 MiB save is supplemented by AI/path runtime state. A 256x256 Twin
+// Cities checkpoint already exceeds 5 MiB with two AIs. Keep a bounded 8 MiB
+// envelope on both endpoints; ordinary network-save and chunk limits stay fixed.
+constexpr Uint32 maxSnapshot=8u*1024*1024;
 constexpr Uint32 chunkBytes=48u*1024;
 constexpr Uint32 maxHistoryCycles=1500;
 constexpr std::size_t maxHistoryBytes=4u*1024*1024;
@@ -37,7 +40,11 @@ bool NetworkManager::beginObserverSnapshot(Uint32 peer, const GameInitSettings& 
         return false;
     }
     OMemoryStream out; out.open(); snapshot.save(out); out.writeString(runtime); out.writeUint32(cycle);
-    if(out.getDataLength()>maxSnapshot) return false;
+    if(out.getDataLength()>maxSnapshot) {
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,"Spectator checkpoint refused: envelope %u exceeds %u bytes",
+            static_cast<unsigned>(out.getDataLength()),maxSnapshot);
+        return false;
+    }
     ObserverTransfer transfer;
     transfer.snapshot.assign(out.getData(),out.getDataLength());
     transfer.epoch=simulationSeed; transfer.nextCycle=transfer.ackCycle=cycle;

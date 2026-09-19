@@ -12,6 +12,7 @@
 #include <misc/IMemoryStream.h>
 #include <fstream>
 #include <filesystem>
+#include <sstream>
 #include <thread>
 #include <chrono>
 
@@ -37,7 +38,9 @@ int runLateJoinProbe() {
     request.baseUrl=endpoint; request.allowLoopbackPlaintext=true; request.appVersion=VERSIONSTRING;
     request.gameProtocol=NETWORK_PROTOCOL_VERSION; request.runtime="native"; request.contentHash=CrossplayMenu::contentFingerprint();
     request.hosting=host; request.publicRoom=true; request.maxPeers=4; request.mode="custom"; request.allowLateJoin=true;
-    request.modName=city ? "dunecity" : "vanilla"; request.mapName=city ? "4P - 128x128 - Ergsun-Odenkirk" : "Join probe";
+    request.modName=city ? "dunecity" : "vanilla";
+    request.mapName=std::getenv("JOIN_TWIN_CITIES") ? "2P - 256x256 - Twin Cities"
+        : (city ? "4P - 128x128 - Ergsun-Odenkirk" : "Join probe");
     if(!host) { wait([&](){return std::filesystem::exists(out+"/room");}); request.roomCode=joinRead(out+"/room"); }
     if(newcomer) {
         wait([&](){return std::filesystem::exists(out+"/running");});
@@ -80,7 +83,8 @@ int runLateJoinProbe() {
         GameInitSettings::HouseInfo enemy(HOUSE_HARKONNEN,2); enemy.addPlayerInfo({mode=="share_human" ? "Partner" : "Enemy AI",mode=="share_human" ? HUMANPLAYERCLASS : (city ? "qBotHard" : "qBotEasy")}); init.addHouseInfo(enemy);
         if(city) {
             init.setMultiplePlayersPerHouse(true);
-            for(int h : {HOUSE_ORDOS,HOUSE_FREMEN}) { GameInitSettings::HouseInfo other(static_cast<HOUSETYPE>(h),h+3); other.addPlayerInfo({"Enemy AI "+std::to_string(h),"qBotHard"}); init.addHouseInfo(other); }
+            if(!std::getenv("JOIN_TWIN_CITIES"))
+                for(int h : {HOUSE_ORDOS,HOUSE_FREMEN}) { GameInitSettings::HouseInfo other(static_cast<HOUSETYPE>(h),h+3); other.addPlayerInfo({"Enemy AI "+std::to_string(h),"qBotHard"}); init.addHouseInfo(other); }
         }
         // Retain a real waiting-lobby setup/callback, as the production menu does.
         // Newcomers during a match must never invoke lobby seat assignment.
@@ -120,10 +124,30 @@ int runLateJoinProbe() {
     Uint32 lastProgress=0;
     Uint32 lastOrdersCycle=~Uint32(0);
     const bool checkDeparture=observer && !promotion && !std::getenv("JOIN_BROWSER");
+    const Uint32 joinCycle=std::getenv("JOIN_AT_CYCLE") ? std::stoul(std::getenv("JOIN_AT_CYCLE")) : 60;
     while(!SDL_TICKS_PASSED(SDL_GetTicks(),deadline)) {
         if(std::filesystem::exists(out+"/done")) break;
+        if(std::getenv("JOIN_TRACE") && game->getGameCycleCount()%200==0) {
+            const auto path=out+"/"+role+"-state-"+std::to_string(game->getGameCycleCount());
+            if(!std::filesystem::exists(path)) {
+                std::ostringstream state;
+                state<<GameStateDigest::describe(game->computeStateDigest())<<'\n';
+                for(int h=0;h<NUM_HOUSES;++h) if(game->house[h]) {
+                    const auto& house=*game->house[h];
+                    state<<"house "<<h<<' '<<house.getCredits()<<' '<<house.getNumStructures()<<' '<<house.getNumUnits()<<'\n';
+                }
+                game->objectManager.forEachObject([&](Uint32 id,const ObjectBase* object) {
+                    if(object) state<<"object "<<id<<' '<<object->getItemID()<<' '<<object->getOriginalHouseID()<<' '
+                        <<(object->getOwner() ? object->getOwner()->getHouseID() : -1)<<' '
+                        <<object->getHealth().getRawValue()<<' '<<object->getLocation().x<<' '<<object->getLocation().y<<'\n';
+                });
+                joinWrite(path,state.str());
+            }
+        }
         const Uint32 target=std::getenv("JOIN_BROWSER") ? 30000 : (checkDeparture && !newcomer && std::filesystem::exists(out+"/Newcomer-left") ? verifyCycle+100 : verifyCycle);
         const bool waiting=game->handleNetworkUpdates();
+        if(newcomer && !network.getRelayClient()->isJoined())
+            throw std::runtime_error("newcomer lost its session before state verification");
         if(SDL_GetTicks()-lastProgress>5000) {
             lastProgress=SDL_GetTicks();
             SDL_Log("Probe progress: role=%s cycle=%u join_stage=%d play_state=%s requests=%zu status=%s",
@@ -143,7 +167,7 @@ int runLateJoinProbe() {
             }
             joinWrite(out+"/"+role+"-loaded","yes");
         }
-        if(host && !requested && game->getGameCycleCount()>=60) {
+        if(host && !requested && game->getGameCycleCount()>=joinCycle) {
             joinWrite(out+"/running","yes");
             const auto& requests=network.getDirectTransport()->joinRequests();
             if(!requests.empty() && observer && (!promotion || requests[0].spectator)) {

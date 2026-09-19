@@ -1,3 +1,55 @@
+## 2026-09-19 — Twin Cities live spectator checkpoint fixes (unreleased 730)
+
+Stefan hosted Twin Cities in downloaded 729 as ggtothemax. Both the downloaded
+729 native client and production browser were admitted, then disconnected before
+map loading. No manual pause is required for a spectator; controller promotion
+uses the existing automatic synchronization pause. The user's running host was
+not changed. The valid 256x256 map remains unchanged.
+
+The local production-code probe reproduced a 5,290,427-byte observer envelope,
+above the old 5 MiB limit. The observer envelope is now bounded at 8 MiB on both
+endpoints; the 4 MiB embedded save and 48 KiB chunk limits remain unchanged.
+Rejection logs now include envelope size or checkpoint preparation errors.
+
+After admission, populated city checkpoints exposed additional divergence:
+- Ordinary save reconciliation ran an extra city effects/growth pass on only
+  the viewer. Observer runtime version 2 now restores the exact phase, derived
+  tax/civic state and city grids; viewers skip ordinary save reconciliation.
+- Restored zone occupancy needs its dynamic power draw registered without growth.
+- Reconfiguring unchanged mixed human/AI controllers changed unit rally logic.
+  Viewers keep the saved roster, and the supplement restores the live house AI
+  flags, including values changed by earlier controller promotion.
+- UnitBase resolved targets while objects were still loading in ID order. A
+  forward reference became NONE_ID. The failing checkpoint showed carryall 27's
+  target 216 replaced by 0xffffffff before the first replay tick. Unit loading
+  now defers resolving targets that have not been constructed yet. This also
+  preserves forward targets in ordinary saves without changing the file format.
+
+The Twin Cities probe supports --twin-cities --city --solo and JOIN_AT_CYCLE=1400
+for later checkpoints. JOIN_TRACE=1 retains per-peer state every 200 cycles.
+City runtime tests cover partial grid blocks, derived values, map-size mismatch
+and truncation. Stream mismatch logs now print expected and actual fingerprints.
+Early and later native joins matched through cycle 1800 and spectator departure
+left the host running. The prior three-peer city promotion regression also passed.
+Chrome/native Twin Cities ran without mismatch through more than 4700 host cycles
+before final house-flag preservation was added. Reloading that browser was refused
+while its old Player identity was still retained; no second successful join from
+that run is claimed. The final source passes all seven CTest suites, native
+and pinned-Emscripten builds, before/after native dependency audits and version
+consistency checks. The final later native join matches cycle 1800, seed 2c041e17,
+215 objects, digest 6180964237499f3f/1b997b15b2862830. Final three-peer promotion
+matches cycle 1800, seed 1700292b, 51 objects. Final Chrome/native Twin Cities
+spectating visibly runs beyond host cycle 2095 without a mismatch.
+
+Evidence lives in /Users/stefan/Documents/Codex/2026-09-19/i-h/work/:
+twin-controller-fixed, twin-later-join (failure), twin-later-object (target bytes),
+twin-target-fixed (passing later join), twin-browser-final (passing browser),
+twin-regression-promotion, and twin-final-* (final build and verification).
+No release, push, PR, installed-app replacement or service deployment occurred.
+Continue's original mouse-click freeze remains unreproduced. Full Access, native
+build dependencies, Emscripten and Chrome control are working on the mini. Apple
+signing/notarization still needs the user's Developer enrollment/signing identity.
+
 ## 2026-09-19 — Mac mini spectator failure reproduced and fixed; candidate remains unreleased
 
 Work now runs locally on Stefan's Mac mini with Full Access and a connected

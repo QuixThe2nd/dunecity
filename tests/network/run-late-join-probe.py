@@ -20,9 +20,12 @@ parser.add_argument('--browser',action='store_true',help='Use the browser game a
 parser.add_argument('--stall',action='store_true',help='Leave the spectator unresponsive until its stream times out; the players must continue.')
 parser.add_argument('--solo',action='store_true',help='One native host, with no second active peer.')
 parser.add_argument('--city',action='store_true',help='Dune City, four-house Ergsun-Odenkirk, shared hard AI host.')
+parser.add_argument('--twin-cities',action='store_true',help='Use the two-house 256x256 Twin Cities map with --city.')
 parser.add_argument('--busy',action='store_true',help='Exercise moving armies and AI production while the observer catches up.')
 parser.add_argument('--mode', choices=['replace','share_ai','share_human','abort','spectate','reject_spectate','promote'],default='replace')
 args = parser.parse_args()
+if args.twin_cities and not args.city:
+    parser.error('--twin-cities requires --city')
 build = args.build_dir.resolve()
 out = args.output_dir.resolve() if args.output_dir else Path(tempfile.mkdtemp(prefix='dunecity-late-join-probe-'))
 out.mkdir(parents=True, exist_ok=True)
@@ -54,6 +57,7 @@ cc[cc.index('-o') + 1] = str(obj)
 cc[cc.index('-c') + 1] = str(source)
 map_path = root / 'data/maps/multiplayer/2P - 51x31 - 1v1 - Habbanya-Autumn.ini'
 if args.city: map_path = root / 'data/maps/multiplayer/4P - 128x128 - Ergsun-Odenkirk.ini'
+if args.twin_cities: map_path = root / 'data/maps/singleplayer/2P - 256x256 - Twin Cities.ini'
 cc.append('-fno-access-control')
 cc.append('-DPROBE_MAP_PATH="' + str(map_path) + '"')
 app = out / 'late-join-probe.app/Contents'
@@ -120,6 +124,7 @@ try:
         env=dict(os.environ,DUNECITY_USERDIR=str(out/('profile-'+role)),SDL_VIDEODRIVER='dummy',SDL_AUDIODRIVER='dummy',JOIN_ROLE=role,JOIN_MODE=args.mode,JOIN_OUT=str(out),JOIN_ENDPOINT=args.endpoint or ('http://127.0.0.1:'+str(service.port)))
         if args.solo: env['JOIN_SOLO']='1'
         if args.city: env['JOIN_CITY']='1'
+        if args.twin_cities: env['JOIN_TWIN_CITIES']='1'
         if args.browser: env['JOIN_BROWSER']='1'
         if args.busy: env['JOIN_BUSY']='1'
         if args.stall: env['JOIN_STALL']='1'
