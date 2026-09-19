@@ -1197,3 +1197,34 @@ TEST_CASE("Spectators can leave a frozen match without closing player connection
     REQUIRE(harness.transport->isJoined());
     REQUIRE(harness.transport->peers().empty());
 }
+
+TEST_CASE("An observer cannot delay player readiness, broadcasts or match start", "[direct][spectator]") {
+    Harness h; h.join();
+    h.deliverPoll("status=ok\nphase=lobby\n"+peerRecord(2,"client","Player","native")+"cursor=0\n");
+    h.channels[0]->current=DirectPeerConnection::State::Connected;
+    h.channels[0]->deliver(P2PWire::encodeReadinessEnvelope("1,2",{1}));
+    h.pump(); REQUIRE(h.transport->meshReady());
+    h.transport->assumeMatchPhase(); h.drain();
+    auto observer=peerRecord(3,"client","Watcher","browser");
+    observer.pop_back(); observer+="|1\n";
+    h.deliverPoll("status=ok\nphase=match\n"+peerRecord(2,"client","Player","native")+observer+"cursor=0\n");
+    REQUIRE(h.channels.size()==2);
+    // Observer is still connecting and has never reported readiness.
+    REQUIRE(h.transport->meshReady());
+    const std::vector<std::uint8_t> payload{2,0,0,0};
+    REQUIRE(h.transport->sendGamePayload(payload.data(),payload.size(),0,0));
+    REQUIRE(h.transport->isJoined());
+    h.channels[1]->current=DirectPeerConnection::State::Connected; h.pump();
+    h.channels[1]->sent.clear();
+    REQUIRE(h.transport->sendGamePayload(payload.data(),payload.size(),0,0));
+    REQUIRE(h.channels[1]->sent.empty());
+    h.channels[1]->refuseSends=true;
+    REQUIRE_FALSE(h.transport->sendGamePayload(payload.data(),payload.size(),0,3));
+    REQUIRE(h.transport->isJoined()); REQUIRE(h.transport->meshReady());
+    REQUIRE(h.channels[0]->current==DirectPeerConnection::State::Connected);
+    bool spectatorLeft=false;
+    for(const auto& event : h.drain()) if(event.type==RoomSessionTransport::Event::Type::PeerLeft) {
+        REQUIRE(event.peerId==3); REQUIRE(event.spectator); spectatorLeft=true;
+    }
+    REQUIRE(spectatorLeft);
+}

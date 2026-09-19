@@ -48,6 +48,8 @@ public:
     UnitBase& operator=(UnitBase &&) = delete;
 
     void save(OutputStream& stream) const override;
+    void saveObserverRuntime(OutputStream& stream) const;
+    void loadObserverRuntime(InputStream& stream);
 
     void blitToScreen() override;
 

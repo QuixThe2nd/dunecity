@@ -6,6 +6,7 @@
 #include <Network/RoomAdmissionClient.h>
 #include <Menu/CrossplayMenu.h>
 #include <players/HumanPlayer.h>
+#include <units/UnitBase.h>
 #include <misc/OMemoryStream.h>
 #include <misc/IMemoryStream.h>
 #include <fstream>
@@ -20,6 +21,7 @@ int runLateJoinProbe() {
     const std::string mode=std::getenv("JOIN_MODE") ? std::getenv("JOIN_MODE") : "replace";
     const bool host=role=="Host", newcomer=role=="Newcomer";
     const bool observer=mode=="spectate" || mode=="reject_spectate";
+    const Uint32 verifyCycle=observer ? 1800 : 150;
     settings.general.playerName=role;
     settings.network.metaServer="http://127.0.0.1:1/";
     const Uint32 deadline=SDL_GetTicks()+(std::getenv("JOIN_BROWSER") ? 600000 : 160000);
@@ -54,13 +56,18 @@ int runLateJoinProbe() {
     std::string error; if(!network.startDirectSession(config,error)) throw std::runtime_error(error);
     network.setOnPeerDisconnected([&](const std::string&,bool,int){throw std::runtime_error("probe disconnected: "+network.getRelayClient()->statusMessage());});
     bool cancelled=false;
-    if(newcomer && mode=="abort") network.setOnPeerDisconnected([&](const std::string&,bool,int){cancelled=true;});
+    if(newcomer && (mode=="abort" || std::getenv("JOIN_STALL"))) network.setOnPeerDisconnected([&](const std::string&,bool,int){cancelled=true;});
     bool start=false;
     network.setOnStartGame([&](unsigned){start=true;});
     if(newcomer) network.expectLateJoin();
     GameInitSettings init;
     if(host) {
-        const auto map=joinRead(PROBE_MAP_PATH);
+        auto map=joinRead(PROBE_MAP_PATH);
+        if(std::getenv("JOIN_BUSY")) {
+            map+="\n";
+            for(int i=0;i<100;++i) map+="ID"+std::to_string(100+i)+"=Player"+std::to_string(i<50 ? 1 : 2)
+                +",Tank,256,"+std::to_string((i%50)*29+10)+",64,Area Guard\n";
+        }
         init=GameInitSettings("join.ini",map,"Host",true,settings.gameOptions);
         GameInitSettings::HouseInfo humans(HOUSE_ATREIDES,1); humans.addPlayerInfo({"Host",HUMANPLAYERCLASS}); if(mode!="share_human") humans.addPlayerInfo({"Partner",HUMANPLAYERCLASS}); init.addHouseInfo(humans);
         GameInitSettings::HouseInfo enemy(HOUSE_HARKONNEN,2); enemy.addPlayerInfo({mode=="share_human" ? "Partner" : "Enemy AI",mode=="share_human" ? HUMANPLAYERCLASS : "qBotEasy"}); init.addHouseInfo(enemy);
@@ -82,16 +89,30 @@ int runLateJoinProbe() {
     } else {
         wait([&](){ network.update(); return network.lateJoinReady() || cancelled; });
         if(cancelled && mode=="abort") { joinWrite(out+"/Newcomer-cancelled","yes"); network.setOnPeerDisconnected({}); pNetworkManager.reset(); return MENU_QUIT_DEFAULT; }
+        if(observer) {
+            joinWrite(out+"/observer-delaying",std::to_string(network.observerFrontier()));
+            SDL_Delay(std::getenv("JOIN_STALL") ? 40000 : 5000); // Deliberately stop reading: the players must keep simulating.
+            if(!std::filesystem::exists(out+"/Host-advanced") || !std::filesystem::exists(out+"/Partner-advanced")) throw std::runtime_error("players waited for spectator loading");
+        }
+        if(observer && std::getenv("JOIN_STALL")) {
+            wait([&](){network.update(); return cancelled || !network.getRelayClient()->isJoined();});
+            joinWrite(out+"/Newcomer-left","timed out without blocking players");
+            network.setOnPeerDisconnected({}); pNetworkManager.reset();
+            SDL_Log("LATE_JOIN_PROBE_PASS: unresponsive spectator isolated"); return MENU_QUIT_DEFAULT;
+        }
         init=*network.takeLateJoin();
     }
     auto game=std::make_unique<Game>(); currentGame=game.get(); game->initGame(init); game->initializeGameLoop();
     if(newcomer) joinWrite(out+"/Newcomer-loaded","yes");
-    bool requested=false, resumed=newcomer, rejected=false;
+    bool requested=false, resumed=newcomer || observer, rejected=false;
+    Uint32 lastOrdersCycle=~Uint32(0);
     const bool checkDeparture=observer && !std::getenv("JOIN_BROWSER");
     while(!SDL_TICKS_PASSED(SDL_GetTicks(),deadline)) {
         if(std::filesystem::exists(out+"/done")) break;
-        const Uint32 target=checkDeparture && !newcomer && std::filesystem::exists(out+"/Newcomer-left") ? 180 : 150;
+        const Uint32 target=checkDeparture && !newcomer && std::filesystem::exists(out+"/Newcomer-left") ? verifyCycle+100 : verifyCycle;
         const bool waiting=game->handleNetworkUpdates();
+        if(observer && !newcomer && (network.lateJoinPaused() || network.lateJoinReady())) throw std::runtime_error("spectator paused a player");
+        if(observer && !newcomer && std::filesystem::exists(out+"/observer-delaying") && game->getGameCycleCount()>std::stoul(joinRead(out+"/observer-delaying"))+100) joinWrite(out+"/"+role+"-advanced",std::to_string(game->getGameCycleCount()));
         if(network.lateJoinReady()) {
             auto snapshot=network.takeLateJoin(); game.reset(); currentGame=nullptr;
             game=std::make_unique<Game>(); currentGame=game.get(); game->initGame(*snapshot); game->initializeGameLoop(); resumed=true;
@@ -118,18 +139,25 @@ int runLateJoinProbe() {
         }
         if(!host && !newcomer && mode=="abort" && std::filesystem::exists(out+"/aborted") && !network.lateJoinPaused()) resumed=true;
         if(!network.lateJoinPaused()) {
+            if(host && std::getenv("JOIN_BUSY") && !waiting && game->getGameCycleCount()!=lastOrdersCycle && game->getGameCycleCount()%150==0) {
+                lastOrdersCycle=game->getGameCycleCount();
+                const auto player=game->getPlayerByName("Host")->getPlayerID();
+                for(auto* unit : unitList) if(unit->getOwner()->getHouseID()==HOUSE_ATREIDES && unit->getItemID()==Unit_Tank)
+                    game->cmdManager.addCommand(Command(player,CMD_UNIT_MOVE2POS,unit->getObjectID(),
+                        Uint32((game->getGameCycleCount()/150)%2 ? 42 : 8),Uint32(15),Uint32(1)));
+            }
             game->cmdManager.update();
             if(!waiting && game->getGameCycleCount()<target && (resumed || game->getGameCycleCount()<65)) game->updateGameState();
         }
-        if(checkDeparture && !newcomer && game->getGameCycleCount()==180) {
+        if(checkDeparture && !newcomer && game->getGameCycleCount()==verifyCycle+100) {
             if(!network.getRelayClient()->isJoined() || network.getConnectedPeers().size()!=1) throw std::runtime_error("spectator departure damaged the match");
             if(!std::filesystem::exists(out+"/"+role+"-after-leave")) joinWrite(out+"/"+role+"-after-leave",GameStateDigest::describe(game->computeStateDigest()));
             if(std::filesystem::exists(out+"/done")) break;
         }
-        if(resumed && game->getGameCycleCount()==150) {
+        if(resumed && game->getGameCycleCount()==verifyCycle) {
             if(!game->getPlayerByName("Host") || !game->getPlayerByName("Partner") || (mode!="abort" && !observer && !game->getPlayerByName("Newcomer")) || (mode=="replace" && game->getPlayerByName("Enemy AI")) || (mode=="share_ai" && !game->getPlayerByName("Enemy AI"))) throw std::runtime_error("controller roster wrong");
             if(observer) {
-                if(game->getPlayerByName("Newcomer") || !game->getPlayerByName("Enemy AI") || !network.isSpectator("Newcomer")) throw std::runtime_error("spectator took a slot");
+                if(game->getPlayerByName("Newcomer") || !game->getPlayerByName("Enemy AI") || (newcomer && !network.isSpectating())) throw std::runtime_error("spectator took a slot");
                 if(newcomer) {
                     const auto before=game->cmdManager.timeslot.size();
                     game->cmdManager.addCommand(Command(game->getPlayerByName("Host")->getPlayerID(),CMD_PLAYER_PAUSE));

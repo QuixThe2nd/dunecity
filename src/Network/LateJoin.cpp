@@ -45,7 +45,7 @@ bool NetworkManager::beginLateJoin(const std::string& request, const std::string
     joinRequestId=request; joinName=name;
     joinTransaction=std::max(simulationSeed,joinTransaction)+1; if(joinTransaction==0) joinTransaction=1;
     joinAcks.clear(); joinOriginalPeers.clear();
-    for(const auto& peer : direct->peers()) joinOriginalPeers.push_back(peer.id);
+    for(const auto& peer : direct->peers()) if(!peer.spectator) joinOriginalPeers.push_back(peer.id);
     joinStage=JoinStage::Preparing; joinDeadline=SDL_GetTicks()+120000;
     joinStatus="Pausing to add "+name+"...";
     if(!joinOriginalPeers.empty() && !sendJoinSync(1,static_cast<Uint32>(joinBytes.size()),name)) {
@@ -56,6 +56,8 @@ bool NetworkManager::beginLateJoin(const std::string& request, const std::string
 
 void NetworkManager::receiveJoinSync(Uint32 peer, Uint32 operation, Uint32 transaction, Uint32 offset, const std::string& data) {
     auto* direct=getDirectTransport(); if(!direct) return;
+    if(operation>=10) { receiveObserverPacket(peer,operation,transaction,offset,data); return; }
+    if(direct->isSpectating() || direct->isSpectatorPeer(peer)) return;
     if(bIsServer) {
         if(operation!=0 || transaction!=joinTransaction || !lateJoinPaused() || !direct->findPeer(peer)) return;
         if((joinStage==JoinStage::Preparing && offset==prepareAck)
@@ -105,7 +107,7 @@ void NetworkManager::receiveJoinSync(Uint32 peer, Uint32 operation, Uint32 trans
 
 void NetworkManager::updateLateJoin() {
     auto* direct=getDirectTransport();
-    if(!direct || !lateJoinPaused() || lateJoinReady()) return;
+    if(!direct || direct->isSpectating() || !lateJoinPaused() || lateJoinReady()) return;
     if(SDL_TICKS_PASSED(SDL_GetTicks(),joinDeadline)) { abortLateJoin("The join request timed out. Your game can continue."); return; }
     if(!bIsServer) return;
     if(joinStage==JoinStage::Preparing) {
@@ -121,7 +123,7 @@ void NetworkManager::updateLateJoin() {
         joinStage=JoinStage::Connecting; joinStatus="Connecting "+joinName+" to every player...";
     }
     if(joinStage==JoinStage::Connecting) {
-        if(!direct->meshReady() || direct->peers().size()!=joinOriginalPeers.size()+1) return;
+        if(!direct->meshReady() || static_cast<std::size_t>(std::count_if(direct->peers().begin(),direct->peers().end(),[](const auto& p){return !p.spectator;}))!=joinOriginalPeers.size()+1) return;
         const auto found=std::find_if(direct->peers().begin(),direct->peers().end(),[&](const auto& p){return p.name==joinName;});
         if(found==direct->peers().end()) return;
         if(!sendJoinSync(1,static_cast<Uint32>(joinBytes.size()),joinName,found->id)) { abortLateJoin("Could not reach the new player."); return; }
@@ -130,7 +132,7 @@ void NetworkManager::updateLateJoin() {
     }
     if(joinStage==JoinStage::Sending) {
         if(joinNextOffset!=joinOffset) {
-            for(const auto& p : direct->peers()) if(joinAcks[p.id]!=joinNextOffset) return;
+            for(const auto& p : direct->peers()) if(!p.spectator && joinAcks[p.id]!=joinNextOffset) return;
             joinOffset=joinNextOffset;
         }
         if(joinOffset==joinBytes.size()) {

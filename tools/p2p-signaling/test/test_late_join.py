@@ -108,6 +108,34 @@ class LateJoinTests(SignalingTestCase):
         page=self.service.request('POST','/v1/admission/list',claims(offset=0,allMods=1,details=1))
         self.assertIn('game',page.multi)
 
+    def test_passive_spectator_keeps_match_epoch_roster_and_host_only_links(self):
+        from test_signaling import make_sdp
+        a,h=self.running(gameProtocol=8)
+        before=self.poll(h.fields['session'])
+        r=self.request(a,'Watcher',gameProtocol=8,spectate=1)
+        request=self.manage(h).multi['request'][0].split('|')[0]
+        self.assertEqual(200,self.manage(h,'approve_spectator',request).status)
+        self.assertEqual('match',self.poll(h.fields['session']).fields['phase'])
+        approved=self.status(r.fields['request'],gameProtocol=8)
+        watcher=self.session(approved.fields['grant'],'Watcher',gameProtocol=8)
+        self.assertEqual(200,watcher.status)
+        self.assertEqual('1',watcher.fields['spectator'])
+        self.assertEqual('match',watcher.fields['phase'])
+        rows=self.poll(h.fields['session']).multi['peer']
+        self.assertTrue(any(row.endswith('|1') for row in rows))
+        # Explicitly confirm the unchanged controller roster; no watcher ACK is involved.
+        phase=self.service.request('POST','/v1/p2p/phase',dict(phase='match',roster=h.fields['peer']),headers={'X-Dune-Session':h.fields['session']})
+        self.assertEqual(200,phase.status)
+        r2=self.request(a,'Watcher2',gameProtocol=8,spectate=1)
+        request2=self.manage(h).multi['request'][0].split('|')[0]
+        self.manage(h,'approve_spectator',request2)
+        second=self.session(self.status(r2.fields['request'],gameProtocol=8).fields['grant'],'Watcher2',gameProtocol=8)
+        self.assertEqual(200,second.status)
+        peer_ids={row.split('|')[0] for row in self.poll(watcher.fields['session']).multi['peer']}
+        self.assertEqual({h.fields['peer'],watcher.fields['peer']},peer_ids)
+        self.assertEqual(403,self.signal(watcher.fields['session'],int(second.fields['peer']),'offer',make_sdp(":".join(["AA"]*32))).status)
+        self.assertEqual('match',self.poll(h.fields['session']).fields['phase'])
+
     def test_old_protocol_hosts_keep_original_queue_and_decline(self):
         a,h=self.running(gameProtocol=6)
         r=self.request(a,gameProtocol=6)

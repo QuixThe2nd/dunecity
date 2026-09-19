@@ -208,6 +208,22 @@ void UnitBase::save(OutputStream& stream) const {
     stream.writeSint32(deviationTimer);
 }
 
+// Network-only continuation state. Ordinary saved games deliberately reset this.
+void UnitBase::saveObserverRuntime(OutputStream& s) const {
+    s.writeUint8(static_cast<Uint8>(pendingTargetRequest)); s.writeBool(pathRequestQueued);
+    s.writeSint32(cachedPathDestination.x); s.writeSint32(cachedPathDestination.y);
+    s.writeUint32(cachedPathRevision); s.writeFixPoint(lastDistanceToDestination);
+    s.writeUint8(noProgressCount); s.writeSint32(carryallRequestCooldown);
+}
+void UnitBase::loadObserverRuntime(InputStream& s) {
+    const auto kind=s.readUint8();
+    if(kind>static_cast<Uint8>(TargetRequestKind::Acquire)) throw std::runtime_error("Invalid target request");
+    pendingTargetRequest=static_cast<TargetRequestKind>(kind); pathRequestQueued=s.readBool();
+    cachedPathDestination.x=s.readSint32(); cachedPathDestination.y=s.readSint32();
+    cachedPathRevision=s.readUint32(); lastDistanceToDestination=s.readFixPoint();
+    noProgressCount=s.readUint8(); carryallRequestCooldown=s.readSint32();
+}
+
 bool UnitBase::attack() {
 
     if(numWeapons) {

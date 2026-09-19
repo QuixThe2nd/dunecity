@@ -570,6 +570,7 @@ void NetworkManager::update()
     if(isRelaySession()) {
         updateRelaySession();
         updateLateJoin();
+        updateObservers();
         return;
     }
 
@@ -1150,8 +1151,8 @@ void NetworkManager::updateRelaySession() {
             } break;
 
             case RoomSessionTransport::Event::Type::PeerLeft: {
-                if(isSpectator(event.name)) {
-                    if(lateJoinPaused()) abortLateJoin("A spectator left during synchronization. Please try joining again.");
+                if(event.spectator || isSpectator(event.name) || observerTransfers.count(event.peerId)) {
+                    observerTransfers.erase(event.peerId);
                     spectators.erase(event.name); break;
                 }
                 if(event.name==joinName && event.role!=RoomRelay::Role::Host) {
@@ -1265,8 +1266,7 @@ void NetworkManager::handleRelayGamePayload(std::uint32_t peerId,
 
     try {
         const Uint32 packetType = packetStream.readUint32();
-        if(isSpectator(peerName) && (packetType==NETWORKPACKET_COMMANDLIST || packetType==NETWORKPACKET_SELECTIONLIST
-            || packetType==NETWORKPACKET_CLIENTSTATS || packetType==NETWORKPACKET_SETPATHBUDGET)) return;
+        if(isSpectator(peerName) && packetType!=NETWORKPACKET_JOIN_ACK && packetType!=NETWORKPACKET_CHATMESSAGE) return;
         if(lateJoinPaused() && (packetType==NETWORKPACKET_COMMANDLIST || packetType==NETWORKPACKET_SELECTIONLIST
             || packetType==NETWORKPACKET_CLIENTSTATS || packetType==NETWORKPACKET_SETPATHBUDGET)) return;
 
@@ -1338,7 +1338,9 @@ void NetworkManager::handleRelayGamePayload(std::uint32_t peerId,
                                 static_cast<unsigned>(offender->refusedMessages));
                 }
                 if(offender->refusedMessages >= MAX_REJECTED_PACKETS_PER_PEER && pRelayClient) {
-                    pRelayClient->stop(3 /* ended because of an error */);
+                    if(auto* direct=getDirectTransport(); direct && direct->isSpectatorPeer(peerId))
+                        direct->disconnectSpectator(peerId,"The spectator sent invalid messages.");
+                    else pRelayClient->stop(3 /* ended because of an error */);
                 }
             },
             [](const std::string&) { return false; },   // names are not rebindable on the relay
@@ -1372,8 +1374,13 @@ void NetworkManager::handleRelayGamePayload(std::uint32_t peerId,
         payloadContext.contentMustMatch = true;
         payloadContext.coopPartnerIsSolePeer = (peerCount == 1) && peerIsHost;
 
-        GamePayloadRouter::handle(packetType, packetStream, adapter, payloadContext,
-                                  sessionCallbacks());
+        auto callbacks=sessionCallbacks();
+        std::function<void(const std::string&,const std::string&)> chat=[this](const auto& name,const auto& message) {
+            if(pOnReceiveChatMessage) pOnReceiveChatMessage(name,message);
+            forwardObserverChat(name,message);
+        };
+        callbacks.onReceiveChatMessage=&chat;
+        GamePayloadRouter::handle(packetType, packetStream, adapter, payloadContext, callbacks);
     } catch(InputStream::eof&) {
         SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
                     "NetworkManager: truncated relay payload from '%s'", peerName.c_str());
@@ -2071,6 +2078,7 @@ void NetworkManager::sendPacketToAllConnectedPeers(ENetPacketOStream& packetStre
 
 void NetworkManager::sendChatMessage(const std::string& message)
 {
+    forwardObserverChat(playerName,message);
     ENetPacketOStream packetStream(ENET_PACKET_FLAG_RELIABLE);
     packetStream.writeUint32(NETWORKPACKET_CHATMESSAGE);
     packetStream.writeString(message);
@@ -2156,6 +2164,7 @@ std::unique_ptr<GameInitSettings> NetworkManager::takeCoopMission() {
 }
 
 void NetworkManager::beginSimulation(Uint32 seed) {
+    if(bIsServer) { observerTransfers.clear(); observerHistory.clear(); observerHistoryBytes=0; }
     if(joinLoading) { seed=resumeSeed; joinLoading=false; }
     simulationSeed = seed;
     bGameInProgress = true;

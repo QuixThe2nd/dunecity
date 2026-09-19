@@ -1,3 +1,44 @@
+## 2026-09-19 — Passive spectator implementation, 1.0.729/protocol 8 (release held)
+
+Stefan clarified that spectators must have no gameplay actions and must never
+make active players wait. The unreleased 728 synchronized-observer design has
+therefore been replaced. Remote release authorization remains in force, but PR
+57 must not be merged/tagged until the remaining browser verification below.
+
+Protocol 8 service grants bind a passive observer role, preserve match phase and
+controller epoch, and restrict observer signaling to the host. Players omit
+spectators from readiness/start barriers, timing, backlog and broadcast traffic.
+The host captures one checkpoint, preserves network-only runtime continuation
+state, and streams canonical tick commands/budgets to the viewer with bounded
+history, ACK windows, bandwidth and timeouts. Only the viewer loads/catches up.
+Periodic state fingerprints disconnect a divergent viewer without stopping the
+match. Viewer chat is forwarded with its original name; gameplay commands and
+performance votes are rejected. Actual player hot joining retains its barrier,
+excluding viewers. Disk-save format and pathfinding node budgets are unchanged.
+See docs/late-join-protocol.md for the wire and resource limits.
+
+Verified so far: native build/dependency/version checks; 188 real-HTTP service
+tests; all seven client suites before the final fingerprint/bandwidth refinement;
+real three-peer passive observation through cycle 1800, including a five-second
+non-reading observer and identical original-player state at 1900 after exit.
+The busy test exercises moving armies and AI construction. Reject-to-spectate
+also matches at 1800 and after exit. Protocol 8 AI-replacement hot joining still
+matches at 150. Evidence: ../outputs/spectator-729-{busy2,rejected,service-final}
+and ../outputs/hotjoin-729-regression. Ordinary save loading resets some AI plans
+and pathfinding state: those now have a separate observer-only continuation
+record. The delayed-observer probe proves player progress, not just eventual
+post-reload equality.
+
+Still running/pending: final CTest/menu probe, Emscripten build, explicit
+unresponsive-viewer timeout completion and actual public-HTTPS browser QA.
+Two harness-only failures were fixed: a fixed absolute cycle threshold falsely
+claimed players had waited, and a busy host repeatedly queued orders while
+intentionally parked at the comparison cycle. A timeout test also incorrectly
+required a departed spectator to remain in the transport roster; it now checks
+that no controller slot was taken. Do not treat those failed fixture runs as
+release verification. No 729 source or client publication has happened yet;
+production service remains the previously verified protocol-7-capable package.
+
 ## 2026-09-19 — Browser-host admission regression found before release
 
 A real three-browser HTTPS test exposed a production-lobby interaction absent

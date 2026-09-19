@@ -1300,6 +1300,7 @@ void Game::requestLowerBudget(int steps) {
 // MULTIPLAYER BUDGET NEGOTIATION IMPLEMENTATION
 
 void Game::checkBudgetAdjustment() {
+    if(isSpectating()) return;
     if(pNetworkManager != nullptr && !pNetworkManager->isServer()) {
         // CLIENT: Send stats ONE CYCLE BEFORE the check interval
         // This ensures the host has fresh data when it makes its decision
@@ -3321,6 +3322,20 @@ void Game::updateGameState() {
         return;
     }
 
+    if(isSpectating() && !observerCyclePrepared) return;
+    if(pNetworkManager && pNetworkManager->isServer() && pNetworkManager->hasObserverStreams()) {
+        OMemoryStream frame; frame.open(); frame.writeUint32(negotiatedBudget);
+        std::string fingerprint;
+        if(gameCycleCount%GameStateDigest::kDigestIntervalCycles==0) {
+            Uint8 encoded[GameStateDigest::kEncodedSize]; GameStateDigest::encode(computeStateDigest(),encoded);
+            fingerprint.assign(reinterpret_cast<const char*>(encoded),sizeof(encoded));
+        }
+        frame.writeString(fingerprint);
+        const auto& commands=cmdManager.commandsAt(gameCycleCount);
+        frame.writeUint32(commands.size()); for(const auto& command : commands) command.save(frame);
+        pNetworkManager->publishObserverCycle(gameCycleCount,std::string(frame.getData(),frame.getDataLength()));
+    }
+    observerCyclePrepared=false;
     pInterface->getRadarView().update();
     cmdManager.executeCommands(gameCycleCount);
 
@@ -3584,6 +3599,10 @@ void Game::initializeNetwork() {
         }
 
         cmdManager.setNetworkCycleBuffer(networkBuffer);
+        if(isSpectating()) {
+            loadObserverRuntime(pNetworkManager->takeObserverRuntime());
+            pNetworkManager->observerLoaded(gameCycleCount);
+        }
     }
 }
 
@@ -6141,7 +6160,7 @@ bool Game::handleNetworkUpdates() {
             currentRequests.insert(request.id);
             if(request.spectator) {
                 if(!pNetworkManager->lateJoinPaused() && !direct->joinDecisionPending()
-                   && !acceptJoinRequest(request.id,request.name,{-1,-1,""},true)) direct->manageJoin("abort",request.id);
+                   && !direct->manageJoin("approve_spectator",request.id)) direct->manageJoin("abort",request.id);
                 continue;
             }
             if(!seenJoinRequests.count(request.id)) addToNewsTicker(request.name+" wants to join. Open Options > Join requests.");
@@ -6160,6 +6179,40 @@ bool Game::handleNetworkUpdates() {
     }
     if(dynamic_cast<JoinProgressWindow*>(pInGameMenu.get())) { pInGameMenu.reset(); bMenu=false; }
 
+    if(pNetworkManager->isServer()) prepareObserverStreams();
+    if(isSpectating()) {
+        if(observerCyclePrepared) return false;
+        std::string bytes;
+        if(!pNetworkManager->takeObserverCycle(gameCycleCount,bytes)) return true;
+        try {
+            IMemoryStream frame(bytes.data(),bytes.size());
+            const auto budget=frame.readUint32(); const auto fingerprint=frame.readString();
+            if(!fingerprint.empty()) {
+                GameStateDigest::Digest expected;
+                if(!GameStateDigest::decode(reinterpret_cast<const Uint8*>(fingerprint.data()),fingerprint.size(),expected)
+                   || computeStateDigest().divergesFrom(expected)) throw std::runtime_error("Spectator state diverged");
+            }
+            const auto count=frame.readUint32();
+            if(budget<kMinBudget || budget>kMaxBudget || count>4096) throw std::runtime_error("Invalid spectator tick");
+            std::vector<Command> commands; commands.reserve(count);
+            for(Uint32 i=0;i<count;++i) {
+                commands.emplace_back(frame);
+                if(!CommandValidation::isWellFormedCommand(static_cast<Uint32>(commands.back().getCommandID()),commands.back().getParameter().size()))
+                    throw std::runtime_error("Malformed spectator command");
+            }
+            if(frame.getRemainingLength()!=0) throw std::runtime_error("Extra spectator tick data");
+            negotiatedBudget=budget;
+            cmdManager.discardCommandsFrom(gameCycleCount);
+            for(const auto& command : commands) cmdManager.addCommand(command,gameCycleCount);
+            observerCyclePrepared=true;
+            skipToGameCycle=pNetworkManager->observerFrontier();
+            return false;
+        } catch(const std::exception& error) {
+            SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,"Spectator stream stopped at cycle %u: %s",gameCycleCount,error.what());
+            addToNewsTicker("The spectator view lost synchronization. Please spectate again.");
+            pNetworkManager->disconnect(); quitGame(); return true;
+        }
+    }
     bool bWaitForNetwork = false;
 
     // Check for network delays
@@ -6262,6 +6315,7 @@ GameStateDigest::Digest Game::computeStateDigest() const {
 }
 
 void Game::updateStateDigests() {
+    if(isSpectating()) return;
     if(pNetworkManager == nullptr || !pNetworkManager->isRelaySession()) {
         return;
     }
@@ -6490,6 +6544,7 @@ std::vector<Game::JoinSlot> Game::availableJoinSlots() const {
 
 bool Game::acceptJoinRequest(const std::string& request, const std::string& name, const JoinSlot& slot, bool spectator) {
     if(!pNetworkManager || !pNetworkManager->isServer() || pNetworkManager->lateJoinPaused()) return false;
+    if(spectator) return pNetworkManager->getDirectTransport() && pNetworkManager->getDirectTransport()->manageJoin("approve_spectator",request);
     const auto choices=availableJoinSlots();
     if(!spectator && std::none_of(choices.begin(),choices.end(),[&](const auto& s){return s.house==slot.house && s.controller==slot.controller;})) return false;
     try {
@@ -6511,4 +6566,79 @@ bool Game::acceptJoinRequest(const std::string& request, const std::string& name
         }
         return pNetworkManager->beginLateJoin(request,name,snapshot,spectator);
     } catch(const std::exception& e) { addToNewsTicker(std::string("Could not prepare the join: ")+e.what()); return false; }
+}
+
+GameInitSettings Game::spectatorSnapshot() {
+    OMemoryStream save; save.open(); saveGame(save);
+    auto snapshot=gameInitSettings.networkSnapshot(std::string(save.getData(),save.getDataLength()));
+    snapshot.setMultiplePlayersPerHouse(gameInitSettings.isMultiplePlayersPerHouse() || isCoopGameType(gameType));
+    for(int h=0;h<NUM_HOUSES;++h) {
+        const auto* target=house[h].get(); if(!target || target->getPlayerList().empty()) continue;
+        GameInitSettings::HouseInfo info(static_cast<HOUSETYPE>(h),target->getTeamID());
+        info.colorOfHouse=getHouseVisualHouse(h);
+        for(const auto& player : target->getPlayerList()) info.addPlayerInfo({player->getPlayername(),player->getPlayerclass()});
+        snapshot.addHouseInfo(info);
+    }
+    return snapshot;
+}
+
+void Game::prepareObserverStreams() {
+    const auto pending=pNetworkManager->observersNeedingSnapshot();
+    if(pending.empty()) return;
+    try {
+        // One capture shared by viewers admitted together; no player is reloaded or paused.
+        const auto snapshot=spectatorSnapshot(); const auto runtime=saveObserverRuntime();
+        for(const auto peer : pending) if(!pNetworkManager->beginObserverSnapshot(peer,snapshot,runtime,gameCycleCount))
+            pNetworkManager->getDirectTransport()->disconnectSpectator(peer,"This game is too large to spectate.");
+    } catch(const std::exception&) {
+        for(const auto peer : pending) pNetworkManager->getDirectTransport()->disconnectSpectator(peer,"Could not prepare the spectator view.");
+    }
+}
+
+std::string Game::saveObserverRuntime() const {
+    OMemoryStream out; out.open();
+    out.writeUint32(1); out.writeUint32(gameCycleCount);
+    out.writeUint32(negotiatedBudget); out.writeUint32(cmdManager.getNetworkCycleBuffer());
+    out.writeUint32(currentGameMap->getPathingRevision());
+    out.writeUint32(targetRequestQueue.size());
+    for(const auto& request : targetRequestQueue) out.writeUint32(request.objectId);
+    out.writeUint32(pathRequestQueue.size());
+    for(const auto& request : pathRequestQueue) out.writeUint32(request.objectId);
+    out.writeUint32(unitList.size());
+    for(const auto* unit : unitList) { out.writeUint32(unit->getObjectID()); unit->saveObserverRuntime(out); }
+    std::vector<const QuantBot*> bots;
+    for(const auto& h : house) if(h) for(const auto& p : h->getPlayerList())
+        if(const auto* bot=dynamic_cast<const QuantBot*>(p.get())) bots.push_back(bot);
+    out.writeUint32(bots.size());
+    for(const auto* bot : bots) { out.writeUint8(bot->getPlayerID()); bot->saveObserverRuntime(out); }
+    return std::string(out.getData(),out.getDataLength());
+}
+
+void Game::loadObserverRuntime(const std::string& bytes) {
+    IMemoryStream in(bytes.data(),bytes.size());
+    if(in.readUint32()!=1 || in.readUint32()!=gameCycleCount) throw std::runtime_error("Invalid spectator checkpoint cycle");
+    negotiatedBudget=in.readUint32(); const auto buffer=in.readUint32();
+    if(negotiatedBudget<kMinBudget || negotiatedBudget>kMaxBudget || buffer>1000) throw std::runtime_error("Invalid spectator checkpoint budget");
+    cmdManager.setNetworkCycleBuffer(buffer);
+    currentGameMap->restoreObserverPathingRevision(in.readUint32());
+    targetRequestQueue.clear(); pendingTargetRequestIds.clear(); pathRequestQueue.clear(); pendingPathRequestIds.clear();
+    const auto targets=in.readUint32(); if(targets>unitList.size()) throw std::runtime_error("Invalid spectator targets");
+    for(Uint32 i=0;i<targets;++i) queueTargetRequest(in.readUint32());
+    const auto paths=in.readUint32(); if(paths>unitList.size()) throw std::runtime_error("Invalid spectator paths");
+    for(Uint32 i=0;i<paths;++i) queuePathRequest(in.readUint32());
+    const auto units=in.readUint32(); if(units!=unitList.size()) throw std::runtime_error("Invalid spectator units");
+    std::set<Uint32> seen;
+    for(Uint32 i=0;i<units;++i) {
+        const auto id=in.readUint32(); auto* unit=dynamic_cast<UnitBase*>(objectManager.getObject(id));
+        if(!unit || !seen.insert(id).second) throw std::runtime_error("Invalid spectator unit");
+        unit->loadObserverRuntime(in);
+    }
+    const auto bots=in.readUint32(); if(bots>NUM_HOUSES*2) throw std::runtime_error("Too many spectator controllers");
+    std::set<Uint8> seenBots;
+    for(Uint32 i=0;i<bots;++i) {
+        const auto id=in.readUint8(); auto* bot=dynamic_cast<QuantBot*>(getPlayerByID(id));
+        if(!bot || !seenBots.insert(id).second) throw std::runtime_error("Invalid spectator AI");
+        bot->loadObserverRuntime(in);
+    }
+    if(in.getRemainingLength()!=0) throw std::runtime_error("Extra spectator checkpoint data");
 }

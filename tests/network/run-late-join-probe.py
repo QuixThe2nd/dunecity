@@ -17,6 +17,8 @@ parser.add_argument('--build-dir', type=Path, default=root / 'build')
 parser.add_argument('--output-dir', type=Path)
 parser.add_argument('--endpoint', help='Explicit isolated HTTPS test service; never use the production lobby.')
 parser.add_argument('--browser',action='store_true',help='Use the browser game as Newcomer; connect using browser.json, then create browser-observed after inspection.')
+parser.add_argument('--stall',action='store_true',help='Leave the spectator unresponsive until its stream times out; the players must continue.')
+parser.add_argument('--busy',action='store_true',help='Exercise moving armies and AI production while the observer catches up.')
 parser.add_argument('--mode', choices=['replace','share_ai','share_human','abort','spectate','reject_spectate'],default='replace')
 args = parser.parse_args()
 build = args.build_dir.resolve()
@@ -112,10 +114,12 @@ try:
         log=(out/(role+'.log')).open('w'); logs.append(log)
         env=dict(os.environ,DUNECITY_USERDIR=str(out/('profile-'+role)),SDL_VIDEODRIVER='dummy',SDL_AUDIODRIVER='dummy',JOIN_ROLE=role,JOIN_MODE=args.mode,JOIN_OUT=str(out),JOIN_ENDPOINT=args.endpoint or ('http://127.0.0.1:'+str(service.port)))
         if args.browser: env['JOIN_BROWSER']='1'
+        if args.busy: env['JOIN_BUSY']='1'
+        if args.stall: env['JOIN_STALL']='1'
         processes.append(subprocess.Popen([str(binary),'--window','--showlog'],cwd=out,env=env,stdout=log,stderr=subprocess.STDOUT))
     deadline=time.monotonic()+(620 if args.browser else 170)
     while time.monotonic()<deadline:
-        compared=('Host','Partner') if args.mode=='abort' or args.browser else ('Host','Partner','Newcomer')
+        compared=('Host','Partner') if args.mode=='abort' or args.browser or args.stall else ('Host','Partner','Newcomer')
         if all((out/(role+'-digest')).exists() for role in compared) and (args.mode!='abort' or (out/'Newcomer-cancelled').exists()):
             values=[(out/(role+'-digest')).read_text() for role in compared]
             if len(set(values))!=1: raise RuntimeError('State mismatch: '+str(values))

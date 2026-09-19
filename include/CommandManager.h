@@ -79,6 +79,10 @@ public:
     */
     void load(InputStream& stream);
     void discardCommandsFrom(Uint32 cycle) { if(timeslot.size()>cycle) timeslot.resize(cycle); }
+    const std::vector<Command>& commandsAt(Uint32 cycle) const {
+        static const std::vector<Command> empty;
+        return cycle<timeslot.size() ? timeslot[cycle] : empty;
+    }
 
 
     Uint32 getNetworkCycleBuffer() const { return networkCycleBuffer; }
@@ -132,4 +136,3 @@ private:
 };
 
 #endif // COMMANDMANAGER_H
-

@@ -8978,3 +8978,77 @@ void QuantBot::manageCityBuilding() {
         }
     }
 }
+
+// Supplemental network checkpoint state: normal disk saves intentionally rebuild these plans.
+void QuantBot::saveObserverRuntime(OutputStream& s) const {
+    const auto coord=[&](Coord v) { s.writeSint32(v.x); s.writeSint32(v.y); };
+    s.writeUint32(lastPoliceBudgetReviewCycle);
+    s.writeUint32(ixEligibleSinceCycle);
+    s.writeUint32(palaceEligibleSinceCycle);
+    s.writeUint32(rockSurveyCycle);
+    s.writeUint32(refineryQueueSince);
+    s.writeUint32(dangerUpdated);
+    s.writeUint32(planningBuilder);
+    s.writeUint32(placementCacheExcludedBuilder);
+    s.writeUint32(cityReadyYardCount);
+    s.writeSint32(availableBaseRock);
+    s.writeSint32(cityBuildTimer);
+    s.writeSint32(ornithopterStrikeTeam.minMembers);
+    s.writeBool(planningCityProductionPlots);
+    coord(rockExpansionSite);
+    s.writeUint32(idleHarvesterCounters.size()); for(const auto& e : idleHarvesterCounters) { s.writeUint32(e.first); s.writeUint32(e.second); }
+    s.writeUint32(harvesterMovingCounters.size()); for(const auto& e : harvesterMovingCounters) { s.writeUint32(e.first); s.writeUint32(e.second); }
+    s.writeUint32(mcvSurveyCycles.size()); for(const auto& e : mcvSurveyCycles) { s.writeUint32(e.first); s.writeUint32(e.second); }
+    s.writeUint32(roadRedirectRetryCycle.size()); for(const auto& e : roadRedirectRetryCycle) { s.writeUint32(e.first); s.writeUint32(e.second); }
+    s.writeUint32(mcvExpansionSites.size()); for(const auto& e : mcvExpansionSites) { s.writeUint32(e.first); coord(e.second); }
+    s.writeUint32(placementCache.size()); for(const auto& e : placementCache) { s.writeUint32(e.first); coord(e.second); }
+    s.writeUint32(tacticalDanger.size()); for(auto v : tacticalDanger) s.writeUint32(v);
+    s.writeUint32(harvesterDanger.size()); for(auto v : harvesterDanger) s.writeUint32(v);
+    s.writeUint32(lossDanger.size()); for(auto v : lossDanger) s.writeUint32(v);
+    s.writeUint32(factoryEnemyClearance.size()); for(auto v : factoryEnemyClearance) s.writeUint32(v);
+    s.writeUint32(visibleHarvestLaunchers.size()); for(auto v : visibleHarvestLaunchers) s.writeUint32(v);
+    s.writeUint32(visibleEnemyBases.size()); for(auto v : visibleEnemyBases) coord(v);
+    s.writeUint32(builderPlaceLocations.size()); for(const auto& e : builderPlaceLocations) { s.writeUint32(e.first); s.writeUint32(e.second.size()); for(auto v : e.second) coord(v); }
+    s.writeUint32(reservedStructures.size()); for(const auto& e : reservedStructures) { s.writeUint32(e.first); s.writeUint32(e.second.item); coord(e.second.location); }
+    s.writeUint32(cityProductionPlots.size()); for(const auto& e : cityProductionPlots) { s.writeUint32(e.item); coord(e.location); }
+    s.writeUint32(ornithopterStrikeTeam.targetId); s.writeUint32Set(ornithopterStrikeTeam.memberIds);
+    s.writeUint32(harvesterSafety.size()); for(const auto& e : harvesterSafety) { s.writeUint32(e.first); s.writeUint32(e.second.nextCheck); s.writeUint32(e.second.retreatUntil); coord(e.second.lastLocation); coord(e.second.plannedDestination); s.writeBool(e.second.controlled); }
+    s.writeUint32(unsafeFields.size()); for(const auto& e : unsafeFields) { coord(e.location); s.writeUint32(e.cycle); }
+}
+
+void QuantBot::loadObserverRuntime(InputStream& s) {
+    const auto count=[&]() { auto n=s.readUint32(); if(n>262144) throw std::runtime_error("Oversized spectator AI state"); return n; };
+    const auto coord=[&]() { Coord v; v.x=s.readSint32(); v.y=s.readSint32(); return v; };
+    lastPoliceBudgetReviewCycle=s.readUint32();
+    ixEligibleSinceCycle=s.readUint32();
+    palaceEligibleSinceCycle=s.readUint32();
+    rockSurveyCycle=s.readUint32();
+    refineryQueueSince=s.readUint32();
+    dangerUpdated=s.readUint32();
+    planningBuilder=s.readUint32();
+    placementCacheExcludedBuilder=s.readUint32();
+    cityReadyYardCount=s.readUint32();
+    availableBaseRock=s.readSint32();
+    cityBuildTimer=s.readSint32();
+    ornithopterStrikeTeam.minMembers=s.readSint32();
+    planningCityProductionPlots=s.readBool();
+    rockExpansionSite=coord();
+    idleHarvesterCounters.clear(); for(Uint32 n=count(); n; --n) { auto id=s.readUint32(); idleHarvesterCounters[id]=s.readUint32(); }
+    harvesterMovingCounters.clear(); for(Uint32 n=count(); n; --n) { auto id=s.readUint32(); harvesterMovingCounters[id]=s.readUint32(); }
+    mcvSurveyCycles.clear(); for(Uint32 n=count(); n; --n) { auto id=s.readUint32(); mcvSurveyCycles[id]=s.readUint32(); }
+    roadRedirectRetryCycle.clear(); for(Uint32 n=count(); n; --n) { auto id=s.readUint32(); roadRedirectRetryCycle[id]=s.readUint32(); }
+    mcvExpansionSites.clear(); for(Uint32 n=count(); n; --n) { auto id=s.readUint32(); mcvExpansionSites[id]=coord(); }
+    placementCache.clear(); for(Uint32 n=count(); n; --n) { auto id=s.readUint32(); placementCache[id]=coord(); }
+    tacticalDanger.clear(); for(Uint32 n=count(); n; --n) tacticalDanger.push_back(s.readUint32());
+    harvesterDanger.clear(); for(Uint32 n=count(); n; --n) harvesterDanger.push_back(s.readUint32());
+    lossDanger.clear(); for(Uint32 n=count(); n; --n) lossDanger.push_back(s.readUint32());
+    factoryEnemyClearance.clear(); for(Uint32 n=count(); n; --n) factoryEnemyClearance.push_back(s.readUint32());
+    visibleHarvestLaunchers.clear(); for(Uint32 n=count(); n; --n) visibleHarvestLaunchers.push_back(s.readUint32());
+    visibleEnemyBases.clear(); for(Uint32 n=count(); n; --n) visibleEnemyBases.push_back(coord());
+    builderPlaceLocations.clear(); for(Uint32 n=count(); n; --n) { auto id=s.readUint32(); auto& list=builderPlaceLocations[id]; for(Uint32 m=count(); m; --m) list.push_back(coord()); }
+    reservedStructures.clear(); for(Uint32 n=count(); n; --n) { auto id=s.readUint32(); auto& e=reservedStructures[id]; e.item=s.readUint32(); e.location=coord(); }
+    cityProductionPlots.clear(); for(Uint32 n=count(); n; --n) { PlannedStructure e; e.item=s.readUint32(); e.location=coord(); cityProductionPlots.push_back(e); }
+    ornithopterStrikeTeam.targetId=s.readUint32(); ornithopterStrikeTeam.memberIds.clear(); for(Uint32 n=count(); n; --n) ornithopterStrikeTeam.memberIds.insert(s.readUint32());
+    harvesterSafety.clear(); for(Uint32 n=count(); n; --n) { auto id=s.readUint32(); auto& e=harvesterSafety[id]; e.nextCheck=s.readUint32(); e.retreatUntil=s.readUint32(); e.lastLocation=coord(); e.plannedDestination=coord(); e.controlled=s.readBool(); }
+    unsafeFields.clear(); for(Uint32 n=count(); n; --n) { UnsafeField e; e.location=coord(); e.cycle=s.readUint32(); unsafeFields.push_back(e); }
+}

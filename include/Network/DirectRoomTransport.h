@@ -51,6 +51,7 @@
 #include <Network/RoomSessionTransport.h>
 
 #include <deque>
+#include <bitset>
 #include <functional>
 #include <map>
 #include <memory>
@@ -195,6 +196,14 @@ public:
     void abortJoinWindow();
     void completeJoinWindow() { joinName_.clear(); }
     void setSpectators(const std::set<std::string>& names) { spectators_=names; }
+    bool isSpectating() const { return localSpectator_; }
+    bool isSpectatorPeer(std::uint32_t id) const {
+        const auto* peer=findPeer(id); return peer && peer->spectator;
+    }
+    bool peerConnected(std::uint32_t id) const;
+    void disconnectSpectator(std::uint32_t id, const std::string& reason) {
+        if(isSpectatorPeer(id)) dropLink(id,reason);
+    }
 
     std::size_t queuedEventCount() const { return events_.size(); }
 
@@ -304,6 +313,7 @@ private:
     Status           status_     = Status::Idle;
     SignalingStage   stage_      = SignalingStage::Idle;
     RoomRelay::Role  localRole_  = RoomRelay::Role::Unknown;
+    bool localSpectator_ = false;
     RoomRelay::Phase phase_      = RoomRelay::Phase::Lobby;
     std::uint32_t    localPeerId_ = 0;
     std::uint8_t     maxPeers_   = 0;
@@ -317,7 +327,7 @@ private:
 
     std::vector<Peer>              peers_;
     std::vector<std::unique_ptr<Link>> links_;
-    std::vector<std::uint32_t> retiredPeerIds_;
+    std::bitset<65536> retiredPeerIds_;
     std::deque<Event>              events_;
     std::deque<OutgoingSignal>     outgoing_;
     std::size_t                    eventBytes_ = 0;

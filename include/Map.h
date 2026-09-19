@@ -74,6 +74,7 @@ public:
     }
 
     void incrementPathingRevision() noexcept;
+    void restoreObserverPathingRevision(Uint32 revision) noexcept { pathingRevision=revision; }
 
     Sint32 getSizeX() const noexcept {
         return sizeX;

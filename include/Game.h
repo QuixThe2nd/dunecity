@@ -1024,6 +1024,11 @@ private:
     bool handleNetworkUpdates();
     void initializeReplay();
     void initializeNetwork();
+    GameInitSettings spectatorSnapshot();
+    std::string saveObserverRuntime() const;
+    void loadObserverRuntime(const std::string& bytes);
+    void prepareObserverStreams();
+    bool observerCyclePrepared = false;
 
     /**
         Builds the deterministic fingerprint described in Network/GameStateDigest.h.

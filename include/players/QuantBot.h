@@ -58,6 +58,8 @@ public:
     void init();
     ~QuantBot();
     void save(OutputStream& stream) const override;
+    void saveObserverRuntime(OutputStream& stream) const;
+    void loadObserverRuntime(InputStream& stream);
 
     void update() override;
     void onHumanUnitOrder(Uint32 id);

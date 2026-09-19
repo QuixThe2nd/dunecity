@@ -225,6 +225,7 @@ target_sources(dunecity
         Network/LANGameFinderAndAnnouncer.cpp
         Network/NetworkManager.cpp
         Network/LateJoin.cpp
+        Network/ObserverStream.cpp
         Network/GamePayloadRouter.cpp
         Network/RoomRelayClient.cpp
         Network/RoomAdmissionClient.cpp
