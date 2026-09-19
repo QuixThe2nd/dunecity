@@ -24,6 +24,15 @@ Evidence: session work/twin-slow-old-3000, twin-slow-fixed, snapshot-window-*.
 The old 1,800-cycle probe target could stop the host just before history eviction;
 the longer target is necessary for this regression. No release or push occurred.
 
+Live retest: rebuilt Chrome host Codex Mini 730, Twin Cities, room
+X3E3-EPHC-MHXG (temporary; do not assume it remains live). Stefan's existing Air
+process successfully loaded the snapshot and continued city simulation, with a
+reported direct RTT of 182 ms. Stefan confirmed "Yes, the map loaded." Its log is
+retained in session work/air-window-fixed.log. The Air checkout also fast-forwarded
+to 8df2eae6 and rebuilt locally; dependency audits, seven suites and bundle signature
+verification passed. Its Desktop/DuneCity-730-Test.app shortcut still points to
+the local build. Controller promotion in this live Air session remains untested.
+
 ## 2026-09-19 — Twin Cities live spectator checkpoint fixes (unreleased 730)
 
 Stefan hosted Twin Cities in downloaded 729 as ggtothemax. Both the downloaded
