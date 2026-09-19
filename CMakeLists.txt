@@ -288,10 +288,16 @@ if(UNIX AND NOT APPLE)
     )
 endif()
 
+# Install the file itself: README is a source-tree symlink to README.md.
+# Copying that link alone leaves Windows/Linux packages with a missing target.
+if(NOT APPLE)
+    install(FILES README.md DESTINATION ${DUNECITY_DOC_DIR} RENAME README)
+endif()
+
 # Install documentation
 if(WIN32)
     # Windows: install docs to root
-    install(FILES AUTHORS COPYING NEWS README
+    install(FILES AUTHORS COPYING NEWS
         DESTINATION ${DUNECITY_DOC_DIR}
     )
     # Install release notes
@@ -301,7 +307,7 @@ if(WIN32)
     )
 elseif(NOT APPLE)
     # Linux: use standard doc directory
-    install(FILES AUTHORS COPYING NEWS README
+    install(FILES AUTHORS COPYING NEWS
         DESTINATION ${DUNECITY_DOC_DIR}
     )
     install(FILES "release_notes/RELEASE_NOTES.md"
@@ -319,7 +325,7 @@ set(CPACK_PACKAGE_DESCRIPTION_SUMMARY ${PROJECT_DESCRIPTION})
 set(CPACK_PACKAGE_VERSION ${PROJECT_VERSION})
 set(CPACK_PACKAGE_HOMEPAGE_URL ${PROJECT_HOMEPAGE_URL})
 set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_CURRENT_SOURCE_DIR}/COPYING")
-set(CPACK_RESOURCE_FILE_README "${CMAKE_CURRENT_SOURCE_DIR}/README")
+set(CPACK_RESOURCE_FILE_README "${CMAKE_CURRENT_SOURCE_DIR}/README.md")
 
 if(WIN32)
     include(cmake/WindowsInstaller.cmake)
@@ -349,7 +355,7 @@ elseif(APPLE)
     set(MACOSX_BUNDLE_ICON_FILE "dunecity.icns")
     
     # Install README and release notes to DMG root (not inside .app)
-    install(FILES README DESTINATION . COMPONENT Runtime)
+    install(FILES README.md DESTINATION . RENAME README COMPONENT Runtime)
     install(FILES "release_notes/RELEASE_NOTES.md" 
             DESTINATION . 
             RENAME "Release Notes.md"

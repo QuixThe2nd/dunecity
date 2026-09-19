@@ -867,6 +867,13 @@ if(WIN32)
     install(TARGETS dunecity
         RUNTIME DESTINATION .
     )
+    # vcpkg app-local deployment copies its DLLs but not the MSVC runtime.
+    # Bundle the redistributable runtime beside the game so a clean Windows
+    # machine does not need Visual Studio or a separate VC++ installer.
+    if(MSVC)
+        set(CMAKE_INSTALL_SYSTEM_RUNTIME_DESTINATION ".")
+        include(InstallRequiredSystemLibraries)
+    endif()
     # Install vcpkg DLLs for Windows
     if(CMAKE_BUILD_TYPE STREQUAL "Release" OR NOT CMAKE_BUILD_TYPE)
         install(DIRECTORY ${CMAKE_BINARY_DIR}/bin/Release/

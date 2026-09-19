@@ -230,6 +230,10 @@ jobs:
           cd build
           cmake --install . --prefix install --config Release
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          foreach ($runtime in 'msvcp140.dll', 'vcruntime140.dll', 'vcruntime140_1.dll') {
+            if (-not (Test-Path "install/$runtime")) { throw "Missing bundled MSVC runtime: $runtime" }
+          }
+          if ((Get-Item install/README).LinkType) { throw "Packaged README must be a regular file" }
           cpack -G ZIP -C Release
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           cpack -G NSIS -C Release
