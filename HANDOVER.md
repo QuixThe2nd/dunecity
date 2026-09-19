@@ -16,16 +16,27 @@ controllers but allows observers within the existing eight-connection limit.
 Older protocol service rooms retain their original queue/decline wire behavior.
 Details: docs/late-join-protocol.md.
 
-Checkpoint verification: 187 real-HTTP service tests pass; native build and all
-seven CTest suites (including the 640/854/1280 prompt render) passed before the
-final spectator-view and cleanup refinements. The real three-peer spectate probe
-reached identical state at cycle 150 and exited cleanly. The reject-to-spectate
-probe also produced identical states at cycles 150 and 180 after observer exit,
-but its final teardown exposed a test-only host/partner shutdown race; the harness
-now stops before pumping shutdown once its shared completion marker exists.
+Final candidate verification: native and Emscripten builds, dependency/version
+checks, bundled-mod validation, all seven CTest suites and 187 real-HTTP service
+tests pass. Real three-peer reject-to-spectate tests pass locally and through an
+isolated public HTTPS staging service, with matching state at cycle 150 and the
+original two players continuing identically to cycle 180 after observer exit.
+The normal AI-replacement hot-join regression also passes on protocol 7.
+An actual fresh-profile browser chose Spectate in the prompt, automatically
+loaded the running two-native-player checkpoint and showed the full-map
+Spectating view. The native peers matched at cycle 150; the browser was visually
+verified, not included in the digest comparison. The fixture deliberately stops
+native command production at that point, so its later waiting overlay is expected.
+The original browser profile correctly refused stale mod data; its test name was
+restored and a fresh www-origin profile used instead, without deleting user data.
+
 An earlier observer teardown crash was fixed by keeping its detached UI player
-alive until object selection cleanup finishes. Final builds/probes/browser and
-remote publication are still in progress; do not describe this candidate as live.
+alive until object selection cleanup finishes. A test-only peer shutdown race was
+fixed by checking the shared completion marker before pumping shutdown. The
+isolated HTTPS service uses no production notification or analytics hooks.
+Evidence is under ../outputs/spectator-728-{tests-final,service-final,
+rejected-final,https-native,https-browser} and hotjoin-728-regression.
+Remote release remains authorized but has not yet been published at this commit.
 
 ## 2026-09-19 — Explicit version-mismatch prompts; unified 1.0.727
 
