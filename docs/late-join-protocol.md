@@ -22,6 +22,12 @@ Only the authenticated host session can use `/v1/p2p/join-requests` to list,
 approve, decline or abort. Approval creates a single-use grant bound to the
 approved name and claims. General admission remains closed after match start.
 
+From 1.0.727, ordinary joins and hot-join requests require an exact application
+version match as well as protocol/content compatibility. A `version_mismatch`
+refusal names both host and client versions; clients display an acknowledged,
+wrapped popup and return to the lobby without granting a seat or notifying the
+host. Older services' generic compatibility errors also open a popup.
+
 ## Synchronization
 
 The host chooses an eligible living house and controller in Options → Join

@@ -9,6 +9,7 @@
 #include <Menu/ModMenu.h>
 #include <Menu/DisplayMenu.h>
 #include <GUI/dune/GameOptionsWindow.h>
+#include <GUI/MsgBox.h>
 #include <Menu/PlaySetup.h>
 #include <mod/ModManager.h>
 #include <misc/FileSystem.h>
@@ -315,6 +316,28 @@ int runMenuProbe() {
         menuRequire(menu.publicGames.size()==1 && menu.publicGames[0].mode=="custom","Custom filter includes campaign games");
         menu.modeFilter.setSelectedItem(0); menu.refreshDirectory();
         menuCapture(menu,"join");
+        for(bool hotJoin : {false,true}) {
+            menu.stage=CrossplayMenu::Stage::Requesting;
+            menu.joiningRunning=hotJoin;
+            menu.admission.status_=RoomAdmissionClient::Status::Failed;
+            menu.admission.response_.errorCode="version_mismatch";
+            menu.admission.errorMessage_="Version mismatch. Host: 1.0.726. Yours: 1.0.727. Both players must use the same game version. Update or switch versions, then try again.";
+            menu.update();
+            menuRequire(menu.hasChildWindow(),"Version mismatch did not open an acknowledged prompt");
+            menuRequire(menu.pChildWindow->getSize().x<=getRendererWidth() && menu.pChildWindow->getSize().y<=getRendererHeight(),
+                "Version prompt exceeds screen bounds");
+            auto* prompt=dynamic_cast<MsgBox*>(menu.pChildWindow);
+            menuRequire(prompt!=nullptr && prompt->getText().find("1.0.726")!=std::string::npos
+                && prompt->getText().find("1.0.727")!=std::string::npos,"Version prompt omits one of the versions");
+            menuRequire(menu.stage==CrossplayMenu::Stage::Choosing && menu.joinTicket.empty(),
+                "Version mismatch left an active join request");
+            menuCapture(menu,hotJoin ? "hot-join-version-mismatch" : "join-version-mismatch");
+            menu.closeChildWindow(); menu.processChildWindowOpenCloses();
+            menu.update();
+            menuRequire(!menu.hasChildWindow(),"Version prompt reopened without another join attempt");
+        }
+        menu.joiningRunning=false;
+        menu.chat.cancel(); menu.chatSession.clear(); menu.chatPending=false;
         menu.nextChatPoll=0;
         menu.update();
         menuRequire(menu.chatAction==AdmissionOperation::ChatEnter,

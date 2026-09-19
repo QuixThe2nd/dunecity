@@ -1,3 +1,27 @@
+## 2026-09-19 — Explicit version-mismatch prompts; unified 1.0.727
+
+Stefan asked for a prompt whenever online game versions differ. Normal directory
+and invitation-code admission now compare the exact application version before
+reserving a seat, not merely protocol/content. Hot-join admission uses the same
+version-specific refusal and leaves the host request queue untouched. Redemption
+also checks the host version for grants issued before a service update.
+The service returns version_mismatch with host/client numbers and a same-version
+instruction. New clients show an OK popup for that refusal, unsupported_version,
+and older services' generic content_mismatch; failures return to choosing a game.
+Text wraps to the screen width and does not repeatedly reopen after dismissal.
+Same-version protocol/content checks remain in force; protocol stays 6 and saves
+are unchanged. All prior hot-join, UI, performance and diagnostic work is retained.
+
+Validation: 183 real-HTTP service tests pass, including normal code/public joins
+and running-game requests with different version numbers but matching content
+and protocol; a subsequent matching-version attempt succeeds. Native build and
+dependency/version checks pass. Six core CTest suites pass, and the updated menu
+probe passes at 640/854/1280 widths, asserting popup presence, both version numbers,
+screen bounds, return to lobby and single dismissal for normal/hot join. Visually
+checked the 640×480 popup in outputs/version-727-prompt.png. An initial probe-only
+compile error (missing MsgBox include in the test harness) was fixed and rerun.
+Browser build and deployment completion are recorded below after verification.
+
 ## 2026-09-19 — Host-approved hot joining; unified 1.0.726
 
 Stefan requested an enabled-by-default checkbox, subsequently named **Allow hot

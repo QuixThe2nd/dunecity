@@ -45,6 +45,7 @@
 #include <players/QuantBotConfig.h>
 
 #include <algorithm>
+#include <sstream>
 
 namespace {
 
@@ -791,6 +792,22 @@ void CrossplayMenu::update() {
                 break;
             case RoomAdmissionClient::Status::Failed:
                 setStatus(admission.errorMessage());
+                // Compatibility failures need an acknowledged prompt, including replies from
+                // older services that group version and content mismatches together.
+                if(admission.response().errorCode == "version_mismatch"
+                   || admission.response().errorCode == "unsupported_version"
+                   || admission.response().errorCode == "content_mismatch") {
+                    std::istringstream words(admission.errorMessage());
+                    std::string wrapped, line, word;
+                    const unsigned maxWidth=static_cast<unsigned>(std::max(120,std::min(540,getRendererWidth()-60)));
+                    while(words >> word) {
+                        const auto next=line.empty() ? word : line+" "+word;
+                        if(!line.empty() && GUIStyle::getInstance().getTextWidth(next,16)>maxWidth) {
+                            wrapped+=line+"\n"; line=word;
+                        } else line=next;
+                    }
+                    openWindow(MsgBox::create(wrapped+line));
+                }
                 admission.cancel();
                 stage = Stage::Choosing;
                 refreshControls();

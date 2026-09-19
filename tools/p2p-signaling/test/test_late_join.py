@@ -2,7 +2,7 @@
 import json
 from pathlib import Path
 import unittest
-from test_signaling import SignalingTestCase, claims
+from test_signaling import SignalingTestCase, claims, APP_VERSION
 
 class LateJoinTests(SignalingTestCase):
     def running(self, **fields):
@@ -36,6 +36,15 @@ class LateJoinTests(SignalingTestCase):
         self.assertEqual(403,self.manage(g).status)
         self.assertEqual('joined',self.status(ticket).fields['requestState'])
         self.assertEqual(200,self.phase(h.fields['session'],'match').status)
+    def test_hot_join_version_mismatch_never_reaches_the_host_queue(self):
+        a,h=self.running()
+        refused=self.request(a,appVersion='9.9.9')
+        self.assertEqual(409,refused.status)
+        self.assertEqual('version_mismatch',refused.fields['code'])
+        self.assertIn(APP_VERSION,refused.fields['message'])
+        self.assertIn('9.9.9',refused.fields['message'])
+        self.assertNotIn('request',self.manage(h).multi)
+        self.assertEqual(200,self.request(a).status)
     def test_a_wrong_name_cannot_redeem_an_approved_grant(self):
         a,h=self.running(); r=self.request(a); request=self.manage(h).multi['request'][0].split('|')[0]
         self.manage(h,'approve',request)

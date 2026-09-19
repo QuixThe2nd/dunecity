@@ -758,6 +758,16 @@ class AdmissionTests(SignalingTestCase):
         self.assertEqual(404, refused.status)
         self.assertEqual("room_not_found", refused.fields["code"])
 
+    def test_version_number_mismatch_is_refused_before_reserving_a_seat(self):
+        admission = self.host(visibility="public", maxPeers=2)
+        for public_only in ("0", "1"):
+            refused = self.join(admission.fields["room"], appVersion="9.9.9", publicOnly=public_only)
+            self.assertEqual(409, refused.status)
+            self.assertEqual("version_mismatch", refused.fields["code"])
+            self.assertIn(APP_VERSION, refused.fields["message"])
+            self.assertIn("9.9.9", refused.fields["message"])
+        self.assertEqual(200, self.join(admission.fields["room"]).status)
+
     def test_content_mismatch_is_refused_at_join(self):
         admission = self.host()
         refused = self.join(admission.fields["room"], contentHash="b" * 64)
