@@ -27,9 +27,14 @@ native build and pinned Emscripten build pass. Evidence: session work/aged-*;
 the successful extended run is aged-all-grid, promotion is aged-fix-promotion.
 
 The earlier live service update is already deployed (website PR8 / 01ebe6a).
-This game fix has not been pushed or released. Air rebuild and a fresh Chrome
-host are being prepared; the user's own stable join and Request to Play remain
-to be verified. Do not treat automated promotion as confirmation of his session.
+This game fix is committed as f835d748 and has not been pushed or released. The
+Air fast-forwarded to that commit and rebuilt locally; dependency audits, all
+seven CTest suites and codesign verification pass. Desktop/DuneCity-730-Test.app
+still points to its build-714 bundle. The fresh Chrome host is running in tab
+1889836980, Codex Mini 730, Twin Cities, room FAQA-S97J-GHGA (temporary). The
+user has been asked to open the Desktop test app, join, then Request to Play.
+His own stable join and promotion remain unverified; automated promotion is not
+confirmation of his session. No initial setup help is currently needed.
 
 ## 2026-09-19 — Live Request to Play needs the matching service update
 
