@@ -1,3 +1,33 @@
+## 2026-09-19 — Public default and integrated lobby chat, unified 1.0.723
+
+Stefan repeated the intended online interface: Public - anyone by default, public
+chat in the right pane of the first Join Online screen, and the Settings player
+name without a confirmation button. Implemented in both native/browser 723.
+Custom and campaign setup now start public; reopening online saves for hosting
+also defaults public. Explicit private selections still pass through unchanged.
+
+Join Online shows the Settings name as a label and keeps game discovery, invite
+entry and public chat visible together. Chat enters automatically on menu update,
+reconnects after expiry with retry spacing, and resets into the matching content
+lobby when mods change. Invalid names are corrected in Settings; this screen no
+longer edits or saves a separate name. No simulation, node budget or logging
+default changes. All prior visual, performance and diagnostic-setting work remains.
+
+All seven CTest suites pass, including real menu checks at 640×480, 854×480 and
+1280×720, automatic chat entry/re-entry, settings identity, public defaults and
+explicit private preservation. Native/browser builds and dependency/version
+checks pass. Actual unmodified browser assets tested against the loopback-only
+tests/menu/serve-browser-lobby-fixture.py: set Browser tester in Settings, Apply,
+Join Online; observed enter/poll requests and the right-hand chat displaying the
+fixture message without confirmation. No messages sent to the public service.
+Browser Custom Game visibly defaults Public - anyone. Test tab/server closed.
+
+Screenshots, local fixture request log and build hashes: ../outputs/interface-723/.
+Build/test logs: ../outputs/interface-723-{native-build,browser-build,ctest}.log.
+Canonical native app stays build-714/bin/dunecity.app; browser stays
+build-714/emscripten/bin. Original user match/profile untouched. Restart the
+desktop app or reload the browser to use 723. No push or publishing.
+
 ## 2026-09-19 — Actual browser logging on/off benchmark, 1.0.722
 
 Stefan requested measured browser performance with logging disabled. Tested the

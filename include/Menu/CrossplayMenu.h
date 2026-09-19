@@ -78,7 +78,7 @@ private:
 
     void beginAdmission(bool hosting, bool publicJoin = false);
     AdmissionRequest lobbyRequest() const;
-    void confirmChatName();
+    void enterLobbyChat();
     void sendLobbyChat();
     void updateLobbyChat();
     void changeVisibility();
@@ -90,7 +90,7 @@ private:
     void setStatus(const std::string& message);
     void refreshControls();
 
-    bool validateAndSavePlayerName();
+    bool validatePlayerName();
 
     void onReceiveGameInfo(const GameInitSettings& gameInitSettings,
                            const ChangeEventList& changeEventList);
@@ -102,10 +102,9 @@ private:
     std::unique_ptr<GameInitSettings> preparedGame;
     ChangeEventList preparedPlayers;
     bool autoHostRequested = false;
-    bool showChat = false;
     DropDownBox modeFilter, modFilter;
     std::vector<ModInfo> availableMods;
-    TextButton chatToggle, otherConnections;
+    TextButton otherConnections;
     TextView preparedSummary;
     std::vector<PublicRelayGame> allPublicGames;
     Stage       stage = Stage::Choosing;
@@ -123,6 +122,7 @@ private:
     RoomAdmissionClient visibilityUpdate;
     AdmissionOperation chatAction = AdmissionOperation::Room;
     std::string chatSession;
+    std::string chatContentHash;
     std::uint64_t chatCursor = 0;
     Uint32 nextChatPoll = 0;
     bool chatPending = false;
@@ -142,8 +142,8 @@ private:
 
     HBox            playerNameHBox;
     Label           playerNameLabel;
-    TextBox         playerNameTextBox;
-    TextButton      confirmNameButton;
+    Label           playerNameValue;
+    Label           chatTitle;
     TextButton      privateInviteButton;
     Label           chatLabel;
     TextView        chatHistory;

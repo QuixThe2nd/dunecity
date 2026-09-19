@@ -41,6 +41,7 @@ int runMenuProbe() {
     effectiveGameOptions = ModManager::instance().loadEffectiveGameOptions(settings.gameOptions);
     {
         HouseChoiceMenu menu;
+        menuRequire(HouseChoiceMenu::isPublicGame(),"Campaign should default to public");
         menu.supportBotDropDown.setSelectedItem(4);
         menuRequire(HouseChoiceMenu::getSupportBotIndex()==4,"Support setup fixture failed");
         auto& list=menu.supportBotDropDown.listBox;
@@ -268,14 +269,21 @@ int runMenuProbe() {
     setup.players=original;
     {
         CrossplayMenu menu;
-        menu.playerNameTextBox.setText("");
+        const auto settingsName = settings.general.playerName;
+        settings.general.playerName = "";
         menu.onHostCustomGame();
-        menuRequire(menu.hasChildWindow(),"Custom hosting bypasses the entered player name");
+        menuRequire(menu.hasChildWindow(),"Custom hosting bypasses the settings player name");
         menu.closeChildWindow(); menu.processChildWindowOpenCloses();
         menu.onHostCampaignCoop();
-        menuRequire(menu.hasChildWindow(),"Campaign hosting bypasses the entered player name");
+        menuRequire(menu.hasChildWindow(),"Campaign hosting bypasses the settings player name");
         menu.closeChildWindow(); menu.processChildWindowOpenCloses();
-        menu.playerNameTextBox.setText(settings.general.playerName);
+        settings.general.playerName = settingsName;
+        menuRequire(menu.playerNameValue.getText()==settingsName,"Join Online does not display the settings name");
+        menuRequire(CustomPlaySetup().publicGame && menu.visibilityChoice.getSelectedIndex()==1,"New games should default to public");
+        menuRequire(menu.chatHistory.getParent()==&menu.windowWidget && menu.publicGameList.getParent()==&menu.windowWidget,
+            "Chat and game list must share the first screen");
+        menuRequire(menu.chatHistory.getSize().x>=220 && menu.publicGameList.getSize().x>=350,
+            "Side-by-side lobby panes are too narrow");
         menu.stage=CrossplayMenu::Stage::Choosing;
         PublicRelayGame coop, custom;
         coop.mode="coop"; coop.hostName="Campaign host"; coop.roomCode="AAAA-BBBB-CCCC"; coop.players=1; coop.maxPeers=2;
@@ -287,7 +295,26 @@ int runMenuProbe() {
         menuRequire(menu.publicGames.size()==1 && menu.publicGames[0].mode=="custom","Custom filter includes campaign games");
         menu.modeFilter.setSelectedItem(0); menu.refreshDirectory();
         menuCapture(menu,"join");
-        menu.showChat=true; menu.layoutControls(); menu.refreshControls();
+        menu.nextChatPoll=0;
+        menu.update();
+        menuRequire(menu.chatAction==AdmissionOperation::ChatEnter,
+            "Chat does not enter automatically from the first screen");
+        menuRequire(!menu.hasChildWindow(),"Automatic chat entry opened a name confirmation");
+        menu.chat.cancel();
+        menu.chatPending=true;
+        menu.chatAction=AdmissionOperation::ChatPoll;
+        menu.chatSession="expired-session";
+        menu.chat.status_=RoomAdmissionClient::Status::Failed;
+        menu.chat.response_.errorCode="session_expired";
+        menu.updateLobbyChat();
+        menuRequire(menu.chatSession.empty() && !menu.chatPending,
+            "Expired chat session was not released");
+        menu.nextChatPoll=0;
+        menu.update();
+        menuRequire(menu.chatAction==AdmissionOperation::ChatEnter,
+            "Expired chat requires manual name confirmation");
+        menu.chatHistory.setText("Alice: Looking for a campaign partner.\nBob: I can join after this match.");
+        menu.chatLabel.setText("Chatting as " + settingsName);
         menuCapture(menu,"public-chat");
     }
     {
@@ -295,7 +322,7 @@ int runMenuProbe() {
         CrossplayMenu menu(networkInit,false,setup.players);
         menuRequire(menu.preparedGame->getFiledata()==init.getFiledata(),"Prepared hosting changed the selected map");
         menuRequire(menu.preparedPlayers.changeEventList.size()==original.changeEventList.size(),"Prepared hosting lost the roster");
-        menuRequire(menu.visibilityChoice.getSelectedIndex()==0,"Private room is not the default");
+        menuRequire(menu.visibilityChoice.getSelectedIndex()==0,"Explicit private room choice was not preserved");
     }
     {
         OptionsMenu menu;

@@ -95,7 +95,7 @@ public:
                         init.configureCoopSave(saved, houses);
                         init.enableCoop(true, settings.general.playerName + "'s co-op campaign");
                     }
-                    CrossplayMenu(init, false).showMenu();
+                    CrossplayMenu(init, true).showMenu();
                 } else startSinglePlayerGame(GameInitSettings(path));
             }
             quit();

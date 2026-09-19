@@ -15,7 +15,7 @@ struct CustomPlaySetup {
     int mapCategory = 4;
     int mod = 0;
     bool online = false;
-    bool publicGame = false;
+    bool publicGame = true;
     bool sharedHouse = false;
     SettingsClass::GameOptionsClass rules;
     ChangeEventList players;

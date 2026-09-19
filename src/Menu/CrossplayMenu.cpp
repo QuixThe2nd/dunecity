@@ -27,7 +27,6 @@
 
 #include <FileClasses/GFXManager.h>
 #include <FileClasses/TextManager.h>
-#include <FileClasses/INIFile.h>
 
 #include <GUI/MsgBox.h>
 
@@ -41,7 +40,6 @@
 #include <config.h>
 #include <globals.h>
 #include <main.h>
-#include <misc/FileSystem.h>
 #include <misc/WebRuntime.h>
 #include <players/QuantBotConfig.h>
 
@@ -92,11 +90,12 @@ CrossplayMenu::CrossplayMenu() : MenuBase() {
     captionLabel.setTextFontSize(22);
     captionLabel.setAlignment(Alignment_HCenter);
     playerNameLabel.setText(_("Player name"));
-    playerNameTextBox.setText(settings.general.playerName);
-    playerNameTextBox.setMaximumTextLength(20);
-    confirmNameButton.setText(_("Confirm name for chat"));
-    confirmNameButton.setOnClick([this]() { confirmChatName(); });
-    playerNameTextBox.setOnReturn([this]() { if(showChat) confirmChatName(); });
+    playerNameValue.setText(settings.general.playerName);
+    chatTitle.setText(_("Public chat"));
+    chatTitle.setTextFontSize(18);
+    chatLabel.setTextFontSize(12);
+    chatHistory.setTextFontSize(14);
+    directoryLabel.setTextFontSize(12);
     modeFilter.addEntry(_("All games"), 0);
     modeFilter.addEntry(_("Campaign co-op"), 1);
     modeFilter.addEntry(_("Custom games"), 2);
@@ -127,7 +126,7 @@ CrossplayMenu::CrossplayMenu() : MenuBase() {
     joinLabel.setText(_("Invite code"));
     joinCodeTextBox.setMaximumTextLength(16);
     joinCodeTextBox.setOnReturn([this]() { onJoin(); });
-    joinButton.setText(_("Join with code"));
+    joinButton.setText(_("Join code"));
     joinButton.setOnClick([this]() { onJoin(); });
     hostCustomGameButton.setText(_("Create Custom Game"));
     hostCustomGameButton.setOnClick([this]() { onHostCustomGame(); });
@@ -135,10 +134,8 @@ CrossplayMenu::CrossplayMenu() : MenuBase() {
     hostCoopButton.setOnClick([this]() { onHostCampaignCoop(); });
     visibilityChoice.addEntry(_("Private - invite code"));
     visibilityChoice.addEntry(_("Public - anyone can join"));
-    visibilityChoice.setSelectedItem(0);
-    chatToggle.setText(_("Public chat"));
-    chatToggle.setOnClick([this]() { showChat = !showChat; layoutControls(); refreshControls(); });
-    chatLabel.setText(_("Confirm your name to enter public chat."));
+    visibilityChoice.setSelectedItem(1);
+    chatLabel.setText(_("Connecting to public chat..."));
     chatInput.setMaximumTextLength(120);
     chatInput.setOnReturn([this]() { sendLobbyChat(); });
     chatSendButton.setText(_("Send"));
@@ -153,6 +150,7 @@ CrossplayMenu::CrossplayMenu() : MenuBase() {
     layoutControls();
     if(settings.network.activeDirectEndpoint().empty() || !isDirectPeerConnectionAvailable()) {
         setStatus(_("Online play is unavailable in this build."));
+        chatLabel.setText(_("Public chat is unavailable."));
         stage = Stage::Finished;
     } else setStatus(_("Join a game, enter an invite code, or create your own."));
     refreshControls();
@@ -184,34 +182,34 @@ void CrossplayMenu::layoutControls() {
     };
     place(&captionLabel,x,12,w,30);
     place(&playerNameLabel,x,49,95,24);
-    place(&playerNameTextBox,x+100,49,200,26);
+    place(&playerNameValue,x+100,49,220,26);
     if(preparedGame) {
         place(&preparedSummary,x+20,110,w-40,150);
         place(&refreshGamesButton,x+20,280,160,30);
         refreshGamesButton.setText(_("Retry connection"));
         refreshGamesButton.setOnClick([this]() { if(stage == Stage::Choosing) beginAdmission(true); });
     } else {
-        place(&chatToggle,x+w-145,49,145,26);
-        if(showChat) {
-            place(&confirmNameButton,x,88,220,28);
-            place(&chatLabel,x,122,w,22);
-            place(&chatHistory,x,149,w,h-297);
-            place(&chatInput,x,h-140,w-95,28);
-            place(&chatSendButton,x+w-90,h-140,90,28);
-        } else {
-            place(&modeFilter,x,88,180,28);
-            place(&modFilter,x+190,88,w-370,28);
-            place(&refreshGamesButton,x+w-170,88,90,28);
-            place(&moreGamesButton,x+w-75,88,75,28);
-            place(&directoryLabel,x,119,w,22);
-            place(&publicGameList,x,145,w,h-326);
-            place(&joinPublicButton,x+w-190,h-176,190,30);
-            place(&joinLabel,x,h-137,90,26);
-            place(&joinCodeTextBox,x+95,h-137,w-245,28);
-            place(&joinButton,x+w-145,h-137,145,28);
-            place(&hostCoopButton,x,h-99,(w-10)/2,28);
-            place(&hostCustomGameButton,x+(w+10)/2,h-99,(w-10)/2,28);
-        }
+        const int chatWidth = std::clamp(w / 3, 220, 420);
+        const int leftWidth = w - chatWidth - 16;
+        const int chatX = x + leftWidth + 16;
+        place(&modeFilter,x,88,150,28);
+        place(&modFilter,x+160,88,leftWidth-160,28);
+        place(&directoryLabel,x,120,leftWidth-170,26);
+        place(&refreshGamesButton,x+leftWidth-165,120,85,26);
+        place(&moreGamesButton,x+leftWidth-75,120,75,26);
+        place(&publicGameList,x,150,leftWidth,h-330);
+        place(&joinLabel,x,h-174,95,26);
+        place(&joinPublicButton,x+leftWidth-130,h-174,130,28);
+        place(&joinCodeTextBox,x,h-138,leftWidth-130,28);
+        place(&joinButton,x+leftWidth-125,h-138,125,28);
+        place(&chatTitle,chatX,49,chatWidth,26);
+        place(&chatLabel,chatX,78,chatWidth,32);
+        place(&chatHistory,chatX,114,chatWidth,h-260);
+        place(&chatInput,chatX,h-138,chatWidth-65,28);
+        place(&chatSendButton,chatX+chatWidth-60,h-138,60,28);
+        place(&hostCoopButton,x,h-99,(w-10)/2,28);
+        place(&hostCustomGameButton,x+(w+10)/2,h-99,(w-10)/2,28);
+
     }
     place(&statusLabel,x,h-65,w,26);
     place(&backButton,x,h-34,95,28);
@@ -234,7 +232,7 @@ void CrossplayMenu::refreshDirectory() {
             + " - " + std::to_string(game.players) + "/" + std::to_string(game.maxPeers));
         if(game.roomCode == selectedRoom) publicGameList.setSelectedItem(static_cast<int>(publicGames.size())-1);
     }
-    directoryLabel.setText(publicGames.empty() ? _("No matching games. Create one or join with a code.") : _("Available games"));
+    directoryLabel.setText(publicGames.empty() ? _("No games available") : _("Available games"));
     refreshControls();
 }
 
@@ -275,10 +273,6 @@ void CrossplayMenu::refreshControls() {
     privateInviteButton.setText(showPrivateJoin ? _("Hide private invite") : _("Join with invite code"));
     joinButton.setEnabled(invite);
     joinCodeTextBox.setEnabled(invite);
-    playerNameTextBox.setEnabled(idle && chatSession.empty() && !chatPending);
-    confirmNameButton.setEnabled(idle || (chatSession.empty() && !chatPending
-        && (stage == Stage::HostReady || stage == Stage::ClientWaiting)));
-    confirmNameButton.setText(chatSession.empty() ? _("Confirm name for chat") : _("Change name"));
     chatInput.setEnabled(!chatSession.empty());
     chatSendButton.setEnabled(!chatSession.empty() && !chatPending);
     visibilityChoice.setEnabled(idle || (stage == Stage::HostReady
@@ -320,6 +314,17 @@ void CrossplayMenu::refreshPublicGames(unsigned offset) {
        || directoryPending) return;
     nextDirectoryRefresh = SDL_GetTicks() + 15000;
     const std::string fingerprint = contentFingerprint();
+    if(chatContentHash != fingerprint) {
+        // Changing mods moves discovery and chat to the same content lobby.
+        chat.cancel();
+        chatPending = false;
+        chatSession.clear();
+        chatCursor = 0;
+        chatLines.clear();
+        chatHistory.setText("");
+        chatContentHash = fingerprint;
+        nextChatPoll = 0;
+    }
     if(fingerprint.empty()) {
         directoryLabel.setText(_("Cannot check game content"));
         return;
@@ -380,23 +385,22 @@ void CrossplayMenu::changeVisibility() {
     refreshControls();
 }
 
-void CrossplayMenu::confirmChatName() {
-    if(stage == Stage::Choosing && !chatSession.empty()) {
-        chat.cancel();
-        chatPending = false;
-        chatSession.clear();
-        chatLabel.setText(_("Enter a name above, then confirm it to chat."));
-        refreshControls();
+void CrossplayMenu::enterLobbyChat() {
+    if(chatPending || !chatSession.empty()) return;
+    // The settings name is the single identity for chat and game admission.
+    const auto& name = settings.general.playerName;
+    nextChatPoll = SDL_GetTicks() + 15000;
+    if(!RoomRelay::isAcceptableDisplayName(name)) {
+        chatLabel.setText(_("Set your player name in Settings to chat."));
         return;
     }
-    if(chatPending || !chatSession.empty() || !validateAndSavePlayerName()) return;
     auto request = lobbyRequest();
     if(request.contentHash.empty()) { chatLabel.setText(_("Cannot check game content.")); return; }
     request.operation = AdmissionOperation::ChatEnter;
-    request.displayName = playerNameTextBox.getText();
+    request.displayName = name;
     chatAction = request.operation;
     chatPending = true;
-    chatLabel.setText(_("Confirming your name..."));
+    chatLabel.setText(_("Connecting to public chat..."));
     chat.begin(request);
     refreshControls();
 }
@@ -430,7 +434,7 @@ void CrossplayMenu::updateLobbyChat() {
             } else if(chatAction == AdmissionOperation::ChatPoll) {
                 if(response.chatCursor < chatCursor) {
                     chatSession.clear();
-                    chatLabel.setText(_("Chat restarted. Confirm your name again."));
+                    chatLabel.setText(_("Reconnecting to public chat..."));
                 } else {
                     if(response.chatGap) chatLines.push_back(_("Older lobby messages have expired."));
                     for(const auto& message : response.messages) {
@@ -446,7 +450,7 @@ void CrossplayMenu::updateLobbyChat() {
                     }
                 }
             }
-            if(!chatSession.empty()) chatLabel.setText(_("Public lobby chat - ") + playerNameTextBox.getText());
+            if(!chatSession.empty()) chatLabel.setText(_("Chatting as ") + settings.general.playerName);
             nextChatPoll = SDL_GetTicks() + (chatAction == AdmissionOperation::ChatPoll ? 5000 : 0);
         } else {
             chatLabel.setText(chat.errorMessage());
@@ -468,30 +472,21 @@ void CrossplayMenu::updateLobbyChat() {
     }
 }
 
-bool CrossplayMenu::validateAndSavePlayerName() {
-    const std::string name = trimmed(playerNameTextBox.getText());
-    if(name.empty() || !RoomRelay::isAcceptableDisplayName(name)) {
-        openWindow(MsgBox::create(_("Please enter a player name.")));
+bool CrossplayMenu::validatePlayerName() {
+    if(!RoomRelay::isAcceptableDisplayName(settings.general.playerName)) {
+        openWindow(MsgBox::create(_("Please set your player name in Settings.")));
         return false;
-    }
-
-    playerNameTextBox.setText(name);
-    if(name != settings.general.playerName) {
-        settings.general.playerName = name;
-        INIFile configFile(getConfigFilepath());
-        configFile.setStringValue("General", "Player Name", settings.general.playerName);
-        configFile.saveChangesTo(getConfigFilepath());
     }
     return true;
 }
 
 void CrossplayMenu::onHostCustomGame() {
-    if(!validateAndSavePlayerName()) return;
+    if(!validatePlayerName()) return;
     playCustomGame(true);
     refreshPublicGames();
 }
 void CrossplayMenu::onHostCampaignCoop() {
-    if(!validateAndSavePlayerName()) return;
+    if(!validatePlayerName()) return;
     SinglePlayerMenu::playCampaign(true);
     refreshPublicGames();
 }
@@ -512,23 +507,7 @@ void CrossplayMenu::onBack() {
 }
 
 void CrossplayMenu::beginAdmission(bool hosting, bool publicJoin) {
-    const auto previousName = settings.general.playerName;
-    if(!validateAndSavePlayerName()) {
-        return;
-    }
-    if(hosting && preparedGame && previousName != settings.general.playerName) {
-        auto houses = preparedGame->getHouseInfoList();
-        preparedGame->clearHouseInfo();
-        for(auto& house : houses) {
-            for(auto& player : house.playerInfoList)
-                if(player.playerName == previousName && player.playerClass == HUMANPLAYERCLASS)
-                    player.playerName = settings.general.playerName;
-            preparedGame->addHouseInfo(house);
-        }
-        for(auto& event : preparedPlayers.changeEventList)
-            if(event.eventType == ChangeEventList::ChangeEvent::EventType::SetHumanPlayer && event.newStringValue == previousName)
-                event.newStringValue = settings.general.playerName;
-    }
+    if(!validatePlayerName()) return;
     if(settings.network.activeDirectEndpoint().empty()) {
         setStatus(_("Online play has not been set up in this copy of the game."));
         return;
@@ -677,7 +656,11 @@ void CrossplayMenu::update() {
         quit(result);
         return;
     }
-    if(!preparedGame && stage == Stage::Choosing && showChat) updateLobbyChat();
+    if(!preparedGame && stage == Stage::Choosing) {
+        if(!chatPending && chatSession.empty() && SDL_TICKS_PASSED(SDL_GetTicks(), nextChatPoll))
+            enterLobbyChat();
+        updateLobbyChat();
+    }
     visibilityUpdate.update();
     if(visibilityPending && visibilityUpdate.status() != RoomAdmissionClient::Status::InProgress) {
         visibilityPending = false;
