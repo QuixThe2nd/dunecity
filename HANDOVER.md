@@ -1,3 +1,12 @@
+## 2026-09-20 — Campaign privacy explanation (local 1.0.737)
+
+Added a short note directly above the campaign connection/visibility controls:
+"Public by default: others can watch or ask to join. Choose Private for invite-only
+play, or Offline." The title sits alongside the note without moving the controls.
+Native app rebuilt; dependency audits, version consistency and the menu navigation
+probe pass at all three sizes. Visually checked the 640x480 rendering. No push or
+public release performed.
+
 ## 2026-09-20 — Public campaign by default (local 1.0.736)
 
 Campaign entry now defaults to Online co-op with the existing Public visibility

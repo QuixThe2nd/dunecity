@@ -104,7 +104,12 @@ HouseChoiceMenu::HouseChoiceMenu(bool online, bool keepRules) : MenuBase()
     titleLabel.setTextColor(COLOR_WHITE);
     titleLabel.setTextFontSize(20);
     titleLabel.setAlignment(Alignment_HCenter);
-    windowWidget.addWidget(&titleLabel, Point(0,0), Point(640,26));
+    windowWidget.addWidget(&titleLabel, Point(48,0), Point(174,26));
+    onlineDescription.setText(_("Public by default: others can watch or ask to join.\nChoose Private for invite-only play, or Offline."));
+    onlineDescription.setTextFontSize(10);
+    onlineDescription.setTextColor(COLOR_WHITE);
+    onlineDescription.setAlignment(Alignment_Left);
+    windowWidget.addWidget(&onlineDescription, Point(232,0), Point(360,28));
     connectionDropDown.addEntry(_("Offline"), 0);
     connectionDropDown.addEntry(_("Online co-op"), 1);
     connectionDropDown.setSelectedItem(s_online ? 1 : 0);

@@ -65,7 +65,7 @@ private:
     VBox            optionsVBox;
 
     PictureLabel    selectYourHouseLabel;
-    Label titleLabel, selectedHouseLabel;
+    Label titleLabel, selectedHouseLabel, onlineDescription;
     DropDownBox connectionDropDown, journeyDropDown, visibilityDropDown;
     TextButton loadButton;
 
