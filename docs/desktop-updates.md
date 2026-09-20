@@ -1,6 +1,7 @@
 # Desktop updates
 
-Introduced in unreleased 1.0.731. Users install this edition once; later stable
+First publicly released in 1.0.732 after local 1.0.731 testing. Users install this
+edition once; later stable
 releases can be installed from the main menu. Nothing is published by a local
 build. Browser and Android builds do not include the desktop updater.
 
