@@ -1,3 +1,12 @@
+## 2026-09-20 — PR 49 refreshed onto main 1.0.734
+
+Main advanced to c505255 while the original PR validation run was completing.
+Integrated its hot-join checkpoint recovery and named join UI changes, preserving
+the browser transport and lifecycle fixes. The combined build is 1.0.735.
+Native and browser builds, all eight CTest groups, 193 signaling tests and the
+real three-peer hot-join replacement regression pass on the combined tree.
+The wasm32 ASan harness and real two-browser pairing/play/quit test pass again.
+
 ## 2026-09-20 — PR 49 browser multiplayer review, 1.0.734
 
 Integrated current `main` (8057d80) into the matchmaking branch. Browser peer
@@ -19,6 +28,105 @@ See `docs/browser-multiplayer-pr49-validation.md` for evidence and limits.
 The production matchmaking WebSocket service must be deployed separately;
 configuration, trust model, STUN defaults and fixture provenance are documented
 in `platform/web/README.md`. This review does not publish or merge the game.
+
+## 2026-09-20 — Prominent in-game join names (local 734)
+
+The map notice now names the first player requesting approval, with an additional
+request count and all pending names in its tooltip. Requesters see their own name
+while waiting. Approval and synchronization dialogs have a large gold player name;
+the host also sees named spectator arrivals. After a controller checkpoint is
+loaded and the new simulation begins, every controller sees a named "joined to
+play" notice for 12 seconds. The name survives checkpoint handoff; transfer alone
+does not announce successful admission.
+
+Version bumped to 1.0.734. Native dependency audits/build, the browser build and all
+eight CTest suites pass. The menu render suite passes again after enlarging the name region; screenshots
+confirm both ordinary names and 64-character names fit at 640/854/1280 widths.
+Build/test logs are in the existing task work/hotjoin-733 directory as join-names-*.
+The running 733 browser match was preserved; these UI changes require the new client
+build. No 734 installer, public upload, update-feed change, push or tag yet.
+
+## 2026-09-20 — Named multiplayer Discord announcements (deployed)
+
+The signaling notification hook now supplies human player and spectator rosters.
+Initial start identifies the host and players present. Hot-join events identify the
+participant by name and role: a spectator event follows committed session admission;
+a player event follows the host successfully resuming the match after admission or
+promotion. Cancelled controller joins, nonce retries and repeated phase requests
+do not announce success. Transport credentials remain excluded.
+
+The companion website change is on `fix/multiplayer-roster-notifications` in
+`../dunelegacy.com`: named Discord embeds, separate spectator/player events,
+participant/role deduplication, literal Markdown display and bounded roster fields.
+All 193 signaling tests and website notifier tests pass. Server-only change; no
+client rebuild/version bump required. At Stefan's request, website PR10 was merged
+as 9cf16b1d and deployment run 35483230025 passed. Live health returned status=ok;
+live notifier and signaling SHA-256 hashes match the tested local sources. Game
+source commit fe29d281 is packaged by that deployment; game release 733 remains
+unpublished. A fresh public Twin Cities lobby hosted by Codex Web 733 is waiting
+for Stefan to join before start, to check named start and hot-join Discord messages.
+The previous browser match had already returned to the online menu. Stefan confirmed the live start announcement names Codex Web 733 and ggtothemax.
+A second Chrome client, Codex Web Guest (tab 1889837000), hot-joined that running
+match as a spectator, loaded the map, requested play, and was approved to share
+Codex Web 733. It resumed without the Spectating label and continued simulating.
+Both browser tabs are retained; do not close either while this match is running.
+Delivery of the two hot-join Discord announcements still awaits user confirmation.
+
+Stefan confirmed the local 733 web-host/native-Air hot join and approved shared
+control work. This is additional user acceptance evidence for the next section.
+
+## 2026-09-20 — Hot-join restoration, progress and recovery (unreleased 733)
+
+Branch `fix/hot-join-progress-733`. The Air's installed 732 log was preserved before
+any restart: at cycle 42200 its RNG and object digest matched the host but its house
+digest differed. The live host is Brave on the Air; its exact saved checkpoint and
+host log were not retrieved. Stefan does not want console/export/manual diagnostic
+steps. Local real-peer reproductions provided the required evidence instead.
+
+Fixed unit registration on checkpoint load: temporarily deviated units count toward
+their original house, and loading does not add military value already restored from
+the save a second time. A converted-unit test reproduced the house mismatch before
+the change and passes afterward. A populated four-corner match additionally exposed
+lost harvester path-failure counters and sandworm attack modes being overwritten on
+load. Runtime supplement version 3 preserves the counters; loaded worms retain their
+saved mode. Ordinary save layout remains unchanged.
+
+Added actual byte progress to the joining lobby/controller dialog, then a map banner
+for catch-up progress. Host-frontier packets and a 64-tick replay window let viewers
+catch up in bounded batches. Fingerprint mismatches request a fresh checkpoint, with
+distinct snapshot epochs and at most two restarts per connection. Transfer expiry
+also uses that bounded recovery. Permanent failure returns the viewer to a usable
+lobby with a message; the host keeps playing. Both sides require 733, enforced by the
+existing exact-version gate. See docs/late-join-protocol.md.
+
+Validation: native dependency audits/build and all eight CTest suites pass; browser
+build passes. Real-peer regressions pass for deviated ownership with 300 ms snapshot
+polling, transient mismatch recovery, permanent mismatch with two retries and host
+continuation, and three-peer approved shared control retaining the AI. The populated
+four-corner regression joins at cycle 42100, stalls the viewer for five seconds and
+matches state at 45000. Native screenshots verify download/catch-up bars, including
+640/854/1280 lobby layouts. An actual Chrome 733 client joined a native host checkpoint
+at cycle 4212 (2,203,318 bytes), rendered the map and stayed connected beyond host cycle
+10531; this is browser-as-viewer evidence, not the user's Brave-as-host reproduction.
+
+Signed/notarized local Mac ZIP and DMG are in task work/hotjoin-733/signed-verified.
+The DMG passes stapler, Gatekeeper, strict signature, portable-library and actual SDL
+runtime rendering checks on the mini. It is copied to the Air's Desktop as
+DuneCity-1.0.733-macOS.dmg; its hash, signature, Gatekeeper and isolated dummy-video
+runtime probe pass there too. Existing installed apps, profiles and running games
+were not changed. DMG SHA256:
+e2be6b993d41fbc8aa1e9544dcb346cdecf9c0e9fb584af8020e9eb559585172.
+
+Evidence directory: /Users/stefan/Documents/Codex/2026-09-19/i-h/work/hotjoin-733.
+Includes preserved Air log/replay, before/after checkpoints, regression logs, UI PNGs,
+browser observations, Apple acceptance JSON and package verification logs. An initial
+signing process was waiting on the locked keychain; stopped only that process,
+unlocked the existing signing/notarization keychains using protected saved credentials
+and rebuilt in signed-verified. No new credential or user setup is needed.
+
+733 has not been pushed, tagged, or published to the website/update feeds/installers.
+Public release remains 732. Do not ask Stefan for manual console diagnostics or
+another password setup; prepare any next release through the existing release process.
 
 ## 2026-09-20 — Dune City 1.0.732 published and verified
 

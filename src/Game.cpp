@@ -2323,6 +2323,12 @@ void Game::drawScreen()
     pInterface->draw(Point(0,0));
     pInterface->drawOverlay(Point(0,0));
     drawCityPlacementHint();
+    if(pNetworkManager && isSpectating() && pNetworkManager->observerCatchingUp()) {
+        observerProgress.resize(std::min(580,sideBarPos.x-40),32);
+        observerProgress.setProgress(pNetworkManager->lateJoinPercent());
+        observerProgress.setText(pNetworkManager->lateJoinProgressText());
+        observerProgress.draw(Point(20,80));
+    }
 
     // draw chat message currently typed
     if(chatMode) {
@@ -3510,6 +3516,7 @@ void Game::updateGameState() {
     // and the counter has just become gameCycleCount. Every peer reaches this same point for
     // the same cycle, which is what makes two digests comparable at all.
     updateStateDigests();
+    if(pNetworkManager && isSpectating()) pNetworkManager->observerAdvanced(gameCycleCount);
 
     musicPlayer->musicCheck();
 }
@@ -4821,6 +4828,8 @@ void Game::onPeerDisconnected(const std::string& name, bool bHost, int cause) {
     
     // If host disconnected, the game cannot continue - end it
     if(bHost) {
+        if(isSpectating() && pNetworkManager && pNetworkManager->joinFailure().empty())
+            pNetworkManager->failObserver("The connection to the host was interrupted.\nPlease try joining again.");
         SDL_Log("Host '%s' disconnected - ending game", name.c_str());
         pInterface->getChatManager().addInfoMessage("Host disconnected! Game ending...");
         
@@ -6217,6 +6226,7 @@ bool Game::handleNetworkUpdates() {
 
     if(pNetworkManager->isServer()) prepareObserverStreams();
     if(isSpectating()) {
+        if(pNetworkManager->observerResyncWaiting()) return true;
         if(observerCyclePrepared) return false;
         std::string bytes;
         if(!pNetworkManager->takeObserverCycle(gameCycleCount,bytes)) return true;
@@ -6251,8 +6261,12 @@ bool Game::handleNetworkUpdates() {
             return false;
         } catch(const std::exception& error) {
             SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,"Spectator stream stopped at cycle %u: %s",gameCycleCount,error.what());
-            addToNewsTicker("The spectator view lost synchronization. Please spectate again.");
-            pNetworkManager->disconnect(); quitGame(); return true;
+            for(const auto& h : house) if(h) SDL_Log("Spectator house state: house=%d credits=%d structures=%d units=%d",
+                h->getHouseID(),h->getCredits(),h->getNumStructures(),h->getNumUnits());
+            if(pNetworkManager->requestObserverResync(gameCycleCount)) return true;
+            pNetworkManager->failObserver("Joining stopped because the game state did not match the host.\n"
+                "The host's game can continue. Please try joining again.");
+            quitGame(); return true;
         }
     }
     bool bWaitForNetwork = false;
@@ -6640,7 +6654,7 @@ void Game::prepareObserverStreams() {
 
 std::string Game::saveObserverRuntime() const {
     OMemoryStream out; out.open();
-    out.writeUint32(2); out.writeUint32(gameCycleCount);
+    out.writeUint32(3); out.writeUint32(gameCycleCount);
     out.writeUint32(negotiatedBudget); out.writeUint32(cmdManager.getNetworkCycleBuffer());
     out.writeUint32(currentGameMap->getPathingRevision());
     out.writeUint32(targetRequestQueue.size());
@@ -6665,7 +6679,7 @@ std::string Game::saveObserverRuntime() const {
 
 void Game::loadObserverRuntime(const std::string& bytes) {
     IMemoryStream in(bytes.data(),bytes.size());
-    if(in.readUint32()!=2 || in.readUint32()!=gameCycleCount) throw std::runtime_error("Invalid spectator checkpoint cycle");
+    if(in.readUint32()!=3 || in.readUint32()!=gameCycleCount) throw std::runtime_error("Invalid spectator checkpoint cycle");
     negotiatedBudget=in.readUint32(); const auto buffer=in.readUint32();
     if(negotiatedBudget<kMinBudget || negotiatedBudget>kMaxBudget || buffer>1000) throw std::runtime_error("Invalid spectator checkpoint budget");
     cmdManager.setNetworkCycleBuffer(buffer);

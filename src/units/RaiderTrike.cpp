@@ -38,7 +38,7 @@ RaiderTrike::RaiderTrike(InputStream& stream) : GroundUnit(stream) {
 
 void RaiderTrike::init() {
     itemID = Unit_RaiderTrike;
-    owner->incrementUnits(itemID);
+    registerUnit();
 
     numWeapons = 2;
     bulletType = Bullet_ShellSmall;

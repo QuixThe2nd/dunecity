@@ -241,3 +241,48 @@ use object-ID order, so target ties do not depend on movement history. Spectator
 loads also preserve negative targeting/path timer sentinels alongside their
 restored work queues. These changes leave the save and spectator wire layouts
 unchanged; both peers need the matching simulation build.
+
+## 1.0.733: visible progress and bounded recovery
+
+Joining now reports acknowledged/received snapshot bytes in the lobby and controller
+synchronization dialog. After loading, a non-modal map banner shows replay progress
+against the host's current cycle. Connecting and preparing stages do not invent a
+percentage. Matching 733 clients are required by the existing exact-version gate.
+
+Observer operation 16 (host-only JOIN_SYNC, empty payload, offset = current cycle)
+reports that frontier at most four times per second. Operation 17 (viewer-only
+JOIN_ACK, empty payload, current snapshot epoch) asks for a fresh checkpoint after a
+fingerprint mismatch. Each snapshot has a distinct epoch, so queued old ACKs/ticks
+cannot apply to the next one. The host permits two restarts per spectator connection,
+including transfers that exceed retained history or time out. A viewer waits at most
+30 seconds for a replacement header. No player is paused or reloaded for recovery.
+
+Replay now sends batches within the existing eight-message/64 KiB update allowance,
+with at most 64 unconsumed ticks per viewer. Snapshot, history and chunk byte caps are
+unchanged. Permanent mismatch ends only the viewer and returns it to a usable lobby
+with an acknowledged explanation; checkpoint-load exceptions use the same path.
+
+Unit registration restores counts to each unit's original house, including temporary
+Deviator ownership. Load constructors also stop adding the military value a second
+time after it has already been restored from the save. Ordinary save bytes are unchanged.
+The real-peer fixture supports JOIN_DEVIATED_UNIT, JOIN_DESYNC_ONCE and
+JOIN_DESYNC_ALWAYS for regression, automatic recovery and bounded-failure checks.
+
+Observer runtime version 3 also preserves both harvester path-failure counters.
+Resetting these at checkpoint load changes refinery and carryall decisions even
+when the initial object digest matches. Sandworm load constructors preserve the
+saved attack mode instead of overwriting it with the new-unit ambush default.
+The ordinary save format remains unchanged.
+
+The populated four-house regression reproduces a late join after substantial
+production and combat, including the five-second viewer stall:
+
+```sh
+JOIN_FAST_WARMUP=1 JOIN_SEED=118705914 JOIN_AT_CYCLE=42100 JOIN_VERIFY_CYCLE=45000 \
+python3 tests/network/run-late-join-probe.py --solo --city --four-corners --mode spectate
+```
+
+Set JOIN_CHECKPOINT_TRACE=1 to retain checkpoint saves, runtime supplements,
+per-object bytes and house/harvester counters for host/viewer comparisons.
+JOIN_CAPTURE_UI=1 retains the rendered catch-up bar. The menu navigation probe
+checks real download progress and failure recovery at three window sizes.

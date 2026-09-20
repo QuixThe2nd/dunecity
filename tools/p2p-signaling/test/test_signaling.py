@@ -664,7 +664,10 @@ class NotificationTests(SignalingTestCase):
                 self.assertEqual(mode, events[0][1]["mode"])
                 self.assertEqual(1, events[0][1]["players"])
                 self.assertEqual(2, events[1][1]["players"])
-                self.assertEqual({"room_log_id", "mode", "visibility", "host", "version", "players", "max_players"}, set(events[0][1]))
+                self.assertEqual({"room_log_id", "mode", "visibility", "host", "version", "players", "max_players", "player_names", "spectator_names"}, set(events[0][1]))
+                self.assertEqual(['Host'], events[0][1]['player_names'])
+                self.assertEqual(['Host', 'Guest'], events[1][1]['player_names'])
+                self.assertEqual([], events[1][1]['spectator_names'])
                 self.assertNotIn(admission.fields["room"], json.dumps(events))
                 self.assertNotIn(host.fields["session"], json.dumps(events))
                 for response in [host, self.poll(host.fields["session"])]:

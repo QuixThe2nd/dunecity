@@ -158,7 +158,7 @@ void NetworkManager::installSessionBridges() {
             if(!direct->acceptStartCallback()) return;
         }
         if(joinStage==JoinStage::Starting || joinStage==JoinStage::Receiving) {
-            if(joinSnapshot) { joinStage=JoinStage::Ready; joinStatus="Resuming with the new player..."; }
+            if(joinSnapshot) { joinStage=JoinStage::Ready; joinStatus="Resuming with "+joinName+"..."; }
             else abortLateJoin("The game snapshot was not ready.");
             return;
         }
@@ -1358,6 +1358,10 @@ void NetworkManager::updateRelaySession() {
     while(!sessionEnded && pRelayClient->pollEvent(event)) {
         switch(event.type) {
             case RoomSessionTransport::Event::Type::PeerJoined: {
+                if(bGameInProgress && event.spectator) {
+                    joinNotice=event.name+" joined as a spectator";
+                    joinNoticeTime=SDL_GetTicks();
+                }
                 debugNetwork("Relay peer '%s' joined (%s, %s)\n", event.name.c_str(),
                              event.role == RoomRelay::Role::Host ? "host" : "client",
                              event.runtime.c_str());
@@ -2439,7 +2443,15 @@ std::unique_ptr<GameInitSettings> NetworkManager::takeCoopMission() {
 
 void NetworkManager::beginSimulation(Uint32 seed) {
     if(bIsServer) { observerTransfers.clear(); observerHistory.clear(); observerHistoryBytes=0; }
-    if(joinLoading) { seed=resumeSeed; joinLoading=false; }
+    if(joinLoading) {
+        seed=resumeSeed; joinLoading=false;
+        if(!joinName.empty() && !isSpectating()) {
+            joinNotice=joinName+" joined to play";
+            joinStatus=joinNotice;
+            joinNoticeTime=SDL_GetTicks();
+        }
+        joinName.clear();
+    }
     simulationSeed = seed;
     bGameInProgress = true;
 

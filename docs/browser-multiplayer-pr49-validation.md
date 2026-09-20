@@ -1,6 +1,7 @@
 # Browser multiplayer review — PR 49
 
-Reviewed against `main` 8057d80 on 20 September 2026. Version 1.0.734.
+Reviewed on 20 September 2026 and refreshed against `main` c505255 after PR 61
+merged during validation. Combined version: 1.0.735.
 
 ## Corrections
 
@@ -21,7 +22,7 @@ Reviewed against `main` 8057d80 on 20 September 2026. Version 1.0.734.
   from a match, leaving a blank screen. The real-browser smoke test records
   Emscripten sleep timers and exercises the actual quit path.
 - Resolved merge conflicts while retaining current updater, city metadata,
-  observer protections and late-join behavior. New room packets use the shared
+  observer protections, hot-join checkpoint recovery and named join UI. New room packets use the shared
   packet stream API so the merged browser build compiles.
 - Preserved bounded ICE failure diagnostics in the direct-play adapter when
   replacing the patched vendored SDK with the pinned package.
@@ -50,12 +51,20 @@ Reviewed against `main` 8057d80 on 20 September 2026. Version 1.0.734.
   and host-only ICE. Cancel/retry succeeds; both clients pair and enter the
   Habbanya-Penny 128x128 map. The host reached 3,992 sent / 3,993 received command
   packets with zero reported drops while both games remained connected.
-- The final 1.0.734 build passes the automated real-browser acceptance test in
+- The 1.0.734 build passes the automated real-browser acceptance test in
   `tests/web/matchmaking-smoke.mjs`, including the guest quitting back to Play
   Online promptly, with no browser errors or Emscripten sleeps over 50 ms.
   Screenshots and counters are written under `build/matchmaking-smoke/`.
 - The matchmaking server fixture matches the immutable upstream source byte for
   byte after its provenance header; its pin and SHA-256 are checked offline too.
+
+## Refresh after main advanced
+
+The combined 1.0.735 native and browser builds pass. All eight native CTest
+groups and all 193 signaling tests pass again. The real three-peer hot-join
+replacement probe resumes with matching state at cycle 150. The wasm32 ASan
+lifecycle harness and automated two-browser pairing/play/quit test pass again.
+The PR description records CI status for the pushed revision.
 
 ## Deployment and limits
 

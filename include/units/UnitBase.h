@@ -48,8 +48,8 @@ public:
     UnitBase& operator=(UnitBase &&) = delete;
 
     void save(OutputStream& stream) const override;
-    void saveObserverRuntime(OutputStream& stream) const;
-    void loadObserverRuntime(InputStream& stream);
+    virtual void saveObserverRuntime(OutputStream& stream) const;
+    virtual void loadObserverRuntime(InputStream& stream);
 
     void blitToScreen() override;
 
@@ -268,6 +268,10 @@ public:
     virtual void playAttackSound();
 
 protected:
+    // Counts belong to the original house even while a unit is deviated.
+    void registerUnit();
+    bool restoredFromSave = false;
+
 
     void updateVisibleUnits();
 

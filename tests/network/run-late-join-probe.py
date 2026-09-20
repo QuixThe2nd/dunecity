@@ -20,12 +20,17 @@ parser.add_argument('--browser',action='store_true',help='Use the browser game a
 parser.add_argument('--stall',action='store_true',help='Leave the spectator unresponsive until its stream times out; the players must continue.')
 parser.add_argument('--solo',action='store_true',help='One native host, with no second active peer.')
 parser.add_argument('--city',action='store_true',help='Dune City, four-house Ergsun-Odenkirk, shared hard AI host.')
+parser.add_argument('--four-corners',action='store_true',help='Use the four-house 128x128 map with --city.')
 parser.add_argument('--twin-cities',action='store_true',help='Use the two-house 256x256 Twin Cities map with --city.')
 parser.add_argument('--busy',action='store_true',help='Exercise moving armies and AI production while the observer catches up.')
 parser.add_argument('--mode', choices=['replace','share_ai','share_human','abort','spectate','reject_spectate','promote'],default='replace')
 args = parser.parse_args()
 if args.twin_cities and not args.city:
     parser.error('--twin-cities requires --city')
+if args.four_corners and not args.city:
+    parser.error('--four-corners requires --city')
+if args.four_corners and args.twin_cities:
+    parser.error('Choose one map: --four-corners or --twin-cities')
 if os.environ.get('JOIN_FAST_WARMUP') and (not args.solo or args.mode not in ('spectate', 'reject_spectate')):
     parser.error('JOIN_FAST_WARMUP requires --solo and a spectator-only mode')
 build = args.build_dir.resolve()
@@ -59,6 +64,7 @@ cc[cc.index('-o') + 1] = str(obj)
 cc[cc.index('-c') + 1] = str(source)
 map_path = root / 'data/maps/multiplayer/2P - 51x31 - 1v1 - Habbanya-Autumn.ini'
 if args.city: map_path = root / 'data/maps/multiplayer/4P - 128x128 - Ergsun-Odenkirk.ini'
+if args.four_corners: map_path = root / 'data/maps/singleplayer/4P - 128x128 - 4 corners.ini'
 if args.twin_cities: map_path = root / 'data/maps/singleplayer/2P - 256x256 - Twin Cities.ini'
 cc.append('-fno-access-control')
 cc.append('-DPROBE_MAP_PATH="' + str(map_path) + '"')
@@ -133,7 +139,7 @@ try:
         processes.append(subprocess.Popen([str(binary),'--window','--showlog'],cwd=out,env=env,stdout=log,stderr=subprocess.STDOUT))
     deadline=time.monotonic()+(620 if args.browser or os.environ.get('JOIN_FAST_WARMUP') else 170)
     while time.monotonic()<deadline:
-        compared=originals if args.mode=='abort' or args.browser or args.stall else roles
+        compared=originals if args.mode=='abort' or args.browser or args.stall or os.environ.get('JOIN_DESYNC_ALWAYS') else roles
         if all((out/(role+'-digest')).exists() for role in compared) and (args.mode!='abort' or (out/'Newcomer-cancelled').exists()):
             values=[(out/(role+'-digest')).read_text() for role in compared]
             if len(set(values))!=1: raise RuntimeError('State mismatch: '+str(values))

@@ -50,7 +50,7 @@ Frigate::Frigate(InputStream& stream) : AirUnit(stream)
 void Frigate::init()
 {
     itemID = Unit_Frigate;
-    owner->incrementUnits(itemID);
+    registerUnit();
 
     canAttackStuff = false;
 

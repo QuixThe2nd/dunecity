@@ -126,8 +126,13 @@ informational, and they are shaped so that nothing can be misread as a gameplay 
 
 After a host seats successfully, and after an authenticated host commits the match
 phase, the optional trusted local `dunecityP2PNotifyLobby(kind, fields)` hook receives
-only mode, visibility, host display name, version and player counts plus an opaque
-log ID. It receives no invitation code, grant, control/session token, SDP or address.
+mode, visibility, host display name, version, human player counts and human
+player/spectator names plus an opaque log ID. `hot_joined` events include the joining
+name, role and room-local participant ID: spectator admission emits once when the
+session seats; controller admission/promotion emits only when the host resumes the
+match with that participant still present. Requests, approvals and aborted controller
+transfers do not announce a player join. No AI names are available to this service.
+It receives no invitation code, grant, control/session token, SDP or address.
 Grant recovery and repeated match-phase requests do not emit another event. Hook
 failure cannot undo admission/start. The core service still makes no outbound
 requests; the website deployment owns Discord configuration, queuing and delivery.

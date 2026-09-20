@@ -68,7 +68,8 @@ void NetworkManager::receiveJoinSync(Uint32 peer, Uint32 operation, Uint32 trans
     if(operation==20) {
         if(!bIsServer && peer==relayHostPeerId() && data==playerName && direct->prepareSpectatorPromotion()) {
             joinExpected=true; observerIncoming.clear();
-            joinStatus="The host accepted your request. Preparing your player slot...";
+            joinName=playerName;
+            joinStatus=playerName+": request approved. Preparing your player slot...";
         }
         return;
     }
@@ -152,7 +153,7 @@ void NetworkManager::updateLateJoin() {
             joinOffset=joinNextOffset;
         }
         if(joinOffset==joinBytes.size()) {
-            joinStage=JoinStage::Starting; joinStatus="All players synchronized. Resuming...";
+            joinStage=JoinStage::Starting; joinStatus="All players synchronized. Resuming with "+joinName+"...";
             if(!sendStartGame(0)) abortLateJoin("The players could not confirm the new roster.");
             return;
         }
@@ -181,7 +182,9 @@ std::unique_ptr<GameInitSettings> NetworkManager::takeLateJoin() {
     spectators=joinSpectators;
     if(auto* direct=getDirectTransport()) direct->setSpectators(spectators);
     resumeSeed=joinTransaction; joinLoading=true; joinExpected=false;
-    joinStage=JoinStage::Idle; joinBytes.clear(); joinName.clear();
+    // Keep the name through the checkpoint load so every controller can show
+    // the completed join only when its new simulation actually starts.
+    joinStage=JoinStage::Idle; joinBytes.clear();
     if(auto* direct=getDirectTransport()) direct->completeJoinWindow();
     return next;
 }

@@ -29,7 +29,7 @@ SonicTrike::SonicTrike(InputStream& stream) : GroundUnit(stream) {
 
 void SonicTrike::init() {
     itemID = Unit_SonicTrike;
-    owner->incrementUnits(itemID);
+    registerUnit();
 
     numWeapons = 1;
     bulletType = Bullet_SonicTrike;

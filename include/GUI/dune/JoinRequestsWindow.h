@@ -15,23 +15,32 @@ public:
     static JoinRequestsWindow* create() { auto* w=new JoinRequestsWindow(); w->pAllocated=true; return w; }
 private:
     VBox box;
-    Label title, help;
+    Label title, player, help;
     DropDownBox requests, slots;
     TextButton accept, decline, close;
     std::vector<DirectRoomTransport::JoinRequest> pending;
     std::vector<Game::JoinSlot> choices;
 public:
-    JoinRequestsWindow() : Window(0,0,540,270) {
+    JoinRequestsWindow() : Window(0,0,580,350) {
         setWindowWidget(&box);
-        setCurrentPosition((getRendererWidth()-540)/2,(getRendererHeight()-270)/2,540,270);
-        title.setText("Requests waiting approval"); title.setTextFontSize(22); box.addWidget(&title,36);
+        const int width=std::min(580,getRendererWidth()-24);
+        setCurrentPosition((getRendererWidth()-width)/2,(getRendererHeight()-350)/2,width,350);
+        title.setText("Request to play"); title.setTextFontSize(20); box.addWidget(&title,32);
+        player.setTextFontSize(22); player.setTextColor(COLOR_RGB(255,210,64));
+        player.setAlignment(static_cast<Alignment_Enum>(Alignment_HCenter | Alignment_VCenter));
+        box.addWidget(&player,84);
         help.setText("Share keeps the current player. Replace removes the AI."); box.addWidget(&help,36);
         if(pNetworkManager && pNetworkManager->getDirectTransport()) pending=pNetworkManager->getDirectTransport()->joinRequests();
         pending.erase(std::remove_if(pending.begin(),pending.end(),[](const auto& r){return r.spectator;}),pending.end());
         choices=currentGame->availableJoinSlots();
         for(const auto& p : pending) requests.addEntry(p.name);
+        requests.setOnSelectionChange([this](bool) {
+            const int selected=requests.getSelectedIndex();
+            player.setText(selected >= 0 ? pending[selected].name : "No pending requests");
+        });
         for(const auto& s : choices) slots.addEntry(s.label);
         if(!pending.empty()) requests.setSelectedItem(0);
+        player.setText(pending.empty() ? "No pending requests" : pending.front().name);
         if(!choices.empty()) {
             // Prefer adding a second controller over removing an existing AI.
             auto shared=std::find_if(choices.begin(),choices.end(),[](const auto& slot) {

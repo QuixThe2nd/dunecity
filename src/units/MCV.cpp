@@ -45,7 +45,7 @@ MCV::MCV(InputStream& stream) : GroundUnit(stream)
 
 void MCV::init() {
     itemID = Unit_MCV;
-    owner->incrementUnits(itemID);
+    registerUnit();
 
     canAttackStuff = false;
 

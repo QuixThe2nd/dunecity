@@ -219,6 +219,8 @@ void CrossplayMenu::layoutControls() {
 
     }
     place(&statusLabel,x,h-65,w,26);
+    place(&joinProgress,x,h-65,w,26);
+    joinProgress.setVisible(false);
     place(&backButton,x,h-34,95,28);
     // In the browser this opens the matchmaking lobby (Find Match), natively
     // the LAN/direct connection screen; the button is the same MultiPlayerMenu
@@ -690,6 +692,8 @@ void CrossplayMenu::openDirectSession() {
 }
 
 void CrossplayMenu::teardownSession(std::string reason) {
+    joinProgress.setVisible(false); statusLabel.setVisible(true);
+    joiningRunning=false;
     // Own the reason before releasing the relay whose status may contain it.
     pendingGameInfo.reset();
     pendingLobbyChanges = ChangeEventList();
@@ -852,9 +856,22 @@ void CrossplayMenu::update() {
     if(joiningRunning) {
         if(auto resumed=pNetworkManager->takeLateJoin()) {
             pNetworkManager->setOnReceiveGameInfo({}); pNetworkManager->setOnPeerDisconnected({});
-            startMultiPlayerGame(*resumed); teardownSession({}); quit(MENU_QUIT_GAME_FINISHED); return;
+            try { startMultiPlayerGame(*resumed); }
+            catch(const std::exception& error) {
+                SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,"Online checkpoint load failed: %s",error.what());
+                if(pNetworkManager) pNetworkManager->failObserver("The downloaded game could not be loaded.\nPlease try joining again.");
+            }
+            const auto failure=pNetworkManager ? pNetworkManager->joinFailure() : std::string();
+            teardownSession(failure);
+            if(!failure.empty()) { openWindow(MsgBox::create(failure)); refreshPublicGames(); }
+            else quit(MENU_QUIT_GAME_FINISHED);
+            return;
         }
-        if(pNetworkManager->lateJoinPaused()) setStatus(pNetworkManager->lateJoinStatus());
+        if(pNetworkManager->lateJoinPaused()) {
+            statusLabel.setVisible(false); joinProgress.setVisible(true);
+            joinProgress.setProgress(pNetworkManager->lateJoinPercent());
+            joinProgress.setText(pNetworkManager->lateJoinProgressText());
+        }
     }
     RoomSessionTransport* relay = pNetworkManager->getRelayClient();
     if(relay == nullptr) {

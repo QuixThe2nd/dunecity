@@ -47,7 +47,7 @@ Saboteur::Saboteur(InputStream& stream) : InfantryBase(stream)
 void Saboteur::init()
 {
     itemID = Unit_Saboteur;
-    owner->incrementUnits(itemID);
+    registerUnit();
 
     graphicID = ObjPic_Saboteur;
     graphic = pGFXManager->getObjPic(graphicID,getOwner()->getHouseID());

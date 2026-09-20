@@ -88,6 +88,7 @@ UnitBase::UnitBase(House* newOwner) : ObjectBase(newOwner) {
 }
 
 UnitBase::UnitBase(InputStream& stream) : ObjectBase(stream) {
+    restoredFromSave = true;
 
     UnitBase::init();
 
@@ -141,6 +142,10 @@ UnitBase::UnitBase(InputStream& stream) : ObjectBase(stream) {
     if(recalculatePathTimer < 0 && !currentGame->isSpectating()) {
         recalculatePathTimer = 0;
     }
+}
+
+void UnitBase::registerUnit() {
+    currentGame->getHouse(originalHouseID)->incrementUnits(itemID, !restoredFromSave);
 }
 
 void UnitBase::init() {

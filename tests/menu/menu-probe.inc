@@ -1,3 +1,4 @@
+#include <Network/NetworkManager.h>
 // Test-only entry point, linked against the real menu objects by run-menu-probe.py.
 #include <Menu/HouseChoiceMenu.h>
 #include <Menu/CustomGamePlayers.h>
@@ -9,6 +10,7 @@
 #include <Menu/ModMenu.h>
 #include <Menu/DisplayMenu.h>
 #include <GUI/dune/GameOptionsWindow.h>
+#include <GUI/dune/JoinProgressWindow.h>
 #include <GUI/MsgBox.h>
 #include <GUI/QstBox.h>
 #include <Menu/PlaySetup.h>
@@ -402,6 +404,49 @@ int runMenuProbe() {
             menu.update();
             menuRequire(!menu.hasChildWindow(),"Version prompt reopened without another join attempt");
         }
+        menu.joiningRunning=true;
+        menu.stage=CrossplayMenu::Stage::ClientWaiting;
+        pNetworkManager=std::make_unique<NetworkManager>(NetworkManager::Transport::DirectP2P);
+        auto& progressNetwork=*pNetworkManager;
+        progressNetwork.playerName=settingsName;
+        progressNetwork.spectators.insert(settingsName);
+        progressNetwork.joinStage=NetworkManager::JoinStage::Receiving;
+        progressNetwork.observerTotal=128*1024;
+        progressNetwork.observerBytes.assign(64*1024,'x');
+        menu.update();
+        menuRequire(menu.joinProgress.isVisible() && !menu.statusLabel.isVisible(),"Join progress is not visible");
+        menuRequire(menu.joinProgress.getProgress()==50 && menu.joinProgress.getText().find("64 / 128 KiB")!=std::string::npos,
+            "Join progress does not describe received bytes");
+        menuCapture(menu,"hot-join-download-progress");
+        progressNetwork.spectators.clear();
+        progressNetwork.joinName="Codex Web Guest";
+        progressNetwork.joinTotal=128*1024;
+        progressNetwork.joinBytes.assign(64*1024,'x');
+        {
+            JoinProgressWindow progress;
+            menuCapture(progress,"named-player-joining");
+            progressNetwork.joinName=std::string(64,'W');
+            progress.refresh();
+            menuCapture(progress,"named-player-joining-long-name");
+        }
+        // The name must survive checkpoint handoff, but a completion notice
+        // must wait until the replacement simulation has actually started.
+        progressNetwork.joinName="Codex Web Guest";
+        progressNetwork.joinStage=NetworkManager::JoinStage::Ready;
+        progressNetwork.joinSnapshot=std::make_unique<GameInitSettings>();
+        progressNetwork.joinSpectators.clear();
+        menuRequire(progressNetwork.takeLateJoin()!=nullptr,"Checkpoint handoff failed");
+        menuRequire(progressNetwork.lateJoinPlayerName()=="Codex Web Guest"
+            && progressNetwork.recentJoinNotice().empty(),"Join announced before the new simulation started");
+        progressNetwork.beginSimulation(1);
+        menuRequire(progressNetwork.recentJoinNotice()=="Codex Web Guest joined to play"
+            && progressNetwork.lateJoinPlayerName().empty(),"Completed join lost its player name");
+        progressNetwork.joinNoticeTime=SDL_GetTicks()-12000;
+        menuRequire(progressNetwork.recentJoinNotice().empty(),"Completed join banner did not expire");
+        menu.teardownSession("Test transfer ended. Please try joining again.");
+        menuRequire(!menu.joinProgress.isVisible() && menu.statusLabel.isVisible() && !menu.joiningRunning,
+            "Join failure did not restore usable lobby controls");
+        menuRequire(menu.statusLabel.getText().find("Please try")!=std::string::npos,"Join failure reason disappeared");
         menu.joiningRunning=false;
         menu.chat.cancel(); menu.chatSession.clear(); menu.chatPending=false;
         menu.nextChatPoll=0;
