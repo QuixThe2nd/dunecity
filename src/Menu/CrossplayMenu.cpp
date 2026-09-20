@@ -267,7 +267,7 @@ CrossplayMenu::~CrossplayMenu() {
     admission.cancel();
     visibilityUpdate.cancel();
     visibilityPending = false;
-    if(pNetworkManager != nullptr && pNetworkManager->isRelaySession()) {
+    if(pNetworkManager != nullptr && pNetworkManager->isRoomSession()) {
         pNetworkManager->setOnReceiveGameInfo(
             std::function<void (const GameInitSettings&, const ChangeEventList&)>());
         pNetworkManager->setOnPeerDisconnected(
@@ -701,7 +701,7 @@ void CrossplayMenu::teardownSession(std::string reason) {
     admission.cancel();
     visibilityUpdate.cancel();
     visibilityPending = false;
-    if(pNetworkManager != nullptr && pNetworkManager->isRelaySession()) {
+    if(pNetworkManager != nullptr && pNetworkManager->isRoomSession()) {
         pNetworkManager->setOnReceiveGameInfo(
             std::function<void (const GameInitSettings&, const ChangeEventList&)>());
         pNetworkManager->setOnPeerDisconnected(
@@ -849,7 +849,7 @@ void CrossplayMenu::update() {
         }
         return;
     }
-    if(pNetworkManager == nullptr || !pNetworkManager->isRelaySession()) {
+    if(pNetworkManager == nullptr || !pNetworkManager->isRoomSession()) {
         return;
     }
 
