@@ -1,3 +1,30 @@
+## 2026-09-20 — Combined main release candidate 1.0.736
+
+Released 1.0.735 (f836940) already contains the graphics skins and campaign menu
+changes. Preserve that published tag and all its assets. The combined 1.0.736
+candidate includes that exact main history plus PR49 browser matchmaking,
+PR28 direct-P2P command pacing, PR62 Windows dependency caching, and PR45's
+screenshot fix intent while retaining main's stronger physical-target bounds.
+Every origin branch tip inventoried below is now an ancestor of this candidate;
+see `docs/branch-consolidation-736.md` for the superseded historical snapshots.
+Merge this PR into main before creating v1.0.736; remove incorporated branches
+only after checking their current tips against the merged main.
+
+Native and pinned Emscripten builds pass. All eight CTest groups pass (772 main
+suite cases passed, three skipped), as do the wasm32 ASan lifecycle harness and
+real three-peer hot-join replacement test (matching state at cycle 150).
+Two Chromium profiles using the candidate 736 game and actual production
+`wss://dunelegacy.com/` pass Find Match, cancellation/retry, lobby/start, two-way
+chat, movement, sustained command exchange and guest exit. No reported packet
+drops, browser errors or long menu sleeps. Both browsers share one network;
+selected ICE paths are host/UDP, so this is not a different-NAT traversal test.
+
+The separate production matcher is installed from website commit a2ed864 under
+`/opt/dunecity-matchmaking`, with a hardened systemd service and Apache TLS proxy.
+The existing room service remains healthy. Restart/recovery and root/dedicated
+WebSocket routes are checked separately. Website source PR12 must also land on
+its main branch. Public game assets remain 735 until the 736 release pipeline.
+
 ## 2026-09-20 — PR 49 refreshed onto main 1.0.734
 
 Main advanced to c505255 while the original PR validation run was completing.

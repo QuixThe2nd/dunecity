@@ -1,7 +1,8 @@
 # Browser multiplayer review — PR 49
 
-Reviewed on 20 September 2026 and refreshed against `main` c505255 after PR 61
-merged during validation. Combined version: 1.0.735.
+Reviewed on 20 September 2026. Final candidate 1.0.736 includes released main
+f836940 (1.0.735) and all active game branch histories; see
+`branch-consolidation-736.md`. Earlier measurements below retain their versions.
 
 ## Corrections
 
@@ -66,15 +67,33 @@ replacement probe resumes with matching state at cycle 150. The wasm32 ASan
 lifecycle harness and automated two-browser pairing/play/quit test pass again.
 The PR description records CI status for the pushed revision.
 
-## Deployment and limits
+## Production acceptance on the combined 1.0.736 candidate
 
-This does not deploy a server or publish game assets. **Find Match requires the
-separate p2pkit WebSocket service**, including TLS/proxy routing on the production
-origin; see `platform/web/README.md`. The existing PHP room directory is a
-different service. No public signaling service or cross-network NAT traversal was
-validated. There is no default TURN relay. Matchmaking trusts its signaling
-server; it does not use the direct-room fingerprint admission protocol.
+Native and Emscripten builds pass; eight CTest groups pass (772 passed, three
+skipped in the main suite). The wasm32 ASan lifecycle harness passes again.
+Three real peers resume with matching simulation state at cycle 150 after a
+hot-join replacement, including the integrated PR28 command-pacing change.
 
-The live smoke test verifies pairing, lobby/start handoff and sustained packet
-exchange on one machine, not Internet reachability or every gameplay action.
-CI platform checks must be evaluated on the pushed revision before merging.
+The matcher is now deployed separately from the room directory, from website
+commit a2ed864 (website PR12). Two isolated Chromium profiles load the candidate
+at the production origin by local request interception; no public game files are
+replaced during the test. They use the shipping default public WSS endpoint and
+STUN configuration. Find Match, queue cancellation/retry, pairing, host map
+selection, guest admission, start, two-way chat, army movement and guest quit
+pass. Each client exchanges over 940 command packets with zero reported drops;
+there are no browser errors or menu sleeps over 50 ms. Candidate evidence is in
+`build/public-matchmaking-736/` (results, selected ICE paths and screenshots).
+
+The new service passes a controlled restart and health recovery. Existing `/p2p`
+room health remains OK. Both `/` and `/matchmaking` accept public TLS WebSocket
+connections; unrelated browser origins are rejected.
+
+## Limits and release gates
+
+Both gameplay clients run on one machine/network and select host/UDP ICE paths.
+This verifies public signaling and real gameplay, not connectivity across every
+NAT. There is no default TURN relay. Matchmaking trusts its signaling server and
+does not use the direct-room fingerprint admission protocol. Live game assets
+remain 735 until the separate 736 publication completes. Evaluate CI on the final
+pushed candidate and tag the resulting main merge, then verify the actual public
+browser build and desktop artifacts separately.
