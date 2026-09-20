@@ -5,6 +5,64 @@ import unittest
 from test_signaling import SignalingTestCase, claims, APP_VERSION
 
 class LateJoinTests(SignalingTestCase):
+    def setUp(self):
+        super().setUp()
+        Path(self.service.notification_log).write_text('')
+
+    def notifications(self):
+        return [json.loads(line) for line in Path(self.service.notification_log).read_text().splitlines()]
+
+    def test_hot_join_announces_name_only_after_resume_and_once(self):
+        a,h=self.running(); r=self.request(a, 'Duncan')
+        request=self.manage(h).multi['request'][0].split('|')[0]
+        self.manage(h,'approve',request)
+        guest=self.session(self.status(r.fields['request']).fields['grant'],'Duncan')
+        self.assertEqual(200,guest.status)
+        self.assertEqual(['hosted','started'], [e[0] for e in self.notifications()])
+        self.assertEqual(403,self.phase(guest.fields['session'],'match').status)
+        for _ in range(2): self.assertEqual(200,self.phase(h.fields['session'],'match').status)
+        events=self.notifications()
+        self.assertEqual(['hosted','started','hot_joined'], [e[0] for e in events])
+        joined=events[-1][1]
+        self.assertEqual(('Duncan','player',int(guest.fields['peer'])),
+                         (joined['joined_name'],joined['joined_role'],joined['participant_id']))
+        self.assertEqual(['Host','Duncan'],joined['player_names'])
+        for secret in (a.fields['room'],a.fields['grant'],h.fields['session'],r.fields['request'],request):
+            self.assertNotIn(secret,json.dumps(events))
+
+    def test_cancelled_controller_join_does_not_announce_success(self):
+        a,h=self.running(); r=self.request(a)
+        request=self.manage(h).multi['request'][0].split('|')[0]
+        self.manage(h,'approve',request)
+        self.session(self.status(r.fields['request']).fields['grant'],'Guest')
+        self.manage(h,'abort',request)
+        self.phase(h.fields['session'],'match')
+        self.assertEqual(['hosted','started'], [e[0] for e in self.notifications()])
+
+    def test_spectator_and_promotion_have_distinct_named_announcements(self):
+        a,h=self.running(gameProtocol=9)
+        r=self.request(a,'Watcher',gameProtocol=9,spectate=1)
+        request=self.manage(h).multi['request'][0].split('|')[0]
+        self.manage(h,'approve_spectator',request)
+        grant=self.status(r.fields['request'],gameProtocol=9).fields['grant']
+        form=claims(grant=grant,name='Watcher'.encode().hex(),gameProtocol=9,nonce='a'*32)
+        watcher=self.service.request('POST','/v1/p2p/session',form)
+        self.assertEqual(200,watcher.status)
+        self.assertEqual(200,self.service.request('POST','/v1/p2p/session',form).status)
+        self.manage(watcher,'request_play')
+        request=self.manage(h).multi['request'][0].split('|')[0]
+        self.manage(h,'approve',request)
+        self.assertEqual(3,len(self.notifications()))
+        for _ in range(2): self.assertEqual(200,self.phase(h.fields['session'],'match').status)
+        events=self.notifications()
+        self.assertEqual(['hosted','started','hot_joined','hot_joined'],[e[0] for e in events])
+        self.assertEqual(['spectator','player'],[e[1]['joined_role'] for e in events[2:]])
+        self.assertEqual(['Watcher','Watcher'],[e[1]['joined_name'] for e in events[2:]])
+        self.assertEqual(['Host'],events[2][1]['player_names'])
+        self.assertEqual(['Watcher'],events[2][1]['spectator_names'])
+        self.assertEqual(['Host','Watcher'],events[3][1]['player_names'])
+        self.assertEqual([],events[3][1]['spectator_names'])
+
     def running(self, **fields):
         a=self.service.request('POST','/v1/admission/host',claims(**dict(dict(visibility='public',maxPeers=4,mode='custom',allowLateJoin=1,map='Test map'.encode().hex()),**fields)))
         h=self.session(a.fields['grant'],'Host',**{k:v for k,v in fields.items() if k in ('gameProtocol','appVersion','contentHash')})

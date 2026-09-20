@@ -1,3 +1,22 @@
+## 2026-09-20 — Named multiplayer Discord announcements (local, not deployed)
+
+The signaling notification hook now supplies human player and spectator rosters.
+Initial start identifies the host and players present. Hot-join events identify the
+participant by name and role: a spectator event follows committed session admission;
+a player event follows the host successfully resuming the match after admission or
+promotion. Cancelled controller joins, nonce retries and repeated phase requests
+do not announce success. Transport credentials remain excluded.
+
+The companion website change is on `fix/multiplayer-roster-notifications` in
+`../dunelegacy.com`: named Discord embeds, separate spectator/player events,
+participant/role deduplication, literal Markdown display and bounded roster fields.
+All 193 signaling tests and website notifier tests pass. Server-only change; no
+client rebuild/version bump required. Neither repository has been pushed for this
+change and the running test game remains intact.
+
+Stefan confirmed the local 733 web-host/native-Air hot join and approved shared
+control work. This is additional user acceptance evidence for the next section.
+
 ## 2026-09-20 — Hot-join restoration, progress and recovery (unreleased 733)
 
 Branch `fix/hot-join-progress-733`. The Air's installed 732 log was preserved before
