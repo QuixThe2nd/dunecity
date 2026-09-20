@@ -1,6 +1,6 @@
 # Browser multiplayer review — PR 49
 
-Reviewed on 20 September 2026. Final candidate 1.0.736 includes released main
+Reviewed on 20 September 2026. Final candidate 1.0.737 includes released main
 f836940 (1.0.735) and all active game branch histories; see
 `branch-consolidation-736.md`. Earlier measurements below retain their versions.
 
@@ -97,3 +97,27 @@ does not use the direct-room fingerprint admission protocol. Live game assets
 remain 735 until the separate 736 publication completes. Evaluate CI on the final
 pushed candidate and tag the resulting main merge, then verify the actual public
 browser build and desktop artifacts separately.
+
+## Final 1.0.737 integration and publication-path regression
+
+The final tree additionally incorporates the locally committed public-campaign
+branch through a50938a. Native and raw CMake Emscripten builds pass, as do all
+eight CTest groups. Campaign probes verify online/public defaults, Offline
+selection, solo host readiness and the absence of a phantom second controller.
+The explanation fits at 640x480 and the larger tested window sizes.
+
+A raw CMake rebuild exposed that only the optional shell wrapper prepended the
+P2PKit runtime. Real public pairing then failed with RTCTransport unavailable.
+CMake now packages that runtime after every link. The separate website workflow
+installs the pinned SDK and invokes the same verified build wrapper as game CI.
+The fixed raw-build output passes the public two-browser game test, including
+chat, movement and quit. An unchanged incremental CMake build followed by the
+wrapper's packaging leaves the runtime byte-identical. All 29 browser glue tests,
+four build-safety checks, generated-JS verification and bundled-mod checks pass.
+Evidence: `build/public-matchmaking-737/`.
+
+The real solo-host spectator promotion test declines the first play request,
+retries it, accepts it into shared control, and resumes with matching state at
+cycle 1800. Its stale anonymous-label assertions were updated to the named
+approval notices already present in main. The existing roster and state checks
+remain in place. Evidence: `build/pr49-solo-promote-737-retry/`.

@@ -553,6 +553,19 @@ if(EMSCRIPTEN)
         "${CMAKE_SOURCE_DIR}/platform/web/dist/p2pkit.iife.js"
         "${CMAKE_SOURCE_DIR}/platform/web/dunecity_webrtc_config.js"
         "${DUNECITY_P2PKIT_DIR}/emscripten/js/p2pkit_webrtc_glue.cjs")
+    # Matchmaking also needs the SDK runtime before the Emscripten module.
+    # Package it after every link, including raw CMake/incremental builds;
+    # relying on the optional wrapper left the website workflow without it.
+    find_program(DUNECITY_NODE_EXECUTABLE NAMES node REQUIRED)
+    set_property(TARGET dunecity APPEND PROPERTY LINK_DEPENDS
+        "${CMAKE_SOURCE_DIR}/tools/web/prepend-p2pkit.mjs")
+    add_custom_command(TARGET dunecity POST_BUILD
+        COMMAND "${DUNECITY_NODE_EXECUTABLE}"
+            "${CMAKE_SOURCE_DIR}/tools/web/prepend-p2pkit.mjs"
+            "${CMAKE_SOURCE_DIR}/platform/web/dist/p2pkit.iife.js"
+            "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/dunecity.js"
+        COMMENT "Package the pinned matchmaking runtime"
+        VERBATIM)
     target_compile_options(dunecity PRIVATE
         "SHELL:-sUSE_SDL=2"
         "SHELL:-sUSE_SDL_MIXER=2"

@@ -1,3 +1,26 @@
+## 2026-09-20 — Final 737 acceptance
+
+The complete 737 raw browser build passes public matchmaking and gameplay again
+following the CMake runtime fix. Native and browser builds, all eight CTest groups,
+29 browser glue tests, four build safety checks, generated-JS and bundled-mod
+verification pass. Incremental CMake plus wrapper packaging is byte-identical.
+The solo-host spectator promotion test passes at cycle 1800 with matching state,
+including a declined request, retry and shared-control admission. See the PR49
+validation document for evidence and the same-network ICE test limitation.
+
+## 2026-09-20 — Complete browser runtime on every build path
+
+A raw CMake rebuild linked successfully but omitted the P2PKit runtime, making
+public pairing fail with RTCTransport unavailable. CMake now prepends the pinned
+runtime after every link. The standalone web publisher now installs the pinned
+SDK and uses the same verified build script as game CI. The old optional wrapper
+prepend remains idempotent. This fixes a separate production publication path
+that the main CI artifact build alone did not exercise.
+
+The solo-host spectator promotion probe initially expected obsolete anonymous
+approval text. Updated its assertions to the current named notices; the real
+host and newcomer then resumed with matching state at cycle 1800.
+
 ## 2026-09-20 — Final combined release advances to 1.0.737
 
 The separately completed public-campaign defaults and privacy explanation are
