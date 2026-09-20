@@ -137,14 +137,14 @@ GameInterface::GameInterface() : Window(0,0,0,0) {
     dune2rVisualButton.setVisible(showViewControls);
 
     // A persistent map-screen notice, clear of the population and view controls.
-    joinRequestButton.setText("Request waiting approval");
+    joinRequestButton.setText("Waiting for join requests");
     joinRequestButton.setTooltipText("Waiting for the host. Click for request options.");
     joinRequestButton.setTextColor(COLOR_RGB(255,255,255));
     joinRequestButton.setOnClick(std::bind(&Game::onJoinRequests, currentGame));
     joinRequestButton.setVisible(false);
     windowWidget.addWidget(&joinRequestButton,
-        Point(std::max(8, viewControlsRight - 400), viewControlsY + viewButtonHeight + 12),
-        Point(400, 36));
+        Point(std::max(8, viewControlsRight - 600), viewControlsY + viewButtonHeight + 12),
+        Point(std::min(600, viewControlsRight - 8), 44));
 
     // add radar
     const Point radarOrigin(getRendererWidth() - sideBar.getSize().x + SIDEBAR_COLUMN_WIDTH, 0);
@@ -462,18 +462,27 @@ void GameInterface::updateJoinRequestButton() {
             const auto count = std::count_if(requests.begin(), requests.end(),
                 [](const auto& request) { return !request.spectator; });
             if(count) {
-                text = "Join requests (" + std::to_string(count) + "): waiting approval";
-                tooltip = "Click to approve or reject a request to play.";
+                const auto first = std::find_if(requests.begin(), requests.end(),
+                    [](const auto& request) { return !request.spectator; });
+                text = first->name + " wants to play";
+                if(count > 1) text += " (+" + std::to_string(count - 1) + ")";
+                tooltip = "Click to approve or reject:\n";
+                for(const auto& request : requests) if(!request.spectator) tooltip += request.name + "\n";
                 pending = true;
             }
         } else if(currentGame->isSpectating()) {
             const auto& state = direct->playRequestState();
-            if(state == "pending") { text = "Request waiting approval"; pending = true; }
-            else if(state == "approved") text = "Request approved - joining";
+            const auto& name = settings.general.playerName;
+            if(state == "pending") { text = name + ": waiting for host approval"; pending = true; }
+            else if(state == "approved") text = name + ": approved - joining";
             else if(state == "declined") text = "Request declined - still spectating";
             else if(state == "error") text = "Request failed - click to try again";
             tooltip = pending ? "Waiting for the host. Click for request options."
                               : "Click for request-to-play options.";
+        }
+        if(text.empty()) {
+            text = pNetworkManager->recentJoinNotice();
+            tooltip = text;
         }
     }
     joinRequestButton.setVisible(!text.empty());

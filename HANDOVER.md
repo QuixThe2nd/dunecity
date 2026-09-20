@@ -1,3 +1,20 @@
+## 2026-09-20 — Prominent in-game join names (local 734)
+
+The map notice now names the first player requesting approval, with an additional
+request count and all pending names in its tooltip. Requesters see their own name
+while waiting. Approval and synchronization dialogs have a large gold player name;
+the host also sees named spectator arrivals. After a controller checkpoint is
+loaded and the new simulation begins, every controller sees a named "joined to
+play" notice for 12 seconds. The name survives checkpoint handoff; transfer alone
+does not announce successful admission.
+
+Version bumped to 1.0.734. Native dependency audits/build, the browser build and all
+eight CTest suites pass. The menu render suite passes again after enlarging the name region; screenshots
+confirm both ordinary names and 64-character names fit at 640/854/1280 widths.
+Build/test logs are in the existing task work/hotjoin-733 directory as join-names-*.
+The running 733 browser match was preserved; these UI changes require the new client
+build. No 734 installer, public upload, update-feed change, push or tag yet.
+
 ## 2026-09-20 — Named multiplayer Discord announcements (deployed)
 
 The signaling notification hook now supplies human player and spectator rosters.

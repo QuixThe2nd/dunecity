@@ -229,6 +229,10 @@ public:
     bool lateJoinReady() const { return joinStage == JoinStage::Ready; }
     bool lateJoinLoading() const { return joinLoading; }
     const std::string& lateJoinStatus() const { return joinStatus; }
+    const std::string& lateJoinPlayerName() const { return joinName; }
+    std::string recentJoinNotice() const {
+        return SDL_GetTicks() - joinNoticeTime < 12000 ? joinNotice : std::string();
+    }
     // Percent describes the current stage, not an estimated elapsed duration.
     int lateJoinPercent() const;
     std::string lateJoinProgressText() const;
@@ -475,6 +479,8 @@ private:
     bool joinExpected = false, joinLoading = false, joinAsSpectator = false;
     std::set<std::string> spectators, joinSpectators;
     std::string joinRequestId, joinName, joinBytes, joinStatus;
+    std::string joinNotice;
+    Uint32 joinNoticeTime = 0;
     std::vector<Uint32> joinOriginalPeers;
     std::map<Uint32,Uint32> joinAcks;
     std::unique_ptr<GameInitSettings> joinSnapshot;
