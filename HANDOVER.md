@@ -1,3 +1,18 @@
+## 2026-09-20 — Campaign dropdown visibility (local 1.0.735)
+
+Fixed dropdown placement to respect the menu's SDL clip rectangle and include
+the closed control's height when checking available space. Campaign mod and AI
+lists now open upward when needed; oversized lists fit whole rows and use the
+existing scrollbar and mouse wheel. The selected row stays visible on resizing.
+
+The menu regression reproduced the old clipping failure, then passed at
+640x480, 854x480 and 1280x720. It checks all four lower campaign selectors and
+scrolls a constrained 40-entry list to select its final row through the menu.
+Rendered screenshots were visually checked. Native build, dependency audits,
+version consistency and all eight CTest suites pass. Local build/bin/dunecity.app
+is 1.0.735; the existing running process needs a restart. No push, tag or public
+release performed.
+
 ## 2026-09-20 — Dune City 1.0.734 published and upgrade ready
 
 PR61 merged as c505255c6fd23ef92f2ec91a60c5eeb8c4bde8b7; tag v1.0.734 points there.
