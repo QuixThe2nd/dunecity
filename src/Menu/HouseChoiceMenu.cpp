@@ -75,7 +75,7 @@ constexpr int kEnemyAIOptionCount = sizeof(kEnemyAIClasses) / sizeof(kEnemyAICla
 
 // Static member definitions
 int HouseChoiceMenu::s_house = HOUSE_ATREIDES;
-bool HouseChoiceMenu::s_online = false;
+bool HouseChoiceMenu::s_online = true;
 bool HouseChoiceMenu::s_singleMission = false;
 bool HouseChoiceMenu::s_publicGame = true;
 int HouseChoiceMenu::s_startLevel = 1;
@@ -341,7 +341,7 @@ void HouseChoiceMenu::updateConnection() {
     hostCoopButton.setText(s_online ? _("Create Lobby") : s_singleMission ? _("Start Mission") : _("Start Campaign"));
     visibilityDropDown.setEnabled(s_online);
     supportBotDropDown.setEnabled(!s_online);
-    if(s_online) supportDescription.setText(_("Two people share one house and army.\nYour partner joins in the lobby."));
+    if(s_online) supportDescription.setText(_("Start solo; others can watch or ask to join.\nChoose Offline above to play alone."));
     else onSupportBotSelectionChanged(false);
 }
 

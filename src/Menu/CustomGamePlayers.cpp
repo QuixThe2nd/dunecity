@@ -747,9 +747,9 @@ void CustomGamePlayers::onChildWindowClose(Window* child) {
 void CustomGamePlayers::update() {
     if(isCoopGameType(gameInitSettings.getGameType()) && startGameTime == 0 && bServer && !bWaitingForModAcks) {
         const int partner = houseInfo[0].player2DropDown.getSelectedEntryIntData();
-        const bool waiting = partner == PLAYER_OPEN || partner == PLAYER_CLOSED;
-        nextButton.setEnabled(!waiting);
-        readinessLabel.setText(waiting ? _("Waiting for your co-op partner, or choose an AI partner.") : _("Your co-op partner is ready."));
+        const bool solo = partner == PLAYER_OPEN || partner == PLAYER_CLOSED;
+        nextButton.setEnabled(houseInfo[0].player1DropDown.getSelectedEntryIntData() == PLAYER_HUMAN);
+        readinessLabel.setText(solo ? _("Start now. Others can watch or ask to join while you play.") : _("Your co-op partner is ready."));
     } else if(!bServer && startGameTime == 0) readinessLabel.setText(_("Waiting for the host to start."));
     else if(setup) readinessLabel.setText(setup->online
         ? _("Leave an open player slot for a friend. Create Lobby when ready.")
@@ -1479,10 +1479,8 @@ void CustomGamePlayers::onNext()
         return;
     }
     if(isCoopGameType(gameInitSettings.getGameType())
-       && (houseInfo[0].player1DropDown.getSelectedEntryIntData() != PLAYER_HUMAN
-           || houseInfo[0].player2DropDown.getSelectedEntryIntData() == PLAYER_OPEN
-           || houseInfo[0].player2DropDown.getSelectedEntryIntData() == PLAYER_CLOSED)) {
-        openWindow(MsgBox::create(_("Wait for your co-op partner, or select a QuantBot.")));
+       && houseInfo[0].player1DropDown.getSelectedEntryIntData() != PLAYER_HUMAN) {
+        openWindow(MsgBox::create(_("Choose a human player to lead the campaign.")));
         return;
     }
     // check if we have at least two houses on the map and if we have more than one team

@@ -1,3 +1,19 @@
+## 2026-09-20 — Public campaign by default (local 1.0.736)
+
+Campaign entry now defaults to Online co-op with the existing Public visibility
+setting. Players can select Offline before starting, or Private for invitations.
+The co-op lobby allows a human host to start with the partner slot open or closed,
+without requiring a second human or an AI. Existing late-join shared-control slots
+and CampaignCoop progression carry this through the full level 1–9 campaign.
+Menu guidance explains starting solo and later spectators/request-to-play joins.
+
+Native app rebuilt at build/bin/dunecity.app. Dependency audits and version check
+pass; all eight CTest suites pass. Menu regressions cover the online/public default,
+switching offline, and solo lobby readiness/roster at 640, 854 and 1280 widths.
+The 640-pixel campaign and solo-lobby screenshots were visually checked. Live
+native/browser joins and a full nine-level playthrough were not rerun for this
+change. No public release or push performed.
+
 ## 2026-09-20 — Campaign dropdown visibility (local 1.0.735)
 
 Fixed dropdown placement to respect the menu's SDL clip rectangle and include
