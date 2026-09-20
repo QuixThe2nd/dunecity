@@ -1,8 +1,13 @@
-# Combined 1.0.736 branch audit
+# Combined branch audit for release 1.0.737
 
 Snapshot: 20 September 2026. Every listed tip is an ancestor of candidate db1a9a7.
 The release must be tagged from the subsequent main merge commit. Published
 v1.0.735 at f836940 remains unchanged and is included in that history.
+
+The final 1.0.737 integration additionally includes local branch
+`fix/public-campaign-default` at a50938a26bf8abefceb20adca15cde5efa7dcb0e.
+It changes campaign defaults and solo readiness and adds a privacy explanation.
+The 1.0.736 candidate was never published.
 
 ## Integration decisions
 
