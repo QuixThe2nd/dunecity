@@ -165,3 +165,11 @@ upgrade, run it without `--check`, review the diff, and update the recorded hash
 
 Browser peer lifetime regressions run under wasm32 AddressSanitizer with
 `tests/wasm/run-webrtc-peer-lifecycle.sh` after sourcing the pinned emsdk.
+
+For an optional two-browser acceptance run, install Playwright and Chrome, then
+run `node tests/web/matchmaking-smoke.mjs` from the repository root. Set
+`PLAYWRIGHT_MODULE` to a Playwright module path if it is installed elsewhere,
+and `BROWSER_CHANNEL` to select a different installed Chromium channel. The
+fixture uses isolated profiles, loopback signaling and host-only ICE. It saves
+screenshots and packet counters under `build/matchmaking-smoke/`, including a
+check that quitting a match cannot schedule a multi-minute browser sleep.

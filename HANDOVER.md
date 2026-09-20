@@ -1,10 +1,11 @@
-## 2026-09-20 — PR 49 browser multiplayer review, 1.0.733
+## 2026-09-20 — PR 49 browser multiplayer review, 1.0.734
 
 Integrated current `main` (8057d80) into the matchmaking branch. Browser peer
 cleanup now removes aliases before deletion and defers local rejection cleanup
 until packet handling returns. Fixed the rejection log varargs mismatch,
 restored incoming-byte limits, guarded room-session status queries, and reset
-match state on retry. Cancel releases paired connections, map-selection Back
+match state on retry. Browser menu pacing is capped at 50 ms: the real exit
+test caught a 484-second sleep after a nested match returned. Cancel releases paired connections, map-selection Back
 leaves the pair, and the matchmaking screen now renders its Back button.
 Preserved main's updater, observer/late-join behavior and direct-RTC diagnostics.
 

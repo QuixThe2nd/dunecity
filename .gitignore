@@ -129,3 +129,5 @@ __pycache__/
 # The PHP development router is source, not a compiled bin directory.
 !tools/p2p-signaling/bin/
 !tools/p2p-signaling/bin/router.php
+
+!docs/browser-multiplayer-pr49-validation.md
