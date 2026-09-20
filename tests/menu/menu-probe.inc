@@ -45,6 +45,47 @@ int runMenuProbe() {
     effectiveGameOptions = ModManager::instance().loadEffectiveGameOptions(settings.gameOptions);
     {
         HouseChoiceMenu menu;
+        for(auto* dropdown : {&menu.modDropDown, &menu.enemyAIDropDown,
+                              &menu.supportBotDropDown, &menu.startLevelDropDown}) {
+            dropdown->onOpenListBoxButton();
+            menuCapture(menu, dropdown == &menu.modDropDown ? "campaign-mod-open" : "campaign-options-open");
+            const auto* geometry = menu.windowWidget.getWidgetDataFromWidget(dropdown);
+            const int top = geometry->position.y + (dropdown->bListBoxAbove
+                ? -dropdown->listBox.getSize().y : dropdown->getSize().y);
+            menuRequire(top >= 0 && top + dropdown->listBox.getSize().y <= menu.getSize().y,
+                        "Campaign dropdown extends outside the menu clip rectangle");
+            dropdown->onOpenListBoxButton();
+        }
+        // A long list must shrink to whole rows, expose its scrollbar, and
+        // still accept a click on the last item after wheel scrolling.
+        auto& dropdown = menu.supportBotDropDown;
+        dropdown.setNumVisibleEntries(40);
+        for(int i = dropdown.getNumEntries(); i < 40; ++i)
+            dropdown.addEntry("Extra partner " + std::to_string(i), i);
+        dropdown.onOpenListBoxButton();
+        menuCapture(menu, "campaign-scrolling-options");
+        auto& list = dropdown.listBox;
+        menuRequire(list.isScrollbarVisible(), "Constrained dropdown has no scrollbar");
+        const auto* geometry = menu.windowWidget.getWidgetDataFromWidget(&dropdown);
+        const int top = geometry->position.y + (dropdown.bListBoxAbove
+            ? -list.getSize().y : dropdown.getSize().y);
+        menuRequire(top >= 0 && top + list.getSize().y <= menu.getSize().y,
+                    "Long campaign dropdown extends outside the menu");
+        const int entryHeight = GUIStyle::getInstance().getListBoxEntryHeight();
+        menuRequire((list.getSize().y - 2) % entryHeight == 0, "Dropdown clips a partial row");
+        const int x = menu.getPosition().x + geometry->position.x + 10;
+        const int y = menu.getPosition().y + top + 3;
+        for(int i = 0; i < 40; ++i) menu.handleMouseWheel(x, y, false);
+        const int lastRow = 39 - list.firstVisibleElement;
+        menuRequire(lastRow >= 0 && (lastRow + 1) * entryHeight <= list.getSize().y - 2,
+                    "Wheel scrolling cannot reach the last dropdown entry");
+        menu.handleMouseLeft(x, y + lastRow * entryHeight, true);
+        menuRequire(dropdown.getSelectedIndex() == 39 && !dropdown.bShowListBox,
+                    "Last visible dropdown entry cannot be selected through the menu");
+        dropdown.setSelectedItem(0);
+    }
+    {
+        HouseChoiceMenu menu;
         menuRequire(HouseChoiceMenu::isPublicGame(),"Campaign should default to public");
         menu.supportBotDropDown.setSelectedItem(4);
         menuRequire(HouseChoiceMenu::getSupportBotIndex()==4,"Support setup fixture failed");
