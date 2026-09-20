@@ -1,4 +1,4 @@
-## 2026-09-20 — Named multiplayer Discord announcements (local, not deployed)
+## 2026-09-20 — Named multiplayer Discord announcements (deployed)
 
 The signaling notification hook now supplies human player and spectator rosters.
 Initial start identifies the host and players present. Hot-join events identify the
@@ -11,8 +11,14 @@ The companion website change is on `fix/multiplayer-roster-notifications` in
 `../dunelegacy.com`: named Discord embeds, separate spectator/player events,
 participant/role deduplication, literal Markdown display and bounded roster fields.
 All 193 signaling tests and website notifier tests pass. Server-only change; no
-client rebuild/version bump required. Neither repository has been pushed for this
-change and the running test game remains intact.
+client rebuild/version bump required. At Stefan's request, website PR10 was merged
+as 9cf16b1d and deployment run 35483230025 passed. Live health returned status=ok;
+live notifier and signaling SHA-256 hashes match the tested local sources. Game
+source commit fe29d281 is packaged by that deployment; game release 733 remains
+unpublished. A fresh public Twin Cities lobby hosted by Codex Web 733 is waiting
+for Stefan to join before start, to check named start and hot-join Discord messages.
+The previous browser match had already returned to the online menu. New live
+notification delivery still awaits observation during this joint test.
 
 Stefan confirmed the local 733 web-host/native-Air hot join and approved shared
 control work. This is additional user acceptance evidence for the next section.
