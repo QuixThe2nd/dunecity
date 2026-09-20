@@ -42,6 +42,9 @@ public:
                      int64_t value, int item = -1, bool duration = true);
     bool isWorstFrame(int64_t us) const { return enabled() && us > worstFrameUs; }
     void slowFrame(uint32_t cycle, int64_t microseconds, const Record& context);
+    // Every >=100ms frame/gap gets a timestamped record, not only the worst
+    // frame in a five-second window. Diagnostic only; no simulation decisions.
+    void frameStall(uint32_t cycle, int64_t microseconds, const Record& context);
     bool performanceDue() const;
     void flushPerformance(uint32_t cycle, bool force = false);
     const std::string& path() const { return filename; }
@@ -70,7 +73,7 @@ private:
 };
 
 DecisionLog& log();
-void startGame(const Record& metadata);
+void startGame(const Record& metadata, bool diagnosticsEnabled);
 
 class PerformanceScope {
 public:

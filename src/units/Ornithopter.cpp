@@ -133,7 +133,7 @@ Ornithopter::Ornithopter(InputStream& stream) : AirUnit(stream) {
 
 void Ornithopter::init() {
     itemID = Unit_Ornithopter;
-    owner->incrementUnits(itemID);
+    registerUnit();
 
     graphicID = ObjPic_Ornithopter;
     graphic = pGFXManager->getObjPic(graphicID,getOwner()->getHouseID());

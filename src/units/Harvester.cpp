@@ -83,7 +83,7 @@ Harvester::Harvester(InputStream& stream) : TrackedUnit(stream)
 void Harvester::init()
 {
     itemID = Unit_Harvester;
-    owner->incrementUnits(itemID);
+    registerUnit();
 
     canAttackStuff = false;
 
@@ -664,4 +664,17 @@ void Harvester::setSpeeds()
         case DOWN:      xSpeed = 0;                         ySpeed = speed;     break;
         case LEFTDOWN:  xSpeed = -speed*DIAGONALSPEEDCONST; ySpeed = -xSpeed;   break;
     }
+}
+
+// These counters affect refinery selection and carryall requests. Ordinary
+// saves may reset them, but a live viewer must replay the exact same decisions.
+void Harvester::saveObserverRuntime(OutputStream& stream) const {
+    UnitBase::saveObserverRuntime(stream);
+    stream.writeUint8(pathFailCounter);
+    stream.writeUint8(returnPathFailCounter);
+}
+void Harvester::loadObserverRuntime(InputStream& stream) {
+    UnitBase::loadObserverRuntime(stream);
+    pathFailCounter=stream.readUint8();
+    returnPathFailCounter=stream.readUint8();
 }

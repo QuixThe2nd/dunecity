@@ -39,6 +39,7 @@
 #include <GUI/dune/DuneStyle.h>
 
 #include <Menu/MainMenu.h>
+#include <misc/DesktopUpdater.h>
 #include <Menu/OptionsMenu.h>
 
 #include <misc/DiscordManager.h>
@@ -90,6 +91,7 @@
 
 #ifdef __APPLE__
 #include <misc/MacFunctions.h>
+#include <mach-o/dyld.h>
 #endif
 
 #ifdef __EMSCRIPTEN__
@@ -666,6 +668,7 @@ void createDefaultConfigFile(const std::string& configfilepath, const std::strin
             // Set user-specific defaults
             templateINI.setStringValue("General", "Player Name", getDefaultPlayerName());
             templateINI.setStringValue("General", "Language", language);
+            templateINI.setBoolValue("General", "Diagnostic Logs", SettingsClass::GeneralClass::defaultDiagnosticLogs);
             
             if (templateINI.saveChangesTo(configfilepath)) {
                 SDL_Log("User config file created from template successfully");
@@ -688,6 +691,11 @@ void createDefaultConfigFile(const std::string& configfilepath, const std::strin
     }
 
     const char configfile[] =   "[General]\n"
+#ifdef __EMSCRIPTEN__
+                                "Diagnostic Logs = false     # Enable development diagnostics in Settings > Advanced\n"
+#else
+                                "Diagnostic Logs = true      # Enable development diagnostics in Settings > Advanced\n"
+#endif
                                 "Play Intro = false          # Play the intro when starting the game?\n"
                                 "Player Name = %s            # The name of the player\n"
                                 "Language = %s               # en = English, fr = French, de = German\n"
@@ -772,6 +780,10 @@ void logOutputFunction(void *userdata, int category, SDL_LogPriority priority, c
     */
     fprintf(stderr, "%s\n", message);
     fflush(stderr);
+
+    // Keep warnings/errors on stderr with diagnostics disabled, without
+    // maintaining the additional development trace file.
+    if (!settings.general.diagnosticLogs) return;
 
     // DuneCity 1.0.501: mirror all SDL logs to dunecity-crash.log next to the
     // executable. On Windows release builds stderr isn't visible, so a silent
@@ -863,8 +875,34 @@ std::string getUserLanguage() {
 
 int main(int argc, char *argv[]) {
 #ifndef __EMSCRIPTEN__
-    // Packaging check: no SDL window, profile, or game session is created.
+    // Packaging checks run before opening a profile or game session.
     for(int index = 1; index < argc; ++index) {
+        if(std::strcmp(argv[index], "--check-desktop-runtime") == 0) {
+            if(SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER) != 0) {
+                std::fprintf(stderr, "SDL initialization failed: %s\n", SDL_GetError());
+                return EXIT_FAILURE;
+            }
+            SDL_Window* window = SDL_CreateWindow("Dune City runtime check", 0, 0, 64, 64, SDL_WINDOW_HIDDEN);
+            SDL_Renderer* renderer = window ? SDL_CreateRenderer(window, -1, SDL_RENDERER_SOFTWARE) : nullptr;
+            const bool ready = renderer && SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255) == 0
+                && SDL_RenderClear(renderer) == 0;
+            if(ready) SDL_RenderPresent(renderer);
+            else std::fprintf(stderr, "SDL rendering failed: %s\n", SDL_GetError());
+#ifdef __APPLE__
+            for(uint32_t i = 0; i < _dyld_image_count(); ++i) {
+                const char* path = _dyld_get_image_name(i);
+                const char* name = path ? std::strrchr(path, '/') : nullptr;
+                name = name ? name + 1 : path;
+                if(name && (std::strncmp(name, "libSDL", 6) == 0 || std::strncmp(name, "SDL", 3) == 0))
+                    std::printf("SDL runtime library: %s\n", path);
+            }
+#endif
+            if(renderer) SDL_DestroyRenderer(renderer);
+            if(window) SDL_DestroyWindow(window);
+            SDL_Quit();
+            if(ready) std::puts("Desktop runtime initialization and rendering passed");
+            return ready ? EXIT_SUCCESS : EXIT_FAILURE;
+        }
         if(std::strcmp(argv[index], "--check-relay-support") == 0) {
             const auto support = relayWebSocketSupport();
             const bool secure = support.available && support.reason.empty();
@@ -875,8 +913,8 @@ int main(int argc, char *argv[]) {
     }
 #endif
     SDL_LogSetOutputFunction(logOutputFunction, nullptr);
+    // Do not create a development trace before the persisted preference is read.
     SDL_LogSetAllPriority(SDL_LOG_PRIORITY_WARN);
-    SDL_LogSetPriority(SDL_LOG_CATEGORY_APPLICATION, SDL_LOG_PRIORITY_VERBOSE);
 
     SDL_SetHint(SDL_HINT_MOUSE_FOCUS_CLICKTHROUGH, "1");
     SDL_SetHint(SDL_HINT_TOUCH_MOUSE_EVENTS, "1");
@@ -989,6 +1027,19 @@ int main(int argc, char *argv[]) {
             }
         }
 
+        // Read an existing preference before redirecting/logging startup output.
+        // Missing keys use the platform default, including older browser profiles.
+        if (existsFile(getConfigFilepath())) {
+            INIFile earlyConfig(getConfigFilepath());
+            settings.general.diagnosticLogs = earlyConfig.getBoolValue("General", "Diagnostic Logs",
+                SettingsClass::GeneralClass::defaultDiagnosticLogs);
+        }
+        SDL_LogSetPriority(SDL_LOG_CATEGORY_APPLICATION, settings.general.diagnosticLogs
+            ? SDL_LOG_PRIORITY_VERBOSE : SDL_LOG_PRIORITY_WARN);
+
+#ifndef __EMSCRIPTEN__
+        // Browser errors stay in the console; avoid a growing persistent stdout
+        // file. Opted-in development capture also has AI/performance trace files.
         if(bShowDebugLog == false) {
             // get utf8-encoded log file path
             std::string logfilePath = getLogFilepath();
@@ -1043,6 +1094,8 @@ int main(int argc, char *argv[]) {
 
             #endif
         }
+
+        #endif
 
         // Install crash handlers early, after logging is set up
 #ifndef __EMSCRIPTEN__
@@ -1103,6 +1156,13 @@ int main(int argc, char *argv[]) {
             settings.general.playerName = myINIFile.getStringValue("General","Player Name","Player");
             settings.general.language = myINIFile.getStringValue("General","Language","en");
             settings.general.scrollSpeed = myINIFile.getIntValue("General","Scroll Speed",50);
+            settings.general.wasdCamera = myINIFile.getBoolValue("General","WASD Camera",false);
+            settings.general.leftClickOrders = myINIFile.getBoolValue("General","Left Click Orders",false);
+            settings.general.showMovementPaths = myINIFile.getBoolValue("General","Movement Paths",true);
+            settings.general.diagnosticLogs = myINIFile.getBoolValue("General","Diagnostic Logs",
+                SettingsClass::GeneralClass::defaultDiagnosticLogs);
+            SDL_LogSetPriority(SDL_LOG_CATEGORY_APPLICATION, settings.general.diagnosticLogs
+                ? SDL_LOG_PRIORITY_VERBOSE : SDL_LOG_PRIORITY_WARN);
             settings.general.showTutorialHints = myINIFile.getBoolValue("General","Show Tutorial Hints",true);
             settings.general.duneCityCampaignSkin = std::clamp(
                 myINIFile.getIntValue("General", "DuneCity Campaign Skin", 0), 0, 1);
@@ -1364,9 +1424,13 @@ int main(int argc, char *argv[]) {
                 SDL_Log("Initializing audio...");
                 constexpr int AUDIO_BUFFER_FRAMES = 1024;
                 if( Mix_OpenAudio(AUDIO_FREQUENCY, AUDIO_S16SYS, 2, AUDIO_BUFFER_FRAMES) < 0 ) {
-                    SDL_Quit();
-                    THROW(sdl_error, "Couldn't set %d Hz 16-bit audio. Reason: %s!", AUDIO_FREQUENCY, SDL_GetError());
-                } else {
+                    const std::string audioError=Mix_GetError();
+                    SDL_LogWarn(SDL_LOG_CATEGORY_AUDIO,"Audio device unavailable: %s. Continuing with silent audio; restart to retry the device.",audioError.c_str());
+                    SDL_AudioQuit();
+                    if(SDL_AudioInit("dummy")<0 || Mix_OpenAudio(AUDIO_FREQUENCY,AUDIO_S16SYS,2,AUDIO_BUFFER_FRAMES)<0)
+                        THROW(sdl_error,"Audio device failed (%s); silent mixer also failed: %s",audioError.c_str(),Mix_GetError());
+                }
+                {
                     int actualFrequency = 0;
                     int actualChannels = 0;
                     Uint16 actualFormat = 0;
@@ -1592,6 +1656,7 @@ int main(int argc, char *argv[]) {
 
             pTextManager.reset();
             pSFXManager.reset();
+            releaseCursorResources();
             pGFXManager.reset();
             pFontManager.reset();
             pFileManager.reset();
@@ -1624,10 +1689,12 @@ int main(int argc, char *argv[]) {
         }
     } catch(const std::exception& e) {
         std::string message = std::string("An unhandled exception of type \'") + demangleSymbol(typeid(e).name()) + std::string("\' was thrown:\n\n") + e.what() + std::string("\n\nDuneCity will now be terminated!");
+        SDL_LogCritical(SDL_LOG_CATEGORY_APPLICATION, "%s", message.c_str());
         SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "DuneCity: Unrecoverable error", message.c_str(), nullptr);
 
         return EXIT_FAILURE;
     }
 
+    DesktopUpdater::relaunchAfterShutdown();
     return EXIT_SUCCESS;
 }

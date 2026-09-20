@@ -77,7 +77,7 @@ constexpr int kEnemyAIOptionCount = sizeof(kEnemyAIClasses) / sizeof(kEnemyAICla
 int HouseChoiceMenu::s_house = HOUSE_ATREIDES;
 bool HouseChoiceMenu::s_online = false;
 bool HouseChoiceMenu::s_singleMission = false;
-bool HouseChoiceMenu::s_publicGame = false;
+bool HouseChoiceMenu::s_publicGame = true;
 int HouseChoiceMenu::s_startLevel = 1;
 int HouseChoiceMenu::s_supportBotIndex = 0;
 int HouseChoiceMenu::s_enemyAIIndex = 0;
@@ -217,7 +217,13 @@ HouseChoiceMenu::HouseChoiceMenu(bool online, bool keepRules) : MenuBase()
     gameOptionsButton.setText(_("Game Rules"));
     gameOptionsButton.setOnClick(std::bind(&HouseChoiceMenu::onGameOptions, this));
     windowWidget.addWidget(&gameOptionsButton, Point(184, 455), Point(128, 24));
-    hostCoopButton.setOnClick([this]() { quit(s_house); });
+    hostCoopButton.setOnClick([this]() {
+        // Launch from the widgets, not only their last change notification.
+        onSupportBotSelectionChanged(false);
+        onEnemyAISelectionChanged(false);
+        s_startLevel = startLevelDropDown.getSelectedEntryIntData();
+        quit(s_house);
+    });
     windowWidget.addWidget(&hostCoopButton, Point(448,455), Point(144,24));
     backButton.setText(_("Back"));
     backButton.setOnClick([this] { quit(); });

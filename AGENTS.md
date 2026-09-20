@@ -23,8 +23,10 @@ ctest --test-dir build --output-on-failure
 `-DCMAKE_PREFIX_PATH=/opt/homebrew` is required or configure fails on miniupnpc.
 Run tests through `ctest`, never `./build/bin/dunelegacy_tests` directly — ctest supplies
 `DUNE_CITY_SOURCE_DIR` and `DUNECITY_DATADIR`, without which ~50 tests silently misbehave.
-Ignore the tracked `build2/`, `build_phase4/`, `build.bad/`, `buildtests/` trees; they are stale
-and belong to another machine.
+Legacy `build2/`, `build_phase4/`, `build.bad/`, and `buildtests/` artifacts were
+removed from tracking; keep generated build trees out of git. On this Mac,
+`build` currently links to `build-714`, whose cache now holds native 1.0.718.
+Do not relocate a configured CMake tree or a running app; their paths matter.
 
 Run `python3 scripts/check-build-deps.py build` before and after incremental builds.
 If it fails, use `cmake --build build --clean-first --parallel 10` and check again.

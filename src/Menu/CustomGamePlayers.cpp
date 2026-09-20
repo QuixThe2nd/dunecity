@@ -299,7 +299,10 @@ CustomGamePlayers::CustomGamePlayers(const GameInitSettings& newGameInitSettings
     mapPropertyNamesVBox.addWidget(Label::create(_("Mod") + ":"));
     ModInfo activeModInfo = ModManager::instance().getModInfo(ModManager::instance().getActiveModName());
     mapPropertyMod.setText(activeModInfo.displayName);
+    mapPropertyCity.setText(activeModInfo.enablesCityMode ? _("On") : _("Off"));
     mapPropertyValuesVBox.addWidget(&mapPropertyMod);
+    mapPropertyNamesVBox.addWidget(Label::create(_("City sim") + ":"));
+    mapPropertyValuesVBox.addWidget(&mapPropertyCity);
     rightVBox.addWidget(Spacer::create());
 
     mainVBox.addWidget(Spacer::create(), 0.04);
@@ -385,7 +388,7 @@ CustomGamePlayers::CustomGamePlayers(const GameInitSettings& newGameInitSettings
             curHouseInfo.houseDropDown.setEnabled(bServer);
         }
         curHouseInfo.houseDropDown.setOnSelectionChange(std::bind(&CustomGamePlayers::onChangeHousesDropDownBoxes, this, std::placeholders::_1, i));
-        curHouseInfo.houseHBox.addWidget(&curHouseInfo.houseDropDown, compactPlayers && bBonusHouseColorsAvailable ? 85 : 95);
+        curHouseInfo.houseHBox.addWidget(&curHouseInfo.houseDropDown, compactPlayers && (bBonusHouseColorsAvailable || duneCitySkinControls) ? 85 : 95);
 
         if(bLoadMultiplayer) {
             if(i < (int) houseInfoListSetup.size()) {
@@ -404,8 +407,8 @@ CustomGamePlayers::CustomGamePlayers(const GameInitSettings& newGameInitSettings
             curHouseInfo.teamDropDown.setEnabled(bServer);
         }
         curHouseInfo.teamDropDown.setOnSelectionChange(std::bind(&CustomGamePlayers::onChangeTeamDropDownBoxes, this, std::placeholders::_1, i));
-        curHouseInfo.houseHBox.addWidget(HSpacer::create(10));
-        curHouseInfo.houseHBox.addWidget(&curHouseInfo.teamDropDown, compactPlayers && bBonusHouseColorsAvailable ? 70 : 85);
+        curHouseInfo.houseHBox.addWidget(HSpacer::create(compactPlayers && duneCitySkinControls ? 5 : 10));
+        curHouseInfo.houseHBox.addWidget(&curHouseInfo.teamDropDown, compactPlayers && (bBonusHouseColorsAvailable || duneCitySkinControls) ? 70 : 85);
 
         if(duneCitySkinControls) {
             GameInitSettings::GraphicsSkin selectedSkin = GameInitSettings::GraphicsSkin::SimCity;
@@ -426,8 +429,7 @@ CustomGamePlayers::CustomGamePlayers(const GameInitSettings& newGameInitSettings
                           this, std::placeholders::_1, i));
             curHouseInfo.houseHBox.addWidget(HSpacer::create(6));
             curHouseInfo.houseHBox.addWidget(&curHouseInfo.graphicsSkinLabel, 30);
-            curHouseInfo.houseHBox.addWidget(&curHouseInfo.graphicsSkinDropDown,
-                                             compactPlayers ? 62 : 72);
+            curHouseInfo.houseHBox.addWidget(&curHouseInfo.graphicsSkinDropDown, 72);
         }
 
         int selectedColor = HOUSE_INVALID;
@@ -451,12 +453,12 @@ CustomGamePlayers::CustomGamePlayers(const GameInitSettings& newGameInitSettings
         }
         curHouseInfo.bonusColorCheckbox.setOnClick(std::bind(&CustomGamePlayers::onBonusColorCheckbox, this, i));
         curHouseInfo.colorDropDown.setOnSelectionChange(std::bind(&CustomGamePlayers::onChangeColorDropDownBoxes, this, std::placeholders::_1, i));
-        curHouseInfo.houseHBox.addWidget(HSpacer::create(10));
+        curHouseInfo.houseHBox.addWidget(HSpacer::create(compactPlayers && duneCitySkinControls ? 5 : 10));
         if(bBonusHouseColorsAvailable) {
             curHouseInfo.houseHBox.addWidget(&curHouseInfo.bonusColorCheckbox, 75);
             curHouseInfo.houseHBox.addWidget(HSpacer::create(6));
         }
-        curHouseInfo.houseHBox.addWidget(&curHouseInfo.colorDropDown, compactPlayers && bBonusHouseColorsAvailable ? 85 : 95);
+        curHouseInfo.houseHBox.addWidget(&curHouseInfo.colorDropDown, compactPlayers && (bBonusHouseColorsAvailable || duneCitySkinControls) ? 85 : 95);
 
         curHouseInfo.houseInfoVBox.addWidget(&curHouseInfo.houseHBox);
 
@@ -1166,6 +1168,7 @@ void CustomGamePlayers::onReceiveModInfo(const std::string& modName, const std::
             // Update the mod label on screen
             ModInfo activeModInfo = ModManager::instance().getModInfo(modName);
             mapPropertyMod.setText(activeModInfo.displayName);
+            mapPropertyCity.setText(activeModInfo.enablesCityMode ? _("On") : _("Off"));
             
             // Reload effective game options for the new mod
             effectiveGameOptions = ModManager::instance().loadEffectiveGameOptions(settings.gameOptions);
@@ -1276,6 +1279,7 @@ void CustomGamePlayers::onModDownloadComplete(bool success, const std::string& d
             // Update the mod label on screen to show the new mod
             ModInfo activeModInfo = ModManager::instance().getModInfo(hostModName);
             mapPropertyMod.setText(activeModInfo.displayName);
+            mapPropertyCity.setText(activeModInfo.enablesCityMode ? _("On") : _("Off"));
             
             SDL_Log("CLIENT: Switched to mod '%s', new checksum: %s", hostModName.c_str(), newChecksum.c_str());
 
@@ -1913,7 +1917,9 @@ void CustomGamePlayers::extractMapInfo(INIFile* pMap)
         currentIndex++;
     }
 
-    for(int p = 0; (p < numHouses) && (currentIndex < numHouses); p++) {
+    // PlayerN sections may have gaps (Ergsun-Odenkirk uses 1, 2, 3, 5).
+    // Scan the same capacity used to count them, not just the visible row count.
+    for(int p = 0; (p < getCustomGameHouseCount()) && (currentIndex < numHouses); p++) {
         if(pMap->hasSection("Player" + std::to_string(p+1))) {
             std::string teamName = strToUpper(pMap->getStringValue("Player" + std::to_string(p+1),"Brain","Team " + std::to_string(currentIndex+p+1)));
             teamNames.push_back(teamName);

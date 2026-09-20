@@ -23,6 +23,7 @@
 #include <FileClasses/SFXManager.h>
 #include <House.h>
 #include <Map.h>
+#include <SpatialGrid.h>
 #include <Game.h>
 #include <SoundPlayer.h>
 
@@ -62,7 +63,7 @@ Carryall::Carryall(InputStream& stream, int unitItemID) : AirUnit(stream)
 void Carryall::init(int unitItemID)
 {
     itemID = unitItemID;
-    owner->incrementUnits(itemID);
+    registerUnit();
 
     canAttackStuff = false;
 
@@ -429,6 +430,9 @@ void Carryall::engageTarget()
         if(newLocation != location) {
             unassignFromMap(location);
             assignToMap(newLocation);
+            if(auto* spatialGrid = currentGame->getSpatialGrid()) {
+                spatialGrid->move(*this, getGridHandle(), location, newLocation);
+            }
             location = newLocation;
         }
         

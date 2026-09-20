@@ -198,6 +198,12 @@ public:
     inline const std::string& getFilename() const { return filename; };
     inline const std::string& getFiledata() const { return filedata; };
     inline const std::string& getServername() const { return servername; };
+    GameInitSettings networkSnapshot(const std::string& data) const {
+        GameInitSettings result(*this);
+        result.gameType=GameType::LoadMultiplayer;
+        result.filename="online-resume.dls"; result.filedata=data; result.houseInfoList.clear();
+        return result;
+    }
     inline Uint32 getRandomSeed() const { return randomSeed; };
 
     inline bool isMultiplePlayersPerHouse() const { return multiplePlayersPerHouse; };

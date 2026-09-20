@@ -38,7 +38,7 @@ RocketTrike::RocketTrike(InputStream& stream) : GroundUnit(stream) {
 
 void RocketTrike::init() {
     itemID = Unit_RocketTrike;
-    owner->incrementUnits(itemID);
+    registerUnit();
 
     numWeapons = 1;
     bulletType = Bullet_SmallRocket;

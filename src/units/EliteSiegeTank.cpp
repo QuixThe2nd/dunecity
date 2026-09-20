@@ -39,7 +39,7 @@ EliteSiegeTank::EliteSiegeTank(InputStream& stream) : TankBase(stream) {
 
 void EliteSiegeTank::init() {
     itemID = Unit_EliteSiegeTank;
-    owner->incrementUnits(itemID);
+    registerUnit();
 
     numWeapons = 2;
     bulletType = Bullet_ShellLarge;

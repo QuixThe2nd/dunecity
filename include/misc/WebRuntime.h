@@ -12,6 +12,7 @@ void yieldToBrowser();
 void markGameReady();
 void syncPersistentFiles();
 bool copyText(const std::string& text);
+void downloadFile(const std::string& path);
 
 }
 

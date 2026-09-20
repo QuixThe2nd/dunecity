@@ -81,6 +81,9 @@ private:
         FixPoint f;
         bool     bInOpenList;
         bool     bClosed;
+        // Valid only for this synchronous search: unit and map cannot change
+        // while A* runs. Zero = unchecked, one = blocked, two = passable.
+        unsigned char passability;
     };
 
 

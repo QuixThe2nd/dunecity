@@ -39,7 +39,7 @@ anything inside their own authority, exactly as on ENet.
 | Shared receive path | `include/Network/GamePayloadRouter.h`, `src/Network/GamePayloadRouter.cpp` | The payload handling both transports use. |
 | Content rule | `include/Network/ContentCompatibility.h` | Whether two installs may be in the same match, in one place. |
 | Transport switch | `src/Network/NetworkManager.cpp` | `NetworkManager::Transport::RoomRelay`. |
-| Menu | `src/Menu/CrossplayMenu.cpp` | Confirm a chat name, discover public rooms or use private invites, then enter the game lobby. |
+| Menu | `src/Menu/CrossplayMenu.cpp` | Show public chat beside game discovery using the Settings player name, then enter a game lobby. |
 | Digest | `include/Network/GameStateDigest.h` | The periodic deterministic fingerprint. |
 
 ## 3. Building
@@ -129,34 +129,46 @@ The value goes through exactly the same validation.
 
 ## 6. Playing
 
-Desktop: **MODES → MULTIPLAYER → Play Online (Crossplay)**. The legacy LAN, direct-Internet and
-campaign co-op buttons are unchanged and still there.
+Desktop and browser: choose **Play Online** from the home screen. Desktop also
+provides **LAN / direct connection** for legacy connections.
 
-Browser: **MODES → PLAY ONLINE**. The browser is not offered LAN or direct-Internet play, because
-it has no UDP socket to do it with.
+1. Set **Player Name** in Settings. Play Online displays that name and connects
+   public chat automatically in the right-hand pane beside the game list. There
+   is no separate chat screen or name-confirmation button. Input becomes available
+   once the service accepts the session. Invalid names are corrected in Settings.
+2. **Create Campaign** and **Create Custom Game** open setup. **Public - anyone**
+   is the default for new online games. Players select a listing and choose
+   **Join Game**; public play needs no invitation code. An explicit private choice
+   remains private through setup and admission.
+3. Choose **Private - invite code** for invitation-only play. Friends enter the
+   code in Play Online and choose **Join code**. Saved online games also default
+   to public when reopened for hosting.
+4. The host picks a map or campaign mission. Game-room chat remains separate from
+   public lobby chat. Start Game and campaign continuation follow the normal flow.
 
-Then:
-
-1. Enter a **Player Name**. Choose **Confirm name for chat** to join the shared public-lobby
-   conversation. The relay reserves that display name in the compatible-content lobby until
-   the chat session expires; names are not authenticated accounts. Chat input stays disabled
-   until confirmation succeeds. Hosting/joining also validates and saves the player name.
-2. Public hosting is the default. Choose **Host a Game** or **Host Campaign Co-op**; another
-   player selects the listing and chooses **Join selected**. No invitation code is shown or
-   typed for public play.
-3. For an invitation-only game, select **Private - invite by code**. Only the private host sees
-   the game code and **Copy code**. A friend chooses **Join private game**, enters the invitation
-   and chooses **Join Game**. The host can change Public/Private before the first match starts;
-   the UI waits for an authenticated relay acknowledgement. Existing invitation holders and
-   already admitted players retain their access; changing visibility is not a kick or revocation.
-4. The host picks a map or campaign mission. Normal game-room chat remains separate from public
-   lobby chat. **Start Game** and campaign continuation follow the existing game flow.
-
-Public chat is ephemeral, with a 90-second idle / 30-minute absolute session expiry, 120-byte UTF-8 messages,
+Public chat displays bounded recent history, with a 90-second idle / 30-minute absolute session expiry, 120-byte UTF-8 messages,
 4 sends per 10 seconds per session, and bounded recent history. It is shared by players with
 matching protocol/content, not by private room code. It pauses while nested map/game menus own
-the event loop; on return, an expired session asks for name confirmation again. No chat text,
-names, room codes, host control tokens or chat tokens are added to analytics.
+the event loop; on return, an expired session reconnects automatically using the
+Settings name. Changing active mods resets chat to the matching content lobby.
+
+Since 1.0.725, **All mods** is the directory default. A specific mod selection only
+filters the list; joining selects an installed mod and checks the content fingerprint
+before admission. The service still refuses incompatible joins. Older service
+versions provide only their original compatible-content directory.
+
+**Players waiting** shows the count and up to twelve names across mods with the same
+game protocol. It uses the existing five-second chat poll; a session drops from
+presence after twenty seconds without activity. This counts active waiting sessions,
+including yourself, not players already in a match. Sessions retain their existing
+ninety-second identity lease. Older services show “Online count unavailable”.
+
+The current PHP signaling deployment can record accepted public chat (name, text,
+time), public game creation/join names, and the admitted roster at match start in
+`analytics_public_activity`. These durable server records are separate from bounded
+chat history and optional client diagnostics. Private game activity is omitted from
+this named table. Invitation codes, control/chat tokens and addresses are never
+included. See tools/p2p-signaling/README.md for the trusted hook contract.
 
 ## 7. What relay v1 deliberately does not do
 

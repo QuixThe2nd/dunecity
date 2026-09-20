@@ -51,12 +51,12 @@ TEST_CASE("Android preserves chosen interface size and repairs old native resolu
     }
 }
 
-TEST_CASE("Desert menu colors default safely and high contrast remains opt in", "[menu][accessibility]") {
+TEST_CASE("Dark menu colors default safely and high contrast remains opt in", "[menu][accessibility]") {
     const auto desert = menuPalette(0);
     REQUIRE(desert.foreground != COLOR_BLACK);
-    REQUIRE(desert.shadow == COLOR_DESERTSAND);
+    REQUIRE(desert.shadow == COLOR_TRANSPARENT);
     const auto contrast = menuPalette(1);
-    REQUIRE(contrast.foreground == COLOR_BLACK);
+    REQUIRE(contrast.foreground == COLOR_WHITE);
     REQUIRE(contrast.shadow == COLOR_TRANSPARENT);
     for(int invalid : {-99, -1, 2, 100}) {
         REQUIRE(validatedMenuPalette(invalid) == 0);

@@ -35,7 +35,7 @@ AmbientHelicopter::AmbientHelicopter(InputStream& stream) : AirUnit(stream)
 void AmbientHelicopter::init()
 {
     itemID = Unit_AmbientHelicopter;
-    owner->incrementUnits(itemID);
+    registerUnit();
 
     canAttackStuff = false;
 

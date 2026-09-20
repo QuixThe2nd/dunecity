@@ -84,3 +84,16 @@ void WebRuntime::reportMatchStats(const std::string& phase, const std::string& m
     }, phase.c_str(), matchID.c_str(), payload.c_str());
 #endif
 }
+
+void WebRuntime::downloadFile(const std::string& path) {
+#ifdef __EMSCRIPTEN__
+    EM_ASM({
+        const path = UTF8ToString($0);
+        const url = URL.createObjectURL(new Blob([FS.readFile(path)], {type:'image/png'}));
+        const link = document.createElement('a');
+        link.href=url; link.download=path.split('/').pop();
+        document.body.appendChild(link); link.click(); link.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }, path.c_str());
+#endif
+}

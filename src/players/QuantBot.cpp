@@ -2,6 +2,7 @@
 #include <dunecity/CityStructurePopulation.h>
 #include <dunecity/ZonePower.h>
 #include <players/LocalPointIndex.h>
+#include <players/CityDistanceField.h>
 #include <players/CityRoadRepairPolicy.h>
 #include <players/UnitMixPolicy.h>
 #include <players/CityServiceInvestmentPolicy.h>
@@ -1439,7 +1440,18 @@ bool QuantBot::manageHarvesterSafety(const Harvester* harvester) {
             ? harvesterDanger[p.y*getMap().getSizeX()+p.x] : 0;
     };
     const bool threatened = danger(origin) > 0;
-    // A remembered incident is a preference penalty, never a two-minute veto.
+    // Remember evacuations before the first hit too. Losing sight of an enemy
+    // must not immediately make its spice field attractive again.
+    auto rememberUnsafe = [&](Coord p) {
+        if (!p.isValid() || danger(p)==0) return;
+        for (auto& field : unsafeFields) if (distance(p,field.location)<=3) {
+            field.cycle=now; return;
+        }
+        unsafeFields.push_back({p,now});
+    };
+    rememberUnsafe(origin);
+    rememberUnsafe(destination);
+    // Recently evacuated fields cool down for two minutes, even under fog.
     auto memoryPenalty = [&](Coord p) {
         int penalty = 0;
         for (const auto& field : unsafeFields)
@@ -1468,44 +1480,23 @@ bool QuantBot::manageHarvesterSafety(const Harvester* harvester) {
         if (fromHarvester<nearestThreat) { clearingTarget=enemy; nearestThreat=fromHarvester; }
     }
     if (clearingTarget) scrambleUnitsAndDefend(clearingTarget,true);
-    // Never replace an active safe unloading trip with another spice order.
-    if (harvester->isReturning()) {
-        const auto* target = dynamic_cast<const StructureBase*>(harvester->getTarget());
-        if (target && target->getOwner() == getHouse() && target->getHealth() > 0
-            && target->acceptsHarvesterDropoff() && danger(target->getClosestPoint(origin)) == 0
-            && routeSafe(target->getClosestPoint(origin))) {
-            state.controlled = true;
-            return true;
-        }
-    }
-    if (TacticalSafetyPolicy::needsRefineryRefuge(threatened,danger(destination)>0,
-            harvester->isReturning(),harvester->getAmountOfSpice()>0)) {
-        const StructureBase* refuge = nullptr;
-        int bestRefineryScore = std::numeric_limits<int>::max();
-        for (const auto* structure : getStructureList()) {
-            if (structure->getOwner() != getHouse() || structure->getHealth() <= 0
-                || !structure->acceptsHarvesterDropoff()) continue;
-            const Coord entry = structure->getClosestPoint(origin);
-            if (danger(entry) > 0 || !routeSafe(entry)) continue;
-            const int score = distance(origin,entry) + structure->getHarvesterDropoffBookings()*3;
-            if (score < bestRefineryScore) { refuge=structure; bestRefineryScore=score; }
-        }
-        if (refuge) {
-            state.controlled = true;
-            state.plannedDestination = refuge->getLocation();
-            if (harvester->getTarget() != refuge) {
-                doMove2Object(harvester,refuge);
-                traceDecision("harvester_safety",AITelemetry::Record().set("object",harvester->getObjectID())
-                    .set("action","retreat_refinery").set("refinery",refuge->getObjectID())
-                    .set("x",origin.x).set("y",origin.y).set("cargo",harvester->getAmountOfSpice().lround()));
-            }
+    // Leave an established safe unloading trip alone when its next job is safe.
+    if (harvester->isReturning() && harvester->getAmountOfSpice()>0) {
+        const auto* target=dynamic_cast<const StructureBase*>(harvester->getTarget());
+        const Coord job=harvester->getGuardPoint();
+        if (target && target->getOwner()==getHouse() && target->getHealth()>0
+            && target->acceptsHarvesterDropoff() && danger(target->getClosestPoint(origin))==0
+            && routeSafe(target->getClosestPoint(origin))
+            && (harvester->getAttackMode()==STOP
+                || (job.isValid() && danger(job)==0 && memoryPenalty(job)==0 && routeSafe(job)))) {
+            state.controlled=true;
             return true;
         }
     }
     // Do not hold a safe vehicle after enemies leave. Keep its existing safe job.
-    if (!threatened && destination.isValid() && danger(destination)==0
-        && (harvester->isReturning() || (harvester->getAttackMode() != STOP
-            && !newHarvester && routeSafe(destination)))) {
+    if (!threatened && !harvester->isReturning() && destination.isValid()
+        && danger(destination)==0 && memoryPenalty(destination)==0
+        && harvester->getAttackMode() != STOP && !newHarvester && routeSafe(destination)) {
         state.controlled = false;
         state.retreatUntil = 0;
         return false;
@@ -1532,14 +1523,57 @@ bool QuantBot::manageHarvesterSafety(const Harvester* harvester) {
     int safeFields = 0, rejectedRoutes = 0;
     for (int y = 0; y < getMap().getSizeY(); ++y) for (int x = 0; x < getMap().getSizeX(); ++x) {
         const Coord candidate(x,y);
-        if (!getMap().getTile(x,y)->hasSpice() || danger(candidate)>0 || !harvester->canPass(x,y)) continue;
+        if (!getMap().getTile(x,y)->hasSpice() || danger(candidate)>0
+            || memoryPenalty(candidate)>0 || !harvester->canPass(x,y)) continue;
         ++safeFields;
-        const int score = distance(origin,candidate)*3 + memoryPenalty(candidate) + crowdPenalty(candidate);
+        const int score = distance(origin,candidate)*3 + crowdPenalty(candidate);
         if (score >= bestScore) continue;
         if (!routeSafe(candidate)) { ++rejectedRoutes; continue; }
         bestScore = score; best = candidate;
     }
     const bool foundSpice = best.isValid();
+    // A partial load can continue harvesting elsewhere. Only unload a full load,
+    // finish a real return trip, or salvage cargo when no safe field exists.
+    if (TacticalSafetyPolicy::needsRefineryRefuge(harvester->isReturning(),
+            harvester->getAmountOfSpice()>=HARVESTERMAXSPICE,
+            harvester->getAmountOfSpice()>0,foundSpice)) {
+        const StructureBase* refuge = nullptr;
+        int bestRefineryScore = std::numeric_limits<int>::max();
+        for (const auto* structure : getStructureList()) {
+            if (structure->getOwner() != getHouse() || structure->getHealth() <= 0
+                || !structure->acceptsHarvesterDropoff()) continue;
+            const Coord entry = structure->getClosestPoint(origin);
+            if (danger(entry) > 0 || !routeSafe(entry)) continue;
+            const int score = distance(origin,entry) + structure->getHarvesterDropoffBookings()*3;
+            if (score < bestRefineryScore) { refuge=structure; bestRefineryScore=score; }
+        }
+        if (harvester->isReturning()) {
+            const auto* target=dynamic_cast<const StructureBase*>(harvester->getTarget());
+            if (target && target->getOwner()==getHouse() && target->getHealth()>0
+                && target->acceptsHarvesterDropoff() && danger(target->getClosestPoint(origin))==0
+                && routeSafe(target->getClosestPoint(origin))) refuge=target;
+        }
+        if (refuge) {
+            state.controlled = true;
+            state.plannedDestination = refuge->getLocation();
+            // Replace the remembered job before unloading, so deploy/carryall
+            // return resumes at the alternate field rather than the old one.
+            const Coord job=harvester->getGuardPoint();
+            const bool replaceJob=job.isInvalid() || danger(job)>0 || memoryPenalty(job)>0 || !routeSafe(job);
+            if (replaceJob) {
+                doSetAttackMode(harvester,foundSpice ? HARVEST : STOP);
+                if (foundSpice) doMove2Pos(harvester,best.x,best.y,false);
+            }
+            if (harvester->getTarget() != refuge) {
+                doMove2Object(harvester,refuge);
+                traceDecision("harvester_safety",AITelemetry::Record().set("object",harvester->getObjectID())
+                    .set("action","retreat_refinery").set("refinery",refuge->getObjectID())
+                    .set("x",origin.x).set("y",origin.y).set("cargo",harvester->getAmountOfSpice().lround()));
+            }
+            return true;
+        }
+    }
+
     // If no safe spice corridor exists, disperse to the nearest safe open tile.
     // There is deliberately no base-centre attraction.
     if (!foundSpice) {
@@ -1609,8 +1643,15 @@ bool blocksGroundAccess(Uint32 item) {
 }
 }
 
-void QuantBot::clearPlacementCache(bool geometryChanged) {
-    placementCache.clear();
+void QuantBot::clearPlacementCache(bool geometryChanged, bool reuseForBuilder) {
+    // Within a build pass, unreserved yards see the same map and reservation
+    // set until an order changes geometry. Reuse successful AND failed searches.
+    // A yard with its own reservation excludes that reservation, so its key
+    // differs. All order/geometry changes keep the original invalidation.
+    const Uint32 excluded=reservedStructures.count(planningBuilder) ? planningBuilder : NONE_ID;
+    if (geometryChanged || !reuseForBuilder || placementCacheExcludedBuilder!=excluded)
+        placementCache.clear();
+    placementCacheExcludedBuilder=excluded;
     if (geometryChanged) {
         cityServiceSearch.invalidate();
         cityTurretSearch.invalidate();
@@ -1692,6 +1733,7 @@ Coord QuantBot::findRedevelopmentSite(Uint32 item) {
     Coord best=Coord::Invalid();
     int bestScore=std::numeric_limits<int>::max();
     auto bestFactoryRank=TacticalSafetyPolicy::factorySiteRank(1,-1,-1,0);
+    auto bestReactorRank=TacticalSafetyPolicy::reactorSiteRank(100000,100000,-1,false,0,0);
     auto* sim=currentGame->getCitySimulation();
     if (!sim) return best;
     for (int y=std::max(0,base.y-50); y<=std::min(getMap().getSizeY()-size.y,base.y+50); ++y)
@@ -1716,8 +1758,12 @@ Coord QuantBot::findRedevelopmentSite(Uint32 item) {
             const auto rank=TacticalSafetyPolicy::factorySiteRank(dangerAt(pos,size,true),
                 TacticalSafetyPolicy::footprintClearance(factoryEnemyClearance,getMap().getSizeX(),getMap().getSizeY(),
                     x,y,size.x,size.y),0,-score);
-            if (TacticalSafetyPolicy::productionFactory(item) ? rank>bestFactoryRank : score<bestScore) {
-                bestFactoryRank=rank; bestScore=score; best=pos;
+            const auto reactorRank=TacticalSafetyPolicy::reactorSiteRank(0,dangerAt(pos,size,true),
+                TacticalSafetyPolicy::footprintClearance(factoryEnemyClearance,getMap().getSizeX(),getMap().getSizeY(),
+                    x,y,size.x,size.y),true,rearScore(pos,base),-score);
+            if (item==Structure_NuclearPlant ? reactorRank>bestReactorRank
+                : TacticalSafetyPolicy::productionFactory(item) ? rank>bestFactoryRank : score<bestScore) {
+                bestReactorRank=reactorRank; bestFactoryRank=rank; bestScore=score; best=pos;
             }
         }
     return best;
@@ -1732,8 +1778,10 @@ Coord QuantBot::findPlaceLocation(Uint32 itemID) {
 	// Check per-build-cycle cache first
 	auto cacheIt = placementCache.find(itemID);
 	if (cacheIt != placementCache.end()) {
+        AITelemetry::log().performance(getGameCycleCount(),getHouse()->getHouseID(),"ai.placement_cache_hit",1,itemID,false);
 		return cacheIt->second;
 	}
+    AITelemetry::log().performance(getGameCycleCount(),getHouse()->getHouseID(),"ai.placement_search",1,itemID,false);
 
 	int newSizeX = getStructureSize(itemID).x;
 	int newSizeY = getStructureSize(itemID).y;
@@ -1749,7 +1797,7 @@ Coord QuantBot::findPlaceLocation(Uint32 itemID) {
     const bool factoryPlacement = TacticalSafetyPolicy::productionFactory(itemID);
     auto bestFactoryRank = TacticalSafetyPolicy::factorySiteRank(1,-1,-1,0);
     AITelemetry::Record bestQuality;
-    auto bestReactorRank = TacticalSafetyPolicy::reactorSiteRank(100000,100000,false,std::numeric_limits<int>::min());
+    auto bestReactorRank = TacticalSafetyPolicy::reactorSiteRank(100000,100000,-1,false,0,std::numeric_limits<int>::min());
     int candidates = 0, threatRejected = 0, blastRejected = 0, lossRejected = 0;
 
 	bool itemIsBuilder = (itemID == Structure_HeavyFactory
@@ -1775,27 +1823,55 @@ Coord QuantBot::findPlaceLocation(Uint32 itemID) {
 	int endX = std::min(mapW - newSizeX, baseCenter.x + searchRadius);
 	int endY = std::min(mapH - newSizeY, baseCenter.y + searchRadius);
 
-    // Plan both sides of the pollution buffer, including other yards' queues.
-    struct CityNeighbour { Coord location, size; bool pollutes, sensitive; DuneCity::CityRole role; };
-    std::vector<CityNeighbour> cityNeighbours;
+    // Snapshot only the zones used by proximity scoring. A bounded index
+    // replaces the full structure-list walk for every candidate origin.
+    struct ZoneNeighbour { Coord location; int item; };
+    std::vector<ZoneNeighbour> zoneNeighbours;
+    LocalPointIndex zoneIndex(mapW,mapH);
+    if (DuneCity::isCityZoneStructure(itemID)) {
+        for (const auto* structure : getStructureList()) {
+            if (structure->getOwner() != getHouse() || !DuneCity::isCityZoneStructure(structure->getItemID())) continue;
+            const auto location=structure->getLocation();
+            zoneIndex.add(location.x,location.y,zoneNeighbours.size());
+            zoneNeighbours.push_back({location,structure->getItemID()});
+        }
+    }
+
+    // Resolve nearest origins and full-footprint pollution separation once,
+    // instead of scanning every neighbour again at every candidate. These
+    // fields include the same live buildings and other yards' reservations.
+    // Build lazily: crowded maps often reject every site before scoring.
     auto* citySim = currentGame && currentGame->isCitySimEnabled() ? currentGame->getCitySimulation() : nullptr;
     const auto newRole = DuneCity::getStructureCityRole(itemID);
     const bool newSensitive = newRole == DuneCity::CityRole::Residential || newRole == DuneCity::CityRole::Commercial;
     const bool newPolluter = DuneCity::getPollutionEmission(itemID, DuneCity::getStructureMaxLevel(itemID)) > 0;
+    const bool needCityDistances = citySim && (newSensitive || newPolluter);
+    bool cityDistancesReady=false;
+    CityDistanceField nearestResidential(0,0),nearestCommercial(0,0),
+        nearestIndustrial(0,0),pollutionSeparation(0,0);
     auto addNeighbour = [&](Uint32 item, Coord location, Coord size) {
         const auto role = DuneCity::getStructureCityRole(item);
-        cityNeighbours.push_back({location, size,
-            DuneCity::getPollutionEmission(item, DuneCity::getStructureMaxLevel(item)) > 0,
-            role == DuneCity::CityRole::Residential || role == DuneCity::CityRole::Commercial, role});
+        if (role == DuneCity::CityRole::Residential) nearestResidential.add(location.x,location.y);
+        if (role == DuneCity::CityRole::Commercial) nearestCommercial.add(location.x,location.y);
+        if (role == DuneCity::CityRole::Industrial) nearestIndustrial.add(location.x,location.y);
+        const bool pollutes=DuneCity::getPollutionEmission(item,DuneCity::getStructureMaxLevel(item))>0;
+        const bool sensitive=role==DuneCity::CityRole::Residential || role==DuneCity::CityRole::Commercial;
+        if ((newSensitive && pollutes) || (newPolluter && sensitive))
+            pollutionSeparation.add(location.x,location.y,size.x,size.y);
     };
-    if (citySim && (newSensitive || newPolluter)) {
+    auto prepareCityDistances = [&] {
+        if (cityDistancesReady) return;
+        cityDistancesReady=true;
+        nearestResidential=CityDistanceField(mapW,mapH); nearestCommercial=CityDistanceField(mapW,mapH);
+        nearestIndustrial=CityDistanceField(mapW,mapH); pollutionSeparation=CityDistanceField(mapW,mapH);
         for (const auto* structure : getStructureList())
             if (structure->getOwner() == getHouse() && structure->getHealth() > 0)
                 addNeighbour(structure->getItemID(), structure->getLocation(), structure->getStructureSize());
         for (const auto& entry : reservedStructures)
             if (entry.first != planningBuilder)
                 addNeighbour(entry.second.item, entry.second.location, getStructureSize(entry.second.item));
-    }
+        nearestResidential.build(); nearestCommercial.build(); nearestIndustrial.build(); pollutionSeparation.build();
+    };
 
 	// Pre-collect spice tile positions for refinery placement (avoids O(N^2) inner loop)
 	std::vector<Coord> spiceTiles;
@@ -1819,7 +1895,7 @@ Coord QuantBot::findPlaceLocation(Uint32 itemID) {
     // as the limit of a spread-out city's buildable territory.
     for (int searchPass=0; searchPass<2; ++searchPass) {
         if (searchPass==1) {
-            if (bestLocation.isValid()) break;
+            if (bestLocation.isValid() && itemID != Structure_NuclearPlant) break;
             startX=0; startY=0; endX=mapW-newSizeX; endY=mapH-newSizeY;
         }
         searchPassUsed=searchPass;
@@ -1852,7 +1928,7 @@ Coord QuantBot::findPlaceLocation(Uint32 itemID) {
                     && itemID != Structure_NuclearPlant
                     && nearRecentStructureLoss(placeLocationX, placeLocationY, newSizeX, newSizeY)) { ++lossRejected; continue; }
                 if (itemID != Structure_RocketTurret && itemID != Structure_GunTurret && itemID != Structure_Wall) {
-                    if (itemID != Structure_NuclearPlant && dangerAt(Coord(placeLocationX, placeLocationY), Coord(newSizeX, newSizeY)) > 0) { ++threatRejected; continue; }
+                    if (dangerAt(Coord(placeLocationX, placeLocationY), Coord(newSizeX, newSizeY)) > 0) { ++threatRejected; continue; }
                     if (!TacticalSafetyPolicy::reactorPlacementAllowed(itemID, reactorClearance(itemID, Coord(placeLocationX, placeLocationY)))) { ++blastRejected; continue; }
                 }
                 const auto roads = cityRoadImpact(getMap(), placeLocationX, placeLocationY, newSizeX, newSizeY, itemID);
@@ -2124,23 +2200,16 @@ Coord QuantBot::findPlaceLocation(Uint32 itemID) {
 					}
 				}
 
-				int closestIndDist = 100;
-				int nearbyRes = 0, nearbyCom = 0, nearbyInd = 0;
-
-				for (const StructureBase* pStruct : getStructureList()) {
-					if (pStruct->getOwner() != getHouse()) continue;
-					int dist = lround(blockDistance(
-						Coord(placeLocationX, placeLocationY), pStruct->getLocation()));
-					if (dist > 16) continue;  // outside supply radius
-
-					int sid = pStruct->getItemID();
-					if (sid == Structure_ZoneIndustrial) {
-						nearbyInd++;
-						if (dist < closestIndDist) closestIndDist = dist;
-					}
-					if (sid == Structure_ZoneResidential) nearbyRes++;
-					if (sid == Structure_ZoneCommercial) nearbyCom++;
-				}
+                int closestIndDist = 100, closestResDist = 100, closestComDist = 100;
+                int nearbyRes = 0, nearbyCom = 0, nearbyInd = 0;
+                zoneIndex.visit(placeLocationX,placeLocationY,16,[&](size_t index) {
+                    const auto& zone=zoneNeighbours[index];
+                    const int dist=lround(blockDistance(Coord(placeLocationX,placeLocationY),zone.location));
+                    if (dist>16) return;
+                    if (zone.item==Structure_ZoneIndustrial) { ++nearbyInd; closestIndDist=std::min(closestIndDist,dist); }
+                    if (zone.item==Structure_ZoneResidential) { ++nearbyRes; closestResDist=std::min(closestResDist,dist); }
+                    if (zone.item==Structure_ZoneCommercial) { ++nearbyCom; closestComDist=std::min(closestComDist,dist); }
+                });
 
 				if (isResidential || isCommercial) {
 					auto* citySim = currentGame ? currentGame->getCitySimulation() : nullptr;
@@ -2216,18 +2285,9 @@ Coord QuantBot::findPlaceLocation(Uint32 itemID) {
 
 					// I should stay away from R/C to avoid polluting them
 					// but within commute distance (6-16 tiles = sweet spot)
-					int closestResDist = 100;
-					int closestComDist = 100;
-					for (const StructureBase* pStruct : getStructureList()) {
-						if (pStruct->getOwner() != getHouse()) continue;
-						int sid = pStruct->getItemID();
-						int dist = lround(blockDistance(
-							Coord(placeLocationX, placeLocationY), pStruct->getLocation()));
-						if (sid == Structure_ZoneResidential && dist < closestResDist)
-							closestResDist = dist;
-						if (sid == Structure_ZoneCommercial && dist < closestComDist)
-							closestComDist = dist;
-					}
+                    // All following distance decisions use only the 6/16 thresholds;
+                    // a missing neighbour within 16 has the same score as any
+                    // more distant neighbour, so reuse the bounded query above.
 
 					// Sweet spot: outside pollution radius but within commute
 					if (closestResDist >= 6 && closestResDist <= 16) {
@@ -2250,20 +2310,12 @@ Coord QuantBot::findPlaceLocation(Uint32 itemID) {
                 int siteTier = 0;
                 AITelemetry::Record quality;
                 quality.set("four_zone_block_bonus",blockBonus);
-                if (citySim && (newSensitive || newPolluter)) {
-                    int separation = 1000000;
-                    int nearestR = 1000000, nearestC = 1000000, nearestI = 1000000;
-                    for (const auto& neighbour : cityNeighbours) {
-                        const int originDistance = std::max(std::abs(placeLocationX-neighbour.location.x),
-                                                            std::abs(placeLocationY-neighbour.location.y));
-                        if (neighbour.role == DuneCity::CityRole::Residential) nearestR = std::min(nearestR, originDistance);
-                        if (neighbour.role == DuneCity::CityRole::Commercial) nearestC = std::min(nearestC, originDistance);
-                        if (neighbour.role == DuneCity::CityRole::Industrial) nearestI = std::min(nearestI, originDistance);
-                        if ((newSensitive && neighbour.pollutes) || (newPolluter && neighbour.sensitive))
-                            separation = std::min(separation, CityPlacementPolicy::footprintDistance(
-                                placeLocationX, placeLocationY, newSizeX, newSizeY,
-                                neighbour.location.x, neighbour.location.y, neighbour.size.x, neighbour.size.y));
-                    }
+                if (needCityDistances) {
+                    prepareCityDistances();
+                    const int separation=pollutionSeparation.footprint(placeLocationX,placeLocationY,newSizeX,newSizeY);
+                    const int nearestR=nearestResidential.get(placeLocationX,placeLocationY);
+                    const int nearestC=nearestCommercial.get(placeLocationX,placeLocationY);
+                    const int nearestI=nearestIndustrial.get(placeLocationX,placeLocationY);
                     auto inReachOrMissing = [](int distance) { return distance == 1000000 || distance <= DuneCity::kSupplyRadius; };
                     const bool withinSupply = newRole == DuneCity::CityRole::Residential
                         ? inReachOrMissing(std::min(nearestC, nearestI))
@@ -2312,12 +2364,12 @@ Coord QuantBot::findPlaceLocation(Uint32 itemID) {
                 locationScore -= lossRisk * 5;
                 const int rear = (itemID == Structure_NuclearPlant || factoryPlacement) ? rearScore(Coord(placeLocationX, placeLocationY), baseCenter) : 0;
                 locationScore += rear;
-                const int enemyClearance = factoryPlacement ? TacticalSafetyPolicy::footprintClearance(
+                const int enemyClearance = (factoryPlacement || itemID == Structure_NuclearPlant) ? TacticalSafetyPolicy::footprintClearance(
                     factoryEnemyClearance,mapW,mapH,placeLocationX,placeLocationY,newSizeX,newSizeY) : 0;
                 const auto factoryRank = TacticalSafetyPolicy::factorySiteRank(lossRisk,enemyClearance,siteTier,locationScore);
                 const bool clearsReactor = itemID != Structure_NuclearPlant || reactorClearance(itemID,Coord(placeLocationX,placeLocationY));
                 const int fireRisk = itemID == Structure_NuclearPlant ? dangerAt(Coord(placeLocationX,placeLocationY),Coord(newSizeX,newSizeY)) : 0;
-                const auto reactorRank = TacticalSafetyPolicy::reactorSiteRank(fireRisk,lossRisk,clearsReactor,locationScore);
+                const auto reactorRank = TacticalSafetyPolicy::reactorSiteRank(fireRisk,lossRisk,enemyClearance,clearsReactor,rear,locationScore);
                 quality.set("enemy_clearance_tiles", enemyClearance)
                     .set("recent_loss_risk", lossRisk).set("enemy_fire_risk", fireRisk)
                     .set("rear_score", rear).set("reactor_clearance", clearsReactor);
@@ -3096,6 +3148,7 @@ bool QuantBot::canAddRepairYard(int includingQueued) const {
 
 void QuantBot::build(int militaryValue) {
     AITelemetry::PerformanceScope perfScope("ai.build", getGameCycleCount(), getHouse()->getHouseID());
+    AITelemetry::PerformanceScope phaseScope("ai.build.evaluate",getGameCycleCount(),getHouse()->getHouseID());
     refreshTacticalDanger();
     planningBuilder = NONE_ID;
     recentStructureLosses.erase(std::remove_if(recentStructureLosses.begin(), recentStructureLosses.end(),
@@ -4494,7 +4547,7 @@ void QuantBot::build(int militaryValue) {
             && (!port || static_cast<const StarPort*>(builder)->okToOrder());
         if (building==Structure_ConstructionYard) {
             if (!ready || gameMode!=GameMode::Custom) continue;
-            planningBuilder=builder->getObjectID(); clearPlacementCache(false);
+            planningBuilder=builder->getObjectID(); clearPlacementCache(false,true);
             CapitalCandidate economy;
             economy.builder=builder->getObjectID();
             if (citySimEnabled) {
@@ -4735,14 +4788,14 @@ void QuantBot::build(int militaryValue) {
     for (auto& candidate:capitalCandidates) if (isStructure(candidate.item) && candidate.score>0) {
         const auto* builder=dynamic_cast<const BuilderBase*>(getObject(candidate.builder));
         if (!builder) continue;
-        planningBuilder=candidate.builder;clearPlacementCache(false);
+        planningBuilder=candidate.builder;clearPlacementCache(false,true);
         const Coord site=candidate.site.isValid() ? candidate.site : findPlaceLocation(candidate.item);
         std::vector<Uint32> removed;
         if (site.isValid() && !redevelopmentZones(candidate.item,site,removed))
             for (const auto& foundation:foundationOrders(builder,candidate.item,site))
                 candidate.foundationCost+=purchasePrice(builder,foundation.first);
     }
-    planningBuilder=NONE_ID; clearPlacementCache(false);
+    planningBuilder=NONE_ID; clearPlacementCache(false,true);
     int capitalChoice=-1;
     for (size_t i=0;i<capitalCandidates.size();++i)
         if (capitalCandidates[i].score>0 && (capitalChoice<0
@@ -4767,7 +4820,7 @@ void QuantBot::build(int militaryValue) {
                 dedicatedCityYard=builder->getObjectID();
                 break;
             }
-            planningBuilder=builder->getObjectID();clearPlacementCache(false);
+            planningBuilder=builder->getObjectID();clearPlacementCache(false,true);
             const Uint32 zone=affordableCityZone(builder,money);
             if (zone==NONE_ID) continue;
             dedicatedCityYard=builder->getObjectID();
@@ -4780,7 +4833,7 @@ void QuantBot::build(int militaryValue) {
             cityGrowthProtected=true;
             break;
         }
-        planningBuilder=NONE_ID;clearPlacementCache(false);
+        planningBuilder=NONE_ID;clearPlacementCache(false,true);
     }
     if (!cityGrowthProtected && citySimEnabled
         && getHouse()->getProducedPower()-getHouse()->getPowerRequirement()>=24
@@ -4860,6 +4913,7 @@ void QuantBot::build(int militaryValue) {
                 ? "no_useful_available_purchase" : "highest_marginal_priority"));
     }
 
+    phaseScope.next("ai.build.orders");
     // Give city construction first access to this pass's planning budget.
     // Air gets its allocation before ground production, then light precedes heavy overflow.
     // Stable ordering keeps peers deterministic.
@@ -4947,6 +5001,7 @@ void QuantBot::build(int militaryValue) {
 
 					if (houseID != HOUSE_HARKONNEN && houseID != HOUSE_SARDAUKAR) {
 						doSpecialWeapon(pPalace);
+                        placementCache.clear(); // Palace summons can occupy previously free sites.
 					}
 					else {
 						int enemyHouseID = -1;
@@ -4974,7 +5029,7 @@ void QuantBot::build(int militaryValue) {
 			if (pStructure->isABuilder()) {
 				const BuilderBase* pBuilder = static_cast<const BuilderBase*>(pStructure);
                 planningBuilder = pBuilder->getObjectID();
-                clearPlacementCache(false);
+                clearPlacementCache(false,true);
 
 				// Log all builder status for campaign AIs (not just CY)
 				if (gameMode == GameMode::Campaign && !supportMode && pStructure->getItemID() != Structure_ConstructionYard) {
@@ -5084,6 +5139,7 @@ void QuantBot::build(int militaryValue) {
                     if (!produceItemWithLogging(Structure_WindTrap,__LINE__,"campaign_required_power")) return false;
                     builderPlaceLocations[pBuilder->getObjectID()].push_back(site);
                     reservedStructures[pBuilder->getObjectID()]={Structure_WindTrap,site};
+                    placementCache.clear();
                     ++itemCount[Structure_WindTrap];
                     traceDecision("campaign_power",AITelemetry::Record().set("produced",getHouse()->getProducedPower())
                         .set("required",getHouse()->getPowerRequirement()).set("next_demand",nextDemand));
@@ -5123,6 +5179,7 @@ void QuantBot::build(int militaryValue) {
                         if (site.isValid() && produceItemWithLogging(repairStep,__LINE__,"campaign_repair_capacity")) {
                             builderPlaceLocations[pBuilder->getObjectID()].push_back(site);
                             reservedStructures[pBuilder->getObjectID()]={repairStep,site};
+                            placementCache.clear();
                             ++itemCount[repairStep];
                             continue;
                         }
@@ -5707,7 +5764,7 @@ void QuantBot::build(int militaryValue) {
 				// Each yard owns its concrete/structure placement sequence. Sharing
 				// a single FIFO lets the faster yard consume the other's locations.
 				planningBuilder = pBuilder->getObjectID();
-                clearPlacementCache(false);
+                clearPlacementCache(false,true);
                 auto& placeLocations = builderPlaceLocations[pBuilder->getObjectID()];
 				if (pBuilder->getProductionQueueSize() == 0) placeLocations.clear();
 				if (emitStatsLog) {
@@ -7230,14 +7287,11 @@ void QuantBot::build(int militaryValue) {
 						}
 					}
 
-                        // A completed generator must not hold the only yard
-                        // forever because every legal site is in a threat halo.
-                        // Prefer safe, separated reactors and the least exposed
-                        // fallback; preserve roads and neighbouring access.
-                        if (location.isInvalid() && (itemToBePlaced == Structure_NuclearPlant
-                            || itemToBePlaced == Structure_WindTrap)) {
+                        // Only windtraps may use an exposed emergency power site.
+                        // A reactor under known fire risks another blackout and
+                        // collateral damage; normal placement must find it safety.
+                        if (location.isInvalid() && itemToBePlaced == Structure_WindTrap) {
                             const Coord size = getStructureSize(itemToBePlaced);
-                            auto bestRecoveryRank = TacticalSafetyPolicy::reactorSiteRank(100000,100000,false,std::numeric_limits<int>::min());
                             int bestRisk = std::numeric_limits<int>::max();
                             int bestDistance = std::numeric_limits<int>::max();
                             for (int x=0; x<=getMap().getSizeX()-size.x; ++x) {
@@ -7254,10 +7308,7 @@ void QuantBot::build(int militaryValue) {
                                         + (nearRecentStructureLoss(x,y,size.x,size.y) ? 1000 : 0);
                                     const Coord yard = pConstYard->getLocation();
                                     const int distance = std::abs(x-yard.x)+std::abs(y-yard.y);
-                                    const auto rank = TacticalSafetyPolicy::reactorSiteRank(risk,0,reactorClearance(itemToBePlaced,site),-distance);
-                                    if (itemToBePlaced == Structure_NuclearPlant ? rank > bestRecoveryRank
-                                        : risk < bestRisk || (risk == bestRisk && distance < bestDistance)) {
-                                        bestRecoveryRank = rank;
+                                    if (risk < bestRisk || (risk == bestRisk && distance < bestDistance)) {
                                         bestRisk = risk; bestDistance = distance; location = site;
                                     }
                                 }
@@ -7275,7 +7326,8 @@ void QuantBot::build(int militaryValue) {
                             for (int y=0;y<=getMap().getSizeY()-size.y && !potentialSite;++y)
                                 for (int x=0;x<=getMap().getSizeX()-size.x && !potentialSite;++x) {
                                     if (!getMap().okayToPlaceStructure(x,y,size.x,size.y,false,getHouse(),true,itemToBePlaced)
-                                        || overlapsReservedStructure(x,y,size.x,size.y)) continue;
+                                        || overlapsReservedStructure(x,y,size.x,size.y)
+                                        || dangerAt(Coord(x,y),size)>0) continue;
                                     bool structure=false;
                                     for(int dy=0;dy<size.y;++dy) for(int dx=0;dx<size.x;++dx) {
                                         const auto* object=getMap().getTile(x+dx,y+dy)->getGroundObject();
@@ -7286,7 +7338,7 @@ void QuantBot::build(int militaryValue) {
                             if (!potentialSite) {
                                 // Refund through the ordinary production API. The
                                 // next planning pass can buy a smaller windtrap.
-                                tracePlacementIssue("placement_cancel","nuclear_footprint_lost",Coord::Invalid());
+                                tracePlacementIssue("placement_cancel","no_safe_nuclear_footprint",Coord::Invalid());
                                 doCancelItem(pConstYard,itemToBePlaced);
                                 placeLocations.clear();
                                 reservedStructures.erase(planningBuilder);
@@ -8925,4 +8977,78 @@ void QuantBot::manageCityBuilding() {
             }
         }
     }
+}
+
+// Supplemental network checkpoint state: normal disk saves intentionally rebuild these plans.
+void QuantBot::saveObserverRuntime(OutputStream& s) const {
+    const auto coord=[&](Coord v) { s.writeSint32(v.x); s.writeSint32(v.y); };
+    s.writeUint32(lastPoliceBudgetReviewCycle);
+    s.writeUint32(ixEligibleSinceCycle);
+    s.writeUint32(palaceEligibleSinceCycle);
+    s.writeUint32(rockSurveyCycle);
+    s.writeUint32(refineryQueueSince);
+    s.writeUint32(dangerUpdated);
+    s.writeUint32(planningBuilder);
+    s.writeUint32(placementCacheExcludedBuilder);
+    s.writeUint32(cityReadyYardCount);
+    s.writeSint32(availableBaseRock);
+    s.writeSint32(cityBuildTimer);
+    s.writeSint32(ornithopterStrikeTeam.minMembers);
+    s.writeBool(planningCityProductionPlots);
+    coord(rockExpansionSite);
+    s.writeUint32(idleHarvesterCounters.size()); for(const auto& e : idleHarvesterCounters) { s.writeUint32(e.first); s.writeUint32(e.second); }
+    s.writeUint32(harvesterMovingCounters.size()); for(const auto& e : harvesterMovingCounters) { s.writeUint32(e.first); s.writeUint32(e.second); }
+    s.writeUint32(mcvSurveyCycles.size()); for(const auto& e : mcvSurveyCycles) { s.writeUint32(e.first); s.writeUint32(e.second); }
+    s.writeUint32(roadRedirectRetryCycle.size()); for(const auto& e : roadRedirectRetryCycle) { s.writeUint32(e.first); s.writeUint32(e.second); }
+    s.writeUint32(mcvExpansionSites.size()); for(const auto& e : mcvExpansionSites) { s.writeUint32(e.first); coord(e.second); }
+    s.writeUint32(placementCache.size()); for(const auto& e : placementCache) { s.writeUint32(e.first); coord(e.second); }
+    s.writeUint32(tacticalDanger.size()); for(auto v : tacticalDanger) s.writeUint32(v);
+    s.writeUint32(harvesterDanger.size()); for(auto v : harvesterDanger) s.writeUint32(v);
+    s.writeUint32(lossDanger.size()); for(auto v : lossDanger) s.writeUint32(v);
+    s.writeUint32(factoryEnemyClearance.size()); for(auto v : factoryEnemyClearance) s.writeUint32(v);
+    s.writeUint32(visibleHarvestLaunchers.size()); for(auto v : visibleHarvestLaunchers) s.writeUint32(v);
+    s.writeUint32(visibleEnemyBases.size()); for(auto v : visibleEnemyBases) coord(v);
+    s.writeUint32(builderPlaceLocations.size()); for(const auto& e : builderPlaceLocations) { s.writeUint32(e.first); s.writeUint32(e.second.size()); for(auto v : e.second) coord(v); }
+    s.writeUint32(reservedStructures.size()); for(const auto& e : reservedStructures) { s.writeUint32(e.first); s.writeUint32(e.second.item); coord(e.second.location); }
+    s.writeUint32(cityProductionPlots.size()); for(const auto& e : cityProductionPlots) { s.writeUint32(e.item); coord(e.location); }
+    s.writeUint32(ornithopterStrikeTeam.targetId); s.writeUint32Set(ornithopterStrikeTeam.memberIds);
+    s.writeUint32(harvesterSafety.size()); for(const auto& e : harvesterSafety) { s.writeUint32(e.first); s.writeUint32(e.second.nextCheck); s.writeUint32(e.second.retreatUntil); coord(e.second.lastLocation); coord(e.second.plannedDestination); s.writeBool(e.second.controlled); }
+    s.writeUint32(unsafeFields.size()); for(const auto& e : unsafeFields) { coord(e.location); s.writeUint32(e.cycle); }
+}
+
+void QuantBot::loadObserverRuntime(InputStream& s) {
+    const auto count=[&]() { auto n=s.readUint32(); if(n>262144) throw std::runtime_error("Oversized spectator AI state"); return n; };
+    const auto coord=[&]() { Coord v; v.x=s.readSint32(); v.y=s.readSint32(); return v; };
+    lastPoliceBudgetReviewCycle=s.readUint32();
+    ixEligibleSinceCycle=s.readUint32();
+    palaceEligibleSinceCycle=s.readUint32();
+    rockSurveyCycle=s.readUint32();
+    refineryQueueSince=s.readUint32();
+    dangerUpdated=s.readUint32();
+    planningBuilder=s.readUint32();
+    placementCacheExcludedBuilder=s.readUint32();
+    cityReadyYardCount=s.readUint32();
+    availableBaseRock=s.readSint32();
+    cityBuildTimer=s.readSint32();
+    ornithopterStrikeTeam.minMembers=s.readSint32();
+    planningCityProductionPlots=s.readBool();
+    rockExpansionSite=coord();
+    idleHarvesterCounters.clear(); for(Uint32 n=count(); n; --n) { auto id=s.readUint32(); idleHarvesterCounters[id]=s.readUint32(); }
+    harvesterMovingCounters.clear(); for(Uint32 n=count(); n; --n) { auto id=s.readUint32(); harvesterMovingCounters[id]=s.readUint32(); }
+    mcvSurveyCycles.clear(); for(Uint32 n=count(); n; --n) { auto id=s.readUint32(); mcvSurveyCycles[id]=s.readUint32(); }
+    roadRedirectRetryCycle.clear(); for(Uint32 n=count(); n; --n) { auto id=s.readUint32(); roadRedirectRetryCycle[id]=s.readUint32(); }
+    mcvExpansionSites.clear(); for(Uint32 n=count(); n; --n) { auto id=s.readUint32(); mcvExpansionSites[id]=coord(); }
+    placementCache.clear(); for(Uint32 n=count(); n; --n) { auto id=s.readUint32(); placementCache[id]=coord(); }
+    tacticalDanger.clear(); for(Uint32 n=count(); n; --n) tacticalDanger.push_back(s.readUint32());
+    harvesterDanger.clear(); for(Uint32 n=count(); n; --n) harvesterDanger.push_back(s.readUint32());
+    lossDanger.clear(); for(Uint32 n=count(); n; --n) lossDanger.push_back(s.readUint32());
+    factoryEnemyClearance.clear(); for(Uint32 n=count(); n; --n) factoryEnemyClearance.push_back(s.readUint32());
+    visibleHarvestLaunchers.clear(); for(Uint32 n=count(); n; --n) visibleHarvestLaunchers.push_back(s.readUint32());
+    visibleEnemyBases.clear(); for(Uint32 n=count(); n; --n) visibleEnemyBases.push_back(coord());
+    builderPlaceLocations.clear(); for(Uint32 n=count(); n; --n) { auto id=s.readUint32(); auto& list=builderPlaceLocations[id]; for(Uint32 m=count(); m; --m) list.push_back(coord()); }
+    reservedStructures.clear(); for(Uint32 n=count(); n; --n) { auto id=s.readUint32(); auto& e=reservedStructures[id]; e.item=s.readUint32(); e.location=coord(); }
+    cityProductionPlots.clear(); for(Uint32 n=count(); n; --n) { PlannedStructure e; e.item=s.readUint32(); e.location=coord(); cityProductionPlots.push_back(e); }
+    ornithopterStrikeTeam.targetId=s.readUint32(); ornithopterStrikeTeam.memberIds.clear(); for(Uint32 n=count(); n; --n) ornithopterStrikeTeam.memberIds.insert(s.readUint32());
+    harvesterSafety.clear(); for(Uint32 n=count(); n; --n) { auto id=s.readUint32(); auto& e=harvesterSafety[id]; e.nextCheck=s.readUint32(); e.retreatUntil=s.readUint32(); e.lastLocation=coord(); e.plannedDestination=coord(); e.controlled=s.readBool(); }
+    unsafeFields.clear(); for(Uint32 n=count(); n; --n) { UnsafeField e; e.location=coord(); e.cycle=s.readUint32(); unsafeFields.push_back(e); }
 }

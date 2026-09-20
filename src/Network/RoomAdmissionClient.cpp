@@ -58,7 +58,15 @@ std::string buildFormBody(const AdmissionRequest& request) {
     body += "&gameProtocol=" + std::to_string(static_cast<unsigned>(request.gameProtocol));
     body += "&contentHash=" + RoomAdmission::encodeFormValue(request.contentHash);
     body += "&runtime=" + RoomAdmission::encodeFormValue(request.runtime);
-    if(request.operation == AdmissionOperation::Visibility) {
+    if(request.operation == AdmissionOperation::JoinRequest) {
+        body += "&room=" + RoomAdmission::encodeFormValue(request.roomCode);
+        body += "&name=" + RoomAdmission::hexText(request.displayName);
+        body += request.publicOnly ? "&publicOnly=1" : "&publicOnly=0";
+        body += request.spectate ? "&spectate=1" : "&spectate=0";
+    } else if(request.operation == AdmissionOperation::JoinStatus) {
+        body += "&request=" + RoomAdmission::encodeFormValue(request.requestTicket);
+        body += request.cancelJoinRequest ? "&cancel=1" : "&cancel=0";
+    } else if(request.operation == AdmissionOperation::Visibility) {
         body += "&room=" + RoomAdmission::encodeFormValue(request.roomCode);
         body += "&control=" + RoomAdmission::encodeFormValue(request.controlToken);
         body += request.publicRoom ? "&visibility=public" : "&visibility=private";
@@ -67,9 +75,15 @@ std::string buildFormBody(const AdmissionRequest& request) {
         body += "&name=" + RoomAdmission::hexText(request.displayName);
         body += "&text=" + RoomAdmission::hexText(request.chatText);
         body += "&cursor=" + std::to_string(request.chatCursor);
+        if(request.presence) body += "&presence=1";
     } else if(request.listing) {
         body += "&offset=" + std::to_string(request.listOffset);
+        if(request.allMods) body += "&allMods=1";
+        if(request.details) body += "&details=1";
     } else if(request.hosting) {
+        body += "&map=" + RoomAdmission::hexText(request.mapName.substr(0,120));
+        body += request.allowLateJoin ? "&allowLateJoin=1" : "&allowLateJoin=0";
+        body += "&mod=" + RoomAdmission::encodeFormValue(RoomAdmission::hexText(request.modName));
         body += "&maxPeers=" + std::to_string(static_cast<unsigned>(request.maxPeers));
         body += "&mode=" + RoomAdmission::encodeFormValue(request.mode);
         body += request.publicRoom ? "&visibility=public" : "&visibility=private";
@@ -86,6 +100,8 @@ std::string buildEndpointUrl(const AdmissionRequest& request) {
         base.pop_back();
     }
     switch(request.operation) {
+        case AdmissionOperation::JoinRequest: return base + "/v1/admission/request";
+        case AdmissionOperation::JoinStatus: return base + "/v1/admission/request-status";
         case AdmissionOperation::Visibility: return base + "/v1/admission/visibility";
         case AdmissionOperation::ChatEnter: return base + "/v1/lobby/enter";
         case AdmissionOperation::ChatPoll: return base + "/v1/lobby/poll";
@@ -258,4 +274,13 @@ void RoomAdmissionClient::update() {
         return;
     }
     finishWithBody(result.httpStatus, result.body);
+}
+
+void RoomAdmissionClient::cancelJoinRequest(AdmissionRequest request) {
+    std::string error;
+    if(request.requestTicket.empty() || !isAcceptableAdmissionBaseUrl(request.baseUrl,request.allowLoopbackPlaintext,error)) return;
+    request.operation=AdmissionOperation::JoinStatus; request.cancelJoinRequest=true;
+    BoundedHttpClient::Request cleanup;
+    cleanup.url=buildEndpointUrl(request); cleanup.body=buildFormBody(request); cleanup.maxResponseBytes=1024; cleanup.timeoutSeconds=3;
+    sendBestEffortHttpRequest(std::move(cleanup));
 }

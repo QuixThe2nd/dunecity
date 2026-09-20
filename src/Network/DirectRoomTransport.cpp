@@ -1,3 +1,5 @@
+#include <Network/RoomAdmissionClient.h>
+#include <sstream>
 /*
  *  This file is part of Dune Legacy.
  *
@@ -212,10 +214,13 @@ void DirectRoomTransport::update() {
     const std::uint32_t nowMs = now();
     pumpSignaling(nowMs);
     pumpConnections(nowMs);
+    pumpJoinRequests(nowMs);
+    pumpPlayRequest(nowMs);
     if(status_ == Status::Joined && startStage_ != StartStage::Idle && startStage_ != StartStage::Committed
        && SDL_TICKS_PASSED(nowMs, startDeadline_)) {
         finish(RoomRelay::Close::Timeout, "The players could not confirm the start. Please host a new game.");
     }
+    acknowledgeStartIfReady();
 }
 
 void DirectRoomTransport::pumpSignaling(std::uint32_t nowMs) {
@@ -356,7 +361,7 @@ void DirectRoomTransport::beginNextSignalingRequest(std::uint32_t nowMs) {
     // drops to a trickle rather than keeping a conversation going for its own sake.
     const bool settled = !negotiating && matchStarted_ && !links_.empty();
     const std::uint32_t interval = negotiating ? kNegotiatingPollMs
-                                 : settled ? kMatchPollMs
+                                 : settled ? (config_.allowLateJoin ? kConnectedPollMs : kMatchPollMs)
                                  : (links_.empty() ? kIdlePollMs : kConnectedPollMs);
     if(nowMs - lastPollMs_ < interval) {
         return;
@@ -394,6 +399,7 @@ void DirectRoomTransport::handleSessionResult(const BoundedHttpClient::Result& r
     localPeerId_ = response.peerId;
     sessionToken_ = response.session;
     localRole_   = response.role;
+    localSpectator_ = response.spectator;
     maxPeers_    = response.maxPeers;
     phase_       = response.phase;
     iceServers_  = response.iceServers;
@@ -459,13 +465,22 @@ void DirectRoomTransport::handlePollResult(const BoundedHttpClient::Result& resu
     }
 
     const std::uint32_t nowMs = now();
+    // Promotion needs both a host-authenticated prepare packet and the service's
+    // authenticated roster update. Neither alone grants a spectator control.
+    if(localSpectator_ && promotionPrepared_) {
+        for(const auto& member : response.members) if(member.id==localPeerId_ && !member.spectator
+            && member.name==config_.displayName && member.role==localRole_) {
+            localSpectator_=false; readinessDirty_=true;
+        }
+    }
     for(const P2PSignal::RoomMember& member : response.members) {
         // Applying one record can end the session - the host being renamed, for instance - and
         // nothing after that belongs to a session that no longer exists.
         if(status_ != Status::Joined) {
             return;
         }
-        if(member.id == localPeerId_) {
+        if(member.id == localPeerId_ || (localSpectator_ && member.role != RoomRelay::Role::Host)
+           || (member.spectator && !isHost())) {
             continue;
         }
         Peer* existing = mutablePeer(member.id);
@@ -473,7 +488,7 @@ void DirectRoomTransport::handlePollResult(const BoundedHttpClient::Result& resu
             if(peers_.size() >= RoomRelay::Limits::kMaxPeersPerRoom) {
                 continue;   // the service is claiming a bigger room than the protocol allows
             }
-            if(matchStarted_) {
+            if(matchStarted_ && !member.spectator && !localSpectator_) {
                 // Lockstep has no way to bring somebody up to date, so a member that appears
                 // after the roster was frozen is not joinable - it is ignored, loudly.
                 if(!isFrozenMember(member.id)) {
@@ -485,20 +500,29 @@ void DirectRoomTransport::handlePollResult(const BoundedHttpClient::Result& resu
                 }
                 continue;
             }
+            // The promoted viewer previously knew only the host. Like a fresh
+            // newcomer it must discover all controllers before joining their mesh.
+            if(!member.spectator && !joinName_.empty() && joinName_!=config_.displayName
+               && member.name!=joinName_ && !isFrozenMember(member.id)) continue;
             Peer peer;
             peer.id      = member.id;
             peer.role    = member.role;
             peer.name    = member.name;
             peer.runtime = member.runtime;
+            peer.spectator = member.spectator;
             peers_.push_back(peer);
-            readinessDirty_ = true;
+            if(!member.spectator) readinessDirty_ = true;
             for(auto& existingLink : links_) {
                 // A membership change invalidates everybody's readiness report, including ours.
-                existingLink->reportedReadiness = false;
+                if(!member.spectator) existingLink->reportedReadiness = false;
             }
             openLink(member.id, nowMs);
+        } else if(existing->spectator && !member.spectator && !joinName_.empty() && member.name==joinName_
+                  && existing->name==member.name && existing->role==member.role && existing->runtime==member.runtime) {
+            existing->spectator=false; spectators_.erase(member.name); readinessDirty_=true;
+            for(auto& connection : links_) connection->reportedReadiness=false;
         } else if(existing->role != member.role || existing->name != member.name
-                  || existing->runtime != member.runtime) {
+                  || existing->runtime != member.runtime || existing->spectator != member.spectator) {
             // A player's id, role and name are fixed for the life of the room. Letting the
             // service change them afterwards would let it rename one player into another, and
             // names are identity everywhere the lobby and the command path look at them.
@@ -614,7 +638,7 @@ void DirectRoomTransport::openLink(std::uint32_t peerId, std::uint32_t nowMs) {
     }
     // A failed pair cannot negotiate a new certificate under the same admitted peer ids.
     // The player must rejoin with a fresh admission; retrying each poll creates a signal storm.
-    if(std::find(retiredPeerIds_.begin(), retiredPeerIds_.end(), peerId) != retiredPeerIds_.end()) return;
+    if(peerId > 65535 || retiredPeerIds_.test(peerId)) return;
     auto link      = std::make_unique<Link>();
     link->peerId   = peerId;
     if(const Peer* peer = findPeer(peerId)) link->role = peer->role;
@@ -797,11 +821,21 @@ void DirectRoomTransport::pumpConnections(std::uint32_t nowMs) {
             const Peer* peer = findPeer(peerId);
             const std::string name = peer != nullptr && !peer->name.empty()
                                          ? peer->name : std::string("another player");
-            // There is no fallback to fall back to, on purpose, so the player is told plainly.
+            // A failed handshake does not establish that the network blocked it.
+            // Keep this rare failure visible even when performance diagnostics are off;
+            // log only locally generated state and categories, never SDP or credentials.
+            const auto& detail=link->connection->lastError();
+            const char* category=detail.empty() ? "no_backend_reason" : "backend_error";
+            for(const auto* known : {"ICE", "ice", "fingerprint", "queue", "backlog", "channel", "WebRTC"})
+                if(detail.find(known)!=std::string::npos) { category=known; break; }
+            SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
+                "Direct connection failed: state=%d connected=%d timeout=%d elapsed_ms=%u local_spectator=%d remote_spectator=%d cause=%s",
+                static_cast<int>(state), link->connected, deadlineMissed,
+                static_cast<unsigned>(nowMs-link->startedMs), localSpectator_, peer && peer->spectator, category);
             const std::string reason = link->connected
                 ? "The direct connection to " + name + " was lost."
                 : "Could not open a direct connection to " + name
-                      + ". Your network blocked the peer-to-peer link.";
+                      + ". The connection failed before the game could load.";
             dropLink(peerId, reason);
             continue;       // dropLink erased this entry
         }
@@ -847,6 +881,7 @@ void DirectRoomTransport::handleReceivedValue(Link& link, const std::string& ass
 
     switch(envelope.kind) {
         case P2PWire::EnvelopeKind::Start:
+            if(isSpectatorPeer(link.peerId) || localSpectator_) { dropLink(link.peerId,"Spectators do not start matches."); return; }
             handleStartEnvelope(link, envelope); return;
         case P2PWire::EnvelopeKind::Game: {
             // Addressed to someone else: fatal, not forwarded. This transport has no route to
@@ -865,6 +900,7 @@ void DirectRoomTransport::handleReceivedValue(Link& link, const std::string& ass
             return;
         }
         case P2PWire::EnvelopeKind::Diagnostic: {
+            if(isSpectatorPeer(link.peerId)) return;
             Event event;
             event.type           = Event::Type::Diagnostic;
             event.peerId         = link.peerId;
@@ -874,6 +910,13 @@ void DirectRoomTransport::handleReceivedValue(Link& link, const std::string& ass
             return;
         }
         case P2PWire::EnvelopeKind::Readiness:
+            if(isSpectatorPeer(link.peerId) || localSpectator_) return;
+            // A peer may learn the authenticated roster after our last report,
+            // especially when a spectator becomes a controller. Reply to a new
+            // report so it can recover the readiness it previously ignored.
+            // Identical reports do not trigger replies, avoiding a ping-pong.
+            if(!link.reportedReadiness || link.rosterKey != envelope.rosterKey
+               || link.reportedConnections != envelope.connectedPeers) readinessDirty_ = true;
             link.rosterKey           = envelope.rosterKey;
             link.reportedConnections = envelope.connectedPeers;
             link.reportedReadiness   = true;
@@ -898,6 +941,7 @@ std::string DirectRoomTransport::localRosterKey() const {
     std::vector<std::uint32_t> ids;
     ids.push_back(localPeerId_);
     for(const Peer& peer : peers_) {
+        if(peer.spectator) continue;
         ids.push_back(peer.id);
     }
     std::sort(ids.begin(), ids.end());
@@ -912,16 +956,17 @@ std::string DirectRoomTransport::localRosterKey() const {
 }
 
 void DirectRoomTransport::sendReadiness() {
+    if(localSpectator_) return;
     std::vector<std::uint32_t> connected;
     for(const auto& link : links_) {
-        if(link->connected) {
+        if(!isSpectatorPeer(link->peerId) && link->connected) {
             connected.push_back(link->peerId);
         }
     }
     std::sort(connected.begin(), connected.end());
     const std::string envelope = P2PWire::encodeReadinessEnvelope(localRosterKey(), connected);
     for(auto& link : links_) {
-        if(link->connected && link->connection) {
+        if(!isSpectatorPeer(link->peerId) && link->connected && link->connection) {
             link->connection->sendValue(envelope);
         }
     }
@@ -942,6 +987,7 @@ std::string DirectRoomTransport::meshBlockedReason() const {
     }
     const std::string roster = localRosterKey();
     for(const Peer& peer : peers_) {
+        if(peer.spectator) continue;
         const Link* link = nullptr;
         for(const auto& candidate : links_) {
             if(candidate->peerId == peer.id) {
@@ -961,6 +1007,7 @@ std::string DirectRoomTransport::meshBlockedReason() const {
         // Every other player must appear in that peer's own connection list, or there is a
         // guest-to-guest link missing and its commands would never arrive.
         for(const Peer& other : peers_) {
+            if(other.spectator) continue;
             if(other.id == peer.id) {
                 continue;
             }
@@ -994,7 +1041,7 @@ Uint32 DirectRoomTransport::roundTripTimeMs() const {
     Uint32 worst = 0;
     bool   sawConnectedPeer = false;
     for(const auto& link : links_) {
-        if(!link->connected) {
+        if(isSpectatorPeer(link->peerId) || !link->connected) {
             continue;
         }
         sawConnectedPeer = true;
@@ -1047,7 +1094,7 @@ bool DirectRoomTransport::sendGamePayload(const std::uint8_t* payload, std::size
     std::vector<std::uint32_t> failed;
     bool anyTarget = false;
     for(auto& link : links_) {
-        if(recipient != 0 && link->peerId != recipient) {
+        if((recipient == 0 && isSpectatorPeer(link->peerId)) || (recipient != 0 && link->peerId != recipient)) {
             continue;
         }
         if(!link->connected) {
@@ -1090,7 +1137,7 @@ bool DirectRoomTransport::sendDiagnostic(RoomRelay::DiagnosticKind kind,
     }
     bool anySent = false;
     for(auto& link : links_) {
-        if(link->connected && sendEnvelopeTo(*link, envelope)) {
+        if(!isSpectatorPeer(link->peerId) && link->connected && sendEnvelopeTo(*link, envelope)) {
             anySent = true;
         }
     }
@@ -1133,7 +1180,7 @@ void DirectRoomTransport::beginStartPrepare(const BoundedHttpClient::Result& res
     freezeRoster("the game service closed admission for this roster");
     phase_ = RoomRelay::Phase::Match;
     const auto message = P2PWire::encodeStartEnvelope('p', startId_, startRoster_);
-    for(auto& link : links_) if(!link->connected || !sendEnvelopeTo(*link, message)) {
+    for(auto& link : links_) if(!isSpectatorPeer(link->peerId) && (!link->connected || !sendEnvelopeTo(*link, message))) {
         finish(RoomRelay::Close::Normal, "A player disconnected before confirming the start."); return;
     }
     completeStartIfReady();
@@ -1146,15 +1193,17 @@ void DirectRoomTransport::handleStartEnvelope(Link& link, const P2PWire::Envelop
             if(e.startId != startId_ || e.rosterKey != startRoster_) finish(RoomRelay::Close::ProtocolError,"Conflicting match starts.");
             return; // exact replay does not reset deadline or countdown
         }
-        if(e.rosterKey != localRosterKey() || !meshReady()) {
+        if(e.rosterKey != localRosterKey()) {
             finish(RoomRelay::Close::Normal,"The players disagree about who is in the game."); return;
         }
         startId_ = e.startId; startRoster_ = e.rosterKey;
-        startStage_ = StartStage::Preparing; startDeadline_ = now() + 30000;
+        // Readiness and prepare are ordered on the host channel, but another
+        // controller's readiness may still be in flight on its own channel.
+        // Keep the authenticated roster fixed and withhold ACK until all pairs
+        // are ready. Repeated prepare packets never extend this deadline.
+        startStage_ = StartStage::AwaitingMesh; startDeadline_ = now() + 30000;
         freezeRoster("the host requested confirmation of this match");
         phase_ = RoomRelay::Phase::Match;
-        if(!sendEnvelopeTo(link,P2PWire::encodeStartEnvelope('a',startId_,startRoster_)))
-            finish(RoomRelay::Close::Normal,"The host could not receive the start confirmation.");
         return;
     }
     if(e.startId != startId_ || e.rosterKey != startRoster_ || startStage_ == StartStage::Idle) {
@@ -1168,15 +1217,33 @@ void DirectRoomTransport::handleStartEnvelope(Link& link, const P2PWire::Envelop
     }
     if(isHost() || link.role != RoomRelay::Role::Host) { dropLink(link.peerId,"Only the host can commit a start."); return; }
     if(startStage_ == StartStage::Committed) return;
+    if(startStage_ != StartStage::Preparing) {
+        finish(RoomRelay::Close::ProtocolError,"The host committed before this player confirmed the start."); return;
+    }
     startStage_ = StartStage::Committed;
     Event event; event.type=Event::Type::GamePayload; event.peerId=link.peerId; event.payload=e.payload;
     pushEvent(std::move(event)); // same authorized game parser as every other transport
 }
 
+void DirectRoomTransport::acknowledgeStartIfReady() {
+    if(status_ != Status::Joined || isHost() || startStage_ != StartStage::AwaitingMesh) return;
+    if(localRosterKey() != startRoster_) {
+        finish(RoomRelay::Close::ProtocolError,"The players changed while confirming the start."); return;
+    }
+    if(!meshReady()) return;
+    for(auto& link : links_) if(link->role == RoomRelay::Role::Host) {
+        if(!sendEnvelopeTo(*link,P2PWire::encodeStartEnvelope('a',startId_,startRoster_))) {
+            finish(RoomRelay::Close::Normal,"The host could not receive the start confirmation."); return;
+        }
+        startStage_ = StartStage::Preparing;
+        return;
+    }
+}
+
 void DirectRoomTransport::completeStartIfReady() {
     if(!isHost() || startStage_ != StartStage::Preparing || startAcks_.size() != frozenRoster_.size()) return;
     const auto message=P2PWire::encodeStartEnvelope('c',startId_,startRoster_,startPayload_);
-    for(auto& link:links_) if(!link->connected || !sendEnvelopeTo(*link,message)) {
+    for(auto& link:links_) if(!isSpectatorPeer(link->peerId) && (!link->connected || !sendEnvelopeTo(*link,message))) {
         finish(RoomRelay::Close::Normal,"A player disconnected while starting the match."); return;
     }
     startStage_=StartStage::Committed;
@@ -1234,7 +1301,7 @@ void DirectRoomTransport::freezeRoster(const char* why) {
     matchStarted_ = true;
     frozenRoster_.clear();
     for(const Peer& peer : peers_) {
-        frozenRoster_.push_back(peer.id);
+        if(!peer.spectator) frozenRoster_.push_back(peer.id);
     }
     Event event;
     event.type    = Event::Type::Diagnostic;
@@ -1282,13 +1349,8 @@ void DirectRoomTransport::refuse(Link& link, const char* reason) {
 }
 
 void DirectRoomTransport::dropLink(std::uint32_t peerId, const std::string& reason) {
-    if(std::find(retiredPeerIds_.begin(), retiredPeerIds_.end(), peerId) == retiredPeerIds_.end()) {
-        if(retiredPeerIds_.size() >= 128) {
-            finish(RoomRelay::Close::Normal, "Too many connection attempts failed. Please open a new game.");
-            return;
-        }
-        retiredPeerIds_.push_back(peerId);
-    }
+    if(peerId <= 65535) retiredPeerIds_.set(peerId);
+    const bool observer=isSpectatorPeer(peerId);
     // The peer's own details are read before anything is erased, because the lobby and the
     // running game identify a departing player by name, not by id.
     std::string     name;
@@ -1315,6 +1377,7 @@ void DirectRoomTransport::dropLink(std::uint32_t peerId, const std::string& reas
             event.peerId  = peerId;
             event.name    = name;
             event.role    = role;
+            event.spectator = observer;
             // A link that died under us reads as a lost connection rather than as somebody
             // choosing to leave, which is what the lobby and the game already know how to say.
             event.reason  = reason.empty() ? 0 : 2;
@@ -1350,7 +1413,7 @@ void DirectRoomTransport::dropLink(std::uint32_t peerId, const std::string& reas
                    : reason);
         return;
     }
-    if(matchStarted_ && isFrozenMember(peerId)) {
+    if((matchStarted_ || !joinName_.empty()) && isFrozenMember(peerId) && !spectators_.count(name)) {
         finish(RoomRelay::Close::Normal,
                name.empty() ? "A player left, so the match cannot continue."
                             : name + " left, so the match cannot continue.");
@@ -1360,6 +1423,8 @@ void DirectRoomTransport::dropLink(std::uint32_t peerId, const std::string& reas
         finish(RoomRelay::Close::HostLeft, reason);
         return;
     }
+    frozenRoster_.erase(std::remove(frozenRoster_.begin(),frozenRoster_.end(),peerId),frozenRoster_.end());
+    if(observer) return;
     readinessDirty_ = true;
     for(auto& link : links_) {
         link->reportedReadiness = false;
@@ -1423,6 +1488,8 @@ void DirectRoomTransport::pushEvent(Event&& event) {
     // The same bound the relay transport keeps: a backlog the game cannot drain is how a lockstep
     // match desynchronises quietly, so the session ends instead.
     const std::size_t cost = event.payload.size() + event.message.size() + event.name.size() + 128;
+    if(isSpectatorPeer(event.peerId) && (events_.size() >= kMaxQueuedEvents/2
+        || eventBytes_ + cost > kMaxQueuedEventBytes/2)) return;
     if(events_.size() >= kMaxQueuedEvents || eventBytes_ + cost > kMaxQueuedEventBytes) {
         events_.clear();
         eventBytes_ = 0;
@@ -1487,7 +1554,7 @@ const RoomSessionTransport::Peer* DirectRoomTransport::findPeer(std::uint32_t pe
 std::size_t DirectRoomTransport::outgoingBacklogBytes() const {
     std::size_t total = 0;
     for(const auto& link : links_) {
-        if(link->connection) {
+        if(!isSpectatorPeer(link->peerId) && link->connection) {
             total += link->connection->bufferedAmount();
         }
     }
@@ -1502,4 +1569,107 @@ std::size_t DirectRoomTransport::connectedPeerCount() const {
         }
     }
     return count;
+}
+
+
+bool DirectRoomTransport::openJoinWindow(const std::string& name) {
+    if(status_ != Status::Joined || !RoomRelay::isAcceptableDisplayName(name) || !joinName_.empty()) return false;
+    joinName_=name;
+    matchStarted_=false;
+    startStage_=StartStage::Idle; startCallbackAccepted_=false;
+    startId_.clear(); startRoster_.clear(); startPayload_.clear(); startAcks_.clear();
+    phaseUpdatePending_=false;
+    phase_=RoomRelay::Phase::Lobby;
+    readinessDirty_=true; lastPollMs_=0;
+    return true;
+}
+
+void DirectRoomTransport::abortJoinWindow() {
+    if(joinName_.empty()) return;
+    std::vector<std::uint32_t> remove;
+    for(const auto& peer : peers_) if(!peer.spectator && !isFrozenMember(peer.id)) remove.push_back(peer.id);
+    for(auto id : remove) dropLink(id,"The host cancelled the join request.");
+    joinName_.clear();
+    matchStarted_=true; phase_=RoomRelay::Phase::Match;
+    startStage_=StartStage::Committed; startCallbackAccepted_=true;
+    phaseUpdatePending_=false;
+}
+
+bool DirectRoomTransport::manageJoin(const std::string& action, const std::string& request) {
+    if(!isHost() || !isJoined() || (action!="approve" && action!="approve_spectator" && action!="decline" && action!="abort")
+       || request.size()!=64 || !RoomRelay::isLowercaseHex(request)) return false;
+    if(!joinAction_.empty() && joinAction_!="list" && action!="abort") return false;
+    if(!joinHttp_) joinHttp_=dependencies_.httpFactory();
+    if(!joinHttp_) return false;
+    joinHttp_->cancel(); joinAction_=action; joinRequestId_=request; joinDecisionOK_=false;
+    auto req=signalingRequest(); req.url=endpoint("/v1/p2p/join-requests"); req.sessionToken=sessionToken_;
+    req.body="action="+action+"&request="+request; req.maxResponseBytes=4096;
+    joinHttp_->begin(req);
+    return true;
+}
+
+void DirectRoomTransport::pumpJoinRequests(std::uint32_t nowMs) {
+    if(!isHost() || !isJoined() || !config_.allowLateJoin) return;
+    if(!joinHttp_) joinHttp_=dependencies_.httpFactory();
+    if(!joinHttp_) return;
+    joinHttp_->update();
+    BoundedHttpClient::Result result;
+    if(joinHttp_->poll(result)) {
+        std::vector<JoinRequest> requests;
+        const bool valid=result.httpStatus==200 && LateJoinPolicy::parseQueue(result.body,requests);
+        if(valid) joinRequests_=std::move(requests);
+        if(joinAction_!="list") joinDecisionOK_=valid;
+        joinAction_.clear(); nextJoinPoll_=nowMs+3000;
+    }
+    if(joinAction_.empty() && matchStarted_ && SDL_TICKS_PASSED(nowMs,nextJoinPoll_)) {
+        auto req=signalingRequest(); req.url=endpoint("/v1/p2p/join-requests"); req.sessionToken=sessionToken_;
+        req.body="action=list"; req.maxResponseBytes=4096;
+        joinAction_="list"; joinHttp_->begin(req);
+    }
+}
+
+bool DirectRoomTransport::peerConnected(std::uint32_t id) const {
+    for(const auto& link : links_) if(link->peerId==id) return link->connected;
+    return false;
+}
+
+
+bool DirectRoomTransport::requestToPlay(bool cancel) {
+    if(!isJoined() || !localSpectator_ || promotionPrepared_ || config_.gameProtocolVersion<9
+       || !playAction_.empty()) return false;
+    if(!playHttp_) playHttp_=dependencies_.httpFactory();
+    if(!playHttp_) return false;
+    playAction_=cancel ? "cancel_play" : "request_play";
+    auto request=signalingRequest(); request.url=endpoint("/v1/p2p/join-requests");
+    request.sessionToken=sessionToken_; request.body="action="+playAction_; request.maxResponseBytes=256;
+    playHttp_->begin(request);
+    if(!cancel) playRequestState_="pending"; // Host approval can beat the HTTP response.
+    return true;
+}
+
+bool DirectRoomTransport::prepareSpectatorPromotion() {
+    if(!localSpectator_ || promotionPrepared_ || (playRequestState_!="pending" && playRequestState_!="approved")) return false;
+    if(!openJoinWindow(config_.displayName)) return false;
+    promotionPrepared_=true;
+    return true;
+}
+
+void DirectRoomTransport::pumpPlayRequest(std::uint32_t nowMs) {
+    if(!playHttp_ || !isJoined()) return;
+    playHttp_->update();
+    BoundedHttpClient::Result result;
+    if(playHttp_->poll(result)) {
+        bool valid=false;
+        for(const auto* state : {"none","pending","approved","declined","cancelled"}) {
+            const auto expected=std::string("status=ok\nprotocol=")+std::to_string(RoomRelay::kProtocolVersion)+"\nplayRequest="+state+"\n";
+            if(result.httpStatus==200 && result.body==expected) { playRequestState_=state; valid=true; break; }
+        }
+        if(!valid && playAction_!="play_status") playRequestState_="error";
+        playAction_.clear(); nextPlayPoll_=nowMs+3000;
+    }
+    if(localSpectator_ && playRequestState_=="pending" && playAction_.empty() && SDL_TICKS_PASSED(nowMs,nextPlayPoll_)) {
+        auto request=signalingRequest(); request.url=endpoint("/v1/p2p/join-requests");
+        request.sessionToken=sessionToken_; request.body="action=play_status"; request.maxResponseBytes=256;
+        playAction_="play_status"; playHttp_->begin(request);
+    }
 }

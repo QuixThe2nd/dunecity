@@ -72,17 +72,17 @@ CampaignStatsMenu::CampaignStatsMenu(int level) : MenuBase()
     rankLabel.setText(rank);
     windowWidget.addWidget(&rankLabel, (getSize()/2) + Point(-rankLabel.getSize().x/2, -104), rankLabel.getSize());
 
-    spiceHarvestedByLabel.setTextColor(COLOR_WHITE, COLOR_BLACK, COLOR_THICKSPICE);
+    spiceHarvestedByLabel.setTextColor(COLOR_WHITE, COLOR_TRANSPARENT);
     spiceHarvestedByLabel.setAlignment(Alignment_HCenter);
     spiceHarvestedByLabel.setText(_("@DUNE.ENG|26#Spice harvested by"));
     windowWidget.addWidget(&spiceHarvestedByLabel, (getSize()/2) + Point(-spiceHarvestedByLabel.getSize().x/2, -40), spiceHarvestedByLabel.getSize());
 
-    unitsDestroyedByLabel.setTextColor(COLOR_WHITE, COLOR_BLACK, COLOR_THICKSPICE);
+    unitsDestroyedByLabel.setTextColor(COLOR_WHITE, COLOR_TRANSPARENT);
     unitsDestroyedByLabel.setAlignment(Alignment_HCenter);
     unitsDestroyedByLabel.setText(_("@DUNE.ENG|24#Units destroyed by"));
     windowWidget.addWidget(&unitsDestroyedByLabel, (getSize()/2) + Point(-unitsDestroyedByLabel.getSize().x/2, 34), unitsDestroyedByLabel.getSize());
 
-    buildingsDestroyedByLabel.setTextColor(COLOR_WHITE, COLOR_BLACK, COLOR_THICKSPICE);
+    buildingsDestroyedByLabel.setTextColor(COLOR_WHITE, COLOR_TRANSPARENT);
     buildingsDestroyedByLabel.setAlignment(Alignment_HCenter);
     buildingsDestroyedByLabel.setText(_("@DUNE.ENG|25#Buildings destroyed by"));
     windowWidget.addWidget(&buildingsDestroyedByLabel, (getSize()/2) + Point(-buildingsDestroyedByLabel.getSize().x/2, 108), buildingsDestroyedByLabel.getSize());

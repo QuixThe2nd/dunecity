@@ -36,6 +36,8 @@ public:
     void save(OutputStream& stream) const override;
 
     void blitToScreen() override;
+    /// Draw the same live zone/civic sprite used on the map into a UI rectangle.
+    void drawPreview(const SDL_Rect& bounds) const;
 
     void setLocation(int xPos, int yPos) override;
 

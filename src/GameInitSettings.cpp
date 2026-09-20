@@ -180,6 +180,7 @@ void GameInitSettings::configureCoopSave(const GameInitSettings& saved, const Ho
     gameOptions = saved.gameOptions;
     modName = saved.modName;
     modChecksum = saved.modChecksum;
+    campaignGraphicsSkin = saved.campaignGraphicsSkin;
     houseInfoList = houses;
     // Future campaign missions can introduce enemies not present in this save.
     for(const auto& planned : saved.houseInfoList) {
@@ -216,6 +217,13 @@ GameInitSettings GameInitSettings::readSaveSetup(InputStream& stream, HouseInfoL
             house.colorOfHouse = stream.readSint32();
             if(version <= 9820) house.colorOfHouse = migrateLegacyHouseColorSlot(house.colorOfHouse);
         }
+    }
+    // HouseInfo's standalone save block predates skins; MOD3 owns that data.
+    // Match by house identity because setup rows can differ from init ordering.
+    for(auto& house : houses) {
+        const auto init = std::find_if(saved.houseInfoList.begin(), saved.houseInfoList.end(),
+            [&](const HouseInfo& candidate) { return candidate.houseID == house.houseID; });
+        if(init != saved.houseInfoList.end()) house.graphicsSkin = init->graphicsSkin;
     }
     return saved;
 }

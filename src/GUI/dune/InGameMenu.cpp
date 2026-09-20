@@ -20,6 +20,7 @@
 #include <globals.h>
 
 #include <FileClasses/GFXManager.h>
+#include <FileClasses/FontManager.h>
 #include <FileClasses/TextManager.h>
 #include <misc/fnkdat.h>
 #include <Game.h>
@@ -29,83 +30,78 @@
 
 #include <GUI/MsgBox.h>
 #include <GUI/QstBox.h>
+#include <GUI/dune/JoinRequestsWindow.h>
 #include <GUI/dune/InGameSettingsMenu.h>
 #include <GUI/dune/LoadSaveWindow.h>
 
 
+Point InGameMenuButton::getMinimumSize() const {
+    return Point(GUIStyle::getInstance().getTextWidth(getText(),20)+32,40);
+}
+
 InGameMenu::InGameMenu(bool bMultiplayer, int color)
  : Window(0,0,0,0), bMultiplayer(bMultiplayer), color(color) {
-    // set up window
-    SDL_Texture *pBackground = pGFXManager->getUIGraphic(UI_GameMenu);
-    setBackground(pBackground);
-
-    setCurrentPosition(calcAlignedDrawingRect(pBackground, HAlign::Center, VAlign::Center));
-
-    setWindowWidget(&mainHBox);
-
-    mainHBox.addWidget(HSpacer::create(22));
-    mainHBox.addWidget(&mainVBox);
-    mainHBox.addWidget(HSpacer::create(22));
-
-
     const bool onlineContinues = pNetworkManager && pNetworkManager->isRelaySession();
-    if(onlineContinues) {
-        onlineNotice.setText(_("Online game continues"));
-        onlineNotice.setTextColor(color);
-        onlineNotice.setTextFontSize(12);
-        onlineNotice.setAlignment(static_cast<Alignment_Enum>(Alignment_HCenter | Alignment_Bottom));
-        mainVBox.addWidget(&onlineNotice, 34);
-    } else {
-        mainVBox.addWidget(VSpacer::create(34));
+    const bool canSkip = currentGame->canSkipMission();
+    const bool canJoin=pNetworkManager && pNetworkManager->isServer() && pNetworkManager->getDirectTransport() && pNetworkManager->getDirectTransport()->allowsLateJoin();
+    const bool canRequest=currentGame->isSpectating() && pNetworkManager->getDirectTransport();
+    const int buttons = ((canJoin || canRequest) ? 4 : 3) + (bMultiplayer ? 0 : 3) + (canSkip ? 1 : 0);
+    const int width = std::min(440,getRendererWidth()-32);
+    const int height = 92 + buttons*40 + (buttons-1)*6;
+    sdl2::surface_ptr background{SDL_CreateRGBSurfaceWithFormat(0,width,height,32,SCREEN_FORMAT)};
+    SDL_FillRect(background.get(),nullptr,COLOR_RGB(20,24,32));
+    drawRect(background.get(),0,0,width-1,height-1,COLOR_RGB(190,153,77));
+    setBackground(std::move(background));
+    setCurrentPosition((getRendererWidth()-width)/2,(getRendererHeight()-height)/2,width,height);
+    setWindowWidget(&mainHBox);
+    mainHBox.addWidget(HSpacer::create(24));
+    mainHBox.addWidget(&mainVBox);
+    mainHBox.addWidget(HSpacer::create(24));
+    mainVBox.addWidget(VSpacer::create(12));
+    title.setText("Dune City");
+    title.setTextFontSize(24);
+    title.setTextColor(COLOR_RGB(250,248,240),COLOR_TRANSPARENT);
+    title.setAlignment(static_cast<Alignment_Enum>(Alignment_HCenter | Alignment_VCenter));
+    mainVBox.addWidget(&title,32);
+    onlineNotice.setText(onlineContinues ? _("Online game continues") : _("Game menu"));
+    onlineNotice.setTextColor(COLOR_RGB(197,204,217),COLOR_TRANSPARENT);
+    onlineNotice.setTextFontSize(14);
+    onlineNotice.setAlignment(static_cast<Alignment_Enum>(Alignment_HCenter | Alignment_VCenter));
+    mainVBox.addWidget(&onlineNotice,20);
+    mainVBox.addWidget(VSpacer::create(12));
+
+    auto addButton=[&](InGameMenuButton& button,const std::string& text,auto callback) {
+        button.setText(text);
+        button.setOnClick(callback);
+        mainVBox.addWidget(&button,40);
+    };
+    auto gap=[&]() { mainVBox.addWidget(VSpacer::create(6)); };
+    addButton(resumeButton,onlineContinues ? _("Back to Game") : _("Resume Game"),std::bind(&InGameMenu::onResume,this));
+    if(canJoin) {
+        gap(); addButton(joinRequestsButton,"Join requests ("+std::to_string(pNetworkManager->getDirectTransport()->joinRequests().size())+")",[this](){openWindow(JoinRequestsWindow::create());});
     }
-
-    resumeButton.setText(onlineContinues ? _("Back to Game") : _("Resume Game"));
-    resumeButton.setTextColor(color);
-    resumeButton.setOnClick(std::bind(&InGameMenu::onResume, this));
-    mainVBox.addWidget(&resumeButton);
-
-    mainVBox.addWidget(VSpacer::create(3));
-
-    saveGameButton.setText(_("Save Game"));
-    saveGameButton.setTextColor(color);
-    saveGameButton.setOnClick(std::bind(&InGameMenu::onSave, this));
-    mainVBox.addWidget(&saveGameButton);
-
-    mainVBox.addWidget(VSpacer::create(3));
-
-    loadGameButton.setText(_("Load Game"));
-    loadGameButton.setTextColor(color);
-    loadGameButton.setOnClick(std::bind(&InGameMenu::onLoad, this));
-    loadGameButton.setVisible(bMultiplayer == false);
-    loadGameButton.setEnabled(bMultiplayer == false);
-    mainVBox.addWidget(&loadGameButton);
-
-    mainVBox.addWidget(VSpacer::create(3));
-
-    gameSettingsButton.setText(_("Game Settings"));
-    gameSettingsButton.setTextColor(color);
-    gameSettingsButton.setOnClick(std::bind(&InGameMenu::onSettings, this));
-    gameSettingsButton.setVisible(bMultiplayer == false);
-    gameSettingsButton.setEnabled(bMultiplayer == false);
-    mainVBox.addWidget(&gameSettingsButton);
-
-    mainVBox.addWidget(VSpacer::create(3));
-
-    restartGameButton.setText(_("Restart Game"));
-    restartGameButton.setTextColor(color);
-    restartGameButton.setOnClick(std::bind(&InGameMenu::onRestart, this));
-    restartGameButton.setVisible(bMultiplayer == false);
-    restartGameButton.setEnabled(bMultiplayer == false);
-    mainVBox.addWidget(&restartGameButton);
-
-    mainVBox.addWidget(VSpacer::create(3));
-
-    quitButton.setText(_("Quit to Menu"));
-    quitButton.setTextColor(color);
-    quitButton.setOnClick(std::bind(&InGameMenu::onQuit, this));
-    mainVBox.addWidget(&quitButton);
-
-    mainVBox.addWidget(VSpacer::create(6));
+    if(canRequest) {
+        auto* direct=pNetworkManager->getDirectTransport();
+        const bool pending=direct->playRequestState()=="pending";
+        gap(); addButton(joinRequestsButton,pending ? "Cancel request to play" : "Request to play",[this,pending]() {
+            auto* direct=pNetworkManager->getDirectTransport();
+            if(direct->requestToPlay(pending)) currentGame->resumeGame();
+        });
+    }
+    if(canSkip) {
+        gap();addButton(skipMissionButton,_("Skip mission..."),std::bind(&InGameMenu::onSkipMission,this));
+    }
+    gap();addButton(saveGameButton,_("Save Game"),std::bind(&InGameMenu::onSave,this));
+    loadGameButton.setVisible(!bMultiplayer);loadGameButton.setEnabled(!bMultiplayer);
+    gameSettingsButton.setVisible(!bMultiplayer);gameSettingsButton.setEnabled(!bMultiplayer);
+    restartGameButton.setVisible(!bMultiplayer);restartGameButton.setEnabled(!bMultiplayer);
+    if(!bMultiplayer) {
+        gap();addButton(loadGameButton,_("Load Game"),std::bind(&InGameMenu::onLoad,this));
+        gap();addButton(gameSettingsButton,_("Game Settings"),std::bind(&InGameMenu::onSettings,this));
+        gap();addButton(restartGameButton,_("Restart Game"),std::bind(&InGameMenu::onRestart,this));
+    }
+    gap();addButton(quitButton,_("Quit to Menu"),std::bind(&InGameMenu::onQuit,this));
+    mainVBox.addWidget(VSpacer::create(16));
 }
 
 InGameMenu::~InGameMenu()
@@ -172,6 +168,9 @@ void InGameMenu::onChildWindowClose(Window* pChildWindow) {
                 if(pQstBox->getText() == _("Do you really want to quit this game?")) {
                     // quit
                     currentGame->quitGame();
+                } else if (pQstBox->getText()==_("Skip this mission and continue to the next level?")) {
+                    currentGame->confirmSkipMission();
+                    currentGame->resumeGame();
                 } else {
                     // restart
                     // set new current init settings as init info for next game
@@ -234,4 +233,12 @@ void InGameMenu::onQuit()
     pQstBox->setTextColor(color);
 
     openWindow(pQstBox);
+}
+
+void InGameMenu::onSkipMission() {
+    if(!currentGame->canSkipMission())return;
+    auto* confirmation=QstBox::create(_("Skip this mission and continue to the next level?"),
+        _("Skip mission"),_("Cancel"),QSTBOX_BUTTON2);
+    confirmation->setTextColor(color);
+    openWindow(confirmation);
 }

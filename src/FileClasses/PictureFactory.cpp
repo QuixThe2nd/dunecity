@@ -18,6 +18,7 @@
 #include <FileClasses/PictureFactory.h>
 
 #include <globals.h>
+#include <GUI/dune/DuneStyle.h>
 #include <sand.h>
 
 #include <config.h>
@@ -518,7 +519,7 @@ sdl2::surface_ptr PictureFactory::createMainBackground() const {
 }
 
 sdl2::surface_ptr PictureFactory::createGameStatsBackground(int House) const {
-    auto pSurface = copySurface(gameStatsBackground.get());
+    auto pSurface = DuneStyle(settings.video.menuPalette).createBackground(gameStatsBackground->w, gameStatsBackground->h);
 
     sdl2::surface_ptr pLogo;
     switch(House) {

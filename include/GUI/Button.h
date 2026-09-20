@@ -32,6 +32,9 @@ public:
     /// Default contructor
     Button();
 
+    /// Keep keyboard focus usable while allowing pointer-driven menus to hide its outline.
+    void setKeyboardFocusVisible(bool visible) { keyboardFocusVisible = visible; }
+
     /// desctructor
     virtual ~Button();
 
@@ -198,6 +201,7 @@ protected:
     Uint32 tooltipLastMouseMotion = 0;      ///< the last time the mouse was moved
 
     std::function<void ()> pOnClick;    ///< function that is called when this button is clicked
+    bool keyboardFocusVisible = true;
     bool bPressed;                      ///< true = currently pressed, false = currently unpressed
     bool bHover;                        ///< true = currently mouse hover, false = currently no mouse hover
     bool bToggleButton;                 ///< true = toggle button, false = normal button

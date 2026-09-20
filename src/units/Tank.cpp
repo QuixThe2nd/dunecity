@@ -40,7 +40,7 @@ Tank::Tank(InputStream& stream) : TankBase(stream) {
 
 void Tank::init() {
     itemID = Unit_Tank;
-    owner->incrementUnits(itemID);
+    registerUnit();
 
     numWeapons = 1;
     bulletType = Bullet_ShellMedium;

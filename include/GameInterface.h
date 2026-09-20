@@ -112,6 +112,7 @@ public:
 private:
     void removeOldContainer();
     void drawCityStatsOverlay();
+    void updateJoinRequestButton();
 
 
     ObjectInterface*    pObjectContainer;       ///< The container holding information about the currently selected unit/structure
@@ -121,8 +122,8 @@ private:
 
     HBox                topBarHBox;             ///< The container for the top bar containing newsticker, options button and mentat button
     NewsTicker          newsticker;             ///< The newsticker showing news on the game (e.g. new starport prices, harvester fill level, etc.)
-    PictureButton       optionsButton;          ///< Button for accessing the ingame menu
-    PictureButton       mentatButton;           ///< Button for accessing the mentat menu
+    TextButton          optionsButton;          ///< Button for accessing the ingame menu
+    TextButton          mentatButton;           ///< Button for accessing the mentat menu
     TextButton          budgetButton;           ///< City sim mode only: opens the budget mini-window
     TextButton          dune2rZoomButton;       ///< Dune2R only: cycles local presentation zoom
     TextButton          dune2rVisualButton;     ///< Dune2R only: crossfades classic/enhanced visuals
@@ -134,8 +135,10 @@ private:
 
     ChatManager         chatManager;            ///< Manages chat manages shown overlayed with the main map
     TextButton          feedbackButton;
-    TextButton          skipMissionButton;
+    TextButton          joinRequestButton;
+    bool                joinRequestFlash = false;
     TextButton          autoRepairButton;
+    TextButton movementPathsButton;
     TextButton          landValueOverlayButton;
     TextButton          crimeOverlayButton;
     TextButton          pollutionOverlayButton;

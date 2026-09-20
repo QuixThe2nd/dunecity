@@ -38,7 +38,7 @@ Quad::Quad(InputStream& stream) : GroundUnit(stream) {
 
 void Quad::init() {
     itemID = Unit_Quad;
-    owner->incrementUnits(itemID);
+    registerUnit();
 
     numWeapons = 2;
     bulletType = Bullet_ShellSmall;

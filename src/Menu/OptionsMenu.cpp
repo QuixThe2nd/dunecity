@@ -266,7 +266,7 @@ OptionsMenu::OptionsMenu() : MenuBase()
     flagsHBox.addWidget(Spacer::create(), 0.5);
     pages[0].addWidget(&flagsHBox, 32);
     pages[0].addWidget(VSpacer::create(6));
-    videoHBox2.addWidget(optionLabel(_("Cursor")), 190);
+    videoHBox2.addWidget(optionLabel(_("Cursor")), 110);
     cursorVisibilityDropDownBox.addEntry(_("Auto"), 0);
     cursorVisibilityDropDownBox.addEntry(_("Hidden"), 1);
     cursorVisibilityDropDownBox.addEntry(_("Visible"), 2);
@@ -275,8 +275,8 @@ OptionsMenu::OptionsMenu() : MenuBase()
     cursorVisibilityDropDownBox.setSelectedItem(cursorVisibilityIndex);
     cursorVisibilityDropDownBox.setOnSelectionChange(std::bind(&OptionsMenu::onChangeOption, this, std::placeholders::_1));
     videoHBox2.addWidget(&cursorVisibilityDropDownBox, 130);
-    videoHBox2.addWidget(optionLabel(_("Scale")), 90);
-    cursorScaleDropDownBox.addEntry(_("Auto"), 0);
+    videoHBox2.addWidget(optionLabel(_("Scale")), 70);
+    cursorScaleDropDownBox.addEntry(_("Default (1.5x)"), 0);
     cursorScaleDropDownBox.addEntry("1x", 1);
     cursorScaleDropDownBox.addEntry("2x", 2);
     cursorScaleDropDownBox.addEntry("3x", 3);
@@ -284,7 +284,7 @@ OptionsMenu::OptionsMenu() : MenuBase()
     int cursorScaleIndex = settings.video.cursorScale >= 0 && settings.video.cursorScale <= 4 ? settings.video.cursorScale : 0;
     cursorScaleDropDownBox.setSelectedItem(cursorScaleIndex);
     cursorScaleDropDownBox.setOnSelectionChange(std::bind(&OptionsMenu::onChangeOption, this, std::placeholders::_1));
-    videoHBox2.addWidget(&cursorScaleDropDownBox, 70);
+    videoHBox2.addWidget(&cursorScaleDropDownBox, 170);
     videoHBox2.addWidget(Spacer::create(), 0.5);
 
     pages[1].addWidget(&videoHBox2, 32);
@@ -298,7 +298,7 @@ OptionsMenu::OptionsMenu() : MenuBase()
     startMenuModeDropDownBox.setOnSelectionChange(std::bind(&OptionsMenu::onChangeOption, this, std::placeholders::_1));
     paletteHBox.addWidget(&startMenuModeDropDownBox, 120);
     paletteHBox.addWidget(optionLabel(_("Colors")), 70);
-    paletteDropDownBox.addEntry(_("Desert Gold"), 0);
+    paletteDropDownBox.addEntry(_("Dark"), 0);
     paletteDropDownBox.addEntry(_("High Contrast"), 1);
     paletteDropDownBox.setSelectedItem(validatedMenuPalette(settings.video.menuPalette));
     paletteDropDownBox.setOnSelectionChange([this](bool interactive) {
@@ -309,7 +309,7 @@ OptionsMenu::OptionsMenu() : MenuBase()
     paletteHBox.addWidget(Spacer::create(), 0.5);
     pages[1].addWidget(&paletteHBox, 32);
     pages[1].addWidget(VSpacer::create(6));
-    palettePreview.setText("DUNE LEGACY");
+    palettePreview.setText("Dune City");
     palettePreview.setEnabled(false);
     updatePalettePreview();
     pages[1].addWidget(&palettePreview, 24);
@@ -360,6 +360,18 @@ OptionsMenu::OptionsMenu() : MenuBase()
     scrollHBox.addWidget(Spacer::create(), 160);
     scrollHBox.addWidget(Spacer::create(), 0.5);
     pages[3].addWidget(&scrollHBox, 32);
+    auto addControl = [&](HBox& row, Checkbox& box, const char* label, bool checked) {
+        row.addWidget(Spacer::create(),0.5);
+        box.setText(_(label)); box.setChecked(checked);
+        box.setOnClick(std::bind(&OptionsMenu::onChangeOption,this,true));
+        row.addWidget(&box,480); row.addWidget(Spacer::create(),0.5);
+        pages[3].addWidget(VSpacer::create(6)); pages[3].addWidget(&row,32);
+    };
+    addControl(cameraKeysHBox,wasdCameraCheckbox,"WASD camera (Shift+A attack, Shift+D drop)",settings.general.wasdCamera);
+    wasdCameraCheckbox.setTooltipText(_("With WASD: Shift+S stops selected units. T selects matching units on screen; Ctrl+T selects across the map; Shift+T toggles time."));
+    addControl(mouseOrdersHBox,leftClickOrdersCheckbox,"Left-click orders (drag to select, right-click cancels)",settings.general.leftClickOrders);
+    addControl(movementPathsHBox,movementPathsCheckbox,"Show movement paths for selected units",settings.general.showMovementPaths);
+
 
     audioHBox.addWidget(Spacer::create(), 0.5);
     playSFXCheckbox.setText(_("Play SFX"));
@@ -384,6 +396,10 @@ OptionsMenu::OptionsMenu() : MenuBase()
     audioHBox2.addWidget(Spacer::create(), 0.5);
 
     pages[2].addWidget(&audioHBox2, 32);
+    const char* audioDriver = SDL_GetCurrentAudioDriver();
+    if(audioDriver && std::string(audioDriver) == "dummy") {
+        pages[2].addWidget(Label::create(_("Audio unavailable. Restart the game to retry.")), 32);
+    }
     pages[2].addWidget(VSpacer::create(6));
 
     networkPortHBox.addWidget(Spacer::create(), 0.5);
@@ -405,6 +421,15 @@ OptionsMenu::OptionsMenu() : MenuBase()
     metaServerTextBox.setText(settings.network.metaServer);
     networkMetaServerHBox.addWidget(Spacer::create(), 0.5);
     pages[4].addWidget(&networkMetaServerHBox, 32);
+    pages[4].addWidget(VSpacer::create(6));
+
+    diagnosticLogsCheckbox.setText(_("Diagnostic logs (development)"));
+    diagnosticLogsCheckbox.setChecked(settings.general.diagnosticLogs);
+    diagnosticLogsCheckbox.setOnClick(std::bind(&OptionsMenu::onChangeOption, this, true));
+    diagnosticLogsHBox.addWidget(Spacer::create(), 0.5);
+    diagnosticLogsHBox.addWidget(&diagnosticLogsCheckbox, 480);
+    diagnosticLogsHBox.addWidget(Spacer::create(), 0.5);
+    pages[4].addWidget(&diagnosticLogsHBox, 32);
     pages[4].addWidget(VSpacer::create(6));
 
     restoreDefaultsHBox.addWidget(Spacer::create(), 0.5);
@@ -463,6 +488,10 @@ void OptionsMenu::onChangeOption(bool bInteractive) {
     const PlayerFactory::PlayerData* pPlayerData = PlayerFactory::getByIndex(aiDropDownBox.getSelectedEntryIntData());
     bChanged |= ((pPlayerData == nullptr) || (settings.ai.campaignAI != pPlayerData->getPlayerClass()));
     bChanged |= settings.general.scrollSpeed != scrollSpeedDropDownBox.getSelectedEntryIntData();
+    bChanged |= settings.general.wasdCamera != wasdCameraCheckbox.isChecked();
+    bChanged |= settings.general.leftClickOrders != leftClickOrdersCheckbox.isChecked();
+    bChanged |= settings.general.showMovementPaths != movementPathsCheckbox.isChecked();
+    bChanged |= settings.general.diagnosticLogs != diagnosticLogsCheckbox.isChecked();
     bChanged |= settings.video.interfaceHeight != interfaceSizeDropDownBox.getSelectedEntryIntData();
 #if defined(__ANDROID__) || defined(__EMSCRIPTEN__)
     bChanged |= (settings.video.width * 3 > settings.video.height * 4) != (aspectDropDownBox.getSelectedEntryIntData() == 1);
@@ -528,6 +557,10 @@ void OptionsMenu::onOptionsOK() {
     }
 
     settings.general.scrollSpeed = scrollSpeedDropDownBox.getSelectedEntryIntData();
+    settings.general.wasdCamera=wasdCameraCheckbox.isChecked();
+    settings.general.leftClickOrders=leftClickOrdersCheckbox.isChecked();
+    settings.general.showMovementPaths=movementPathsCheckbox.isChecked();
+    settings.general.diagnosticLogs=diagnosticLogsCheckbox.isChecked();
     settings.general.playerName = playername;
     std::string languageFilename = (languageDropDownBox.getSelectedEntryIntData() < 0) ? "English.en.po" : availLanguages[languageDropDownBox.getSelectedEntryIntData()];
     settings.general.language = languageFilename.substr(languageFilename.size()-5,2);
@@ -661,6 +694,10 @@ void OptionsMenu::saveConfiguration2File() {
     INIFile myINIFile(getConfigFilepath());
 
     myINIFile.setIntValue("General","Scroll Speed",settings.general.scrollSpeed);
+    myINIFile.setBoolValue("General","WASD Camera",settings.general.wasdCamera);
+    myINIFile.setBoolValue("General","Left Click Orders",settings.general.leftClickOrders);
+    myINIFile.setBoolValue("General","Movement Paths",settings.general.showMovementPaths);
+    myINIFile.setBoolValue("General","Diagnostic Logs",settings.general.diagnosticLogs);
     myINIFile.setBoolValue("General","Play Intro",settings.general.playIntro);
     myINIFile.setBoolValue("General","Show Tutorial Hints",settings.general.showTutorialHints);
     myINIFile.setIntValue("General","DuneCity Campaign Skin",settings.general.duneCityCampaignSkin);

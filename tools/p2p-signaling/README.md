@@ -126,13 +126,19 @@ informational, and they are shaped so that nothing can be misread as a gameplay 
 
 After a host seats successfully, and after an authenticated host commits the match
 phase, the optional trusted local `dunecityP2PNotifyLobby(kind, fields)` hook receives
-only mode, visibility, host display name, version and player counts plus an opaque
-log ID. It receives no invitation code, grant, control/session token, SDP or address.
+mode, visibility, host display name, version, human player counts and human
+player/spectator names plus an opaque log ID. `hot_joined` events include the joining
+name, role and room-local participant ID: spectator admission emits once when the
+session seats; controller admission/promotion emits only when the host resumes the
+match with that participant still present. Requests, approvals and aborted controller
+transfers do not announce a player join. No AI names are available to this service.
+It receives no invitation code, grant, control/session token, SDP or address.
 Grant recovery and repeated match-phase requests do not emit another event. Hook
 failure cannot undo admission/start. The core service still makes no outbound
 requests; the website deployment owns Discord configuration, queuing and delivery.
 Both public and private lobbies are announced, with private invitations omitted.
-No map or mod is claimed: those stay between game peers and are unavailable here.
+No map or mod is claimed in this announcement hook. New hosts may provide a mod
+identifier for directory filtering; maps remain between game peers.
 
 ## Analytics
 
@@ -150,6 +156,35 @@ existing metaserver PHP/Python SQLite writer. Schema 3 adds `direct-p2p` and lab
 `signaling_service_v1`; schema 1/2 rows retain their meanings. The private JSONL journal remains
 available if analytics storage fails. A storage failure never vetoes a committed admission.
 There is no outbound HTTP call and no gameplay data in this hook.
+
+### Public activity and waiting players (1.0.725)
+
+The separate trusted local `dunecityP2PRecordPublicActivity(event)` hook records
+`chat_message`, `public_game_created`, `public_game_joined`, and
+`public_game_started`. It runs only when server analytics are enabled and a hook
+is installed. This is independent of the client Diagnostic logs preference.
+Accepted chat binds text to the authenticated session display name; committed
+public seating binds the actor to a peer. Match start records the authoritative
+admitted roster (names, peer IDs, roles, claimed native/browser runtime). Private
+rooms are excluded. Game event IDs deduplicate retries; only newly accepted chat
+messages create chat records. The event allowlist omits codes, tokens, addresses,
+SDP and ICE. Hook failures do not veto chat, joining or starting, but named activity
+has no retry journal; a storage outage can leave gaps. No old chat is backfilled.
+The website stores this stream in `analytics_public_activity`, separate from the
+anonymous lifecycle journal, whose existing privacy contract stays unchanged.
+
+Directory requests with `allMods=1` include all content hashes for the same game
+protocol and append `contentHash|hex-mod-name` to each game row. Legacy requests
+retain five fields and content matching. Admission always checks content matching.
+New hosting requests optionally send `mod=<hex identifier>`; old rooms may have no
+mod identifier. The client only switches to an installed, fingerprint-matching mod.
+
+Lobby polls may opt into `presence=1`: `online=<count>` and up to twelve
+`waiting=<hex name>` lines reflect sessions active within twenty seconds across
+same-protocol mod channels. Poll/enter/send update activity; no presence events are
+written to analytics. Chat names are display identities, not verified accounts.
+Legacy polls keep their original response shape. Run `test/test_public_activity.py`
+in addition to `test/test_signaling.py` for these behaviors.
 
 ## Deployment
 

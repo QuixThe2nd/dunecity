@@ -49,23 +49,24 @@ public:
 
 protected:
     explicit ZoneStructureInterface(int objectID) : DefaultStructureInterface(objectID) {
-        // The gold sidebar texture makes faction-coloured and white text wash
-        // out. Zone statistics are always black for readable inspection.
-        constexpr Uint32 color = COLOR_BLACK;
+        constexpr Uint32 color = COLOR_WHITE;
+        objPicture.setVisible(false);
+        zonePreview.objectID = objectID;
+        topBox.addWidget(&zonePreview, Point(4,24), Point(SIDEBARWIDTH-33,54));
 
         mainHBox.addWidget(&textVBox);
 
-        zoneNameLabel.setTextFontSize(12);
-        zoneNameLabel.setTextColor(color);
-        textVBox.addWidget(&zoneNameLabel, (Sint32)18);
+        zoneNameLabel.setTextFontSize(14);
+        zoneNameLabel.setTextColor(color, COLOR_TRANSPARENT);
+        textVBox.addWidget(&zoneNameLabel, (Sint32)34);
 
-        densityLabel.setTextFontSize(12);
-        densityLabel.setTextColor(color);
-        textVBox.addWidget(&densityLabel, (Sint32)18);
+        densityLabel.setTextFontSize(14);
+        densityLabel.setTextColor(color, COLOR_TRANSPARENT);
+        textVBox.addWidget(&densityLabel, (Sint32)24);
 
-        poweredLabel.setTextFontSize(12);
-        poweredLabel.setTextColor(color);
-        textVBox.addWidget(&poweredLabel, (Sint32)18);
+        poweredLabel.setTextFontSize(14);
+        poweredLabel.setTextColor(color, COLOR_TRANSPARENT);
+        textVBox.addWidget(&poweredLabel, (Sint32)24);
 
         cityStats_.attachTo(textVBox, color, /*isZone=*/true);
 
@@ -85,11 +86,13 @@ protected:
 
         std::string name;
         switch (pZone->getZoneType()) {
-            case DuneCity::ZoneType::Residential: name = _("Residential Zone"); break;
-            case DuneCity::ZoneType::Commercial:  name = _("Commercial Zone");  break;
-            case DuneCity::ZoneType::Industrial:  name = _("Industrial Zone");  break;
+            case DuneCity::ZoneType::Residential: name = _("Residential") + std::string("\n") + _("Zone"); break;
+            case DuneCity::ZoneType::Commercial:  name = _("Commercial") + std::string("\n") + _("Zone");  break;
+            case DuneCity::ZoneType::Industrial:  name = _("Industrial") + std::string("\n") + _("Zone");  break;
             default:                              name = _("Zone");             break;
         }
+        if(pZone->getCivicOverlay() == ZoneStructure::CivicOverlay::Hospital) name = _("Hospital");
+        else if(pZone->getCivicOverlay() == ZoneStructure::CivicOverlay::Church) name = _("Church");
         zoneNameLabel.setText(" " + name);
 
         // Density lives on the underlying tile (set by the city sim / zone
@@ -116,6 +119,16 @@ protected:
     }
 
 private:
+    class ZonePreview : public Widget {
+    public:
+        int objectID = NONE_ID;
+        void draw(Point position) override {
+            if(!isVisible() || !currentGame) return;
+            const auto* zone = dynamic_cast<const ZoneStructure*>(currentGame->getObjectManager().getObject(objectID));
+            if(zone) zone->drawPreview({position.x, position.y, getSize().x, getSize().y});
+        }
+    } zonePreview;
+
     VBox    textVBox;
 
     Label   zoneNameLabel;

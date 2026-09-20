@@ -139,3 +139,86 @@ git push origin vX.Y.Z
 
 The source version must be committed before the tag. The tag workflow rejects a
 version mismatch and publishes the website only after the GitHub Release exists.
+
+## Unattended Developer ID signing
+
+The dedicated `DuneCity-Signing.keychain-db` must be unlocked and its signing
+key must allow Apple signing tools without an interactive access prompt.
+Unlocking alone is insufficient: a background runner can fail with
+`errSecInternalComponent`, while Security logs report
+`errSecInteractionNotAllowed` or `CSSMERR_CSP_NO_USER_INTERACTION`.
+
+Provision the key partition list once after importing or replacing the key.
+Scope this operation to the dedicated release keychain; do not apply it to the
+login or system keychain. Read its password from protected local storage and
+capture tool output so keychain details are not added to build logs:
+
+```python
+from pathlib import Path
+import subprocess
+
+keychain = Path.home() / "Library/Keychains/DuneCity-Signing.keychain-db"
+password_file = (Path.home() / "Library/Application Support/DuneCity Signing"
+                 / "34X7AYJZ93/signing-keychain-password")
+password = password_file.read_text().strip()
+for arguments in (
+    ["security", "unlock-keychain", "-p", password, str(keychain)],
+    ["security", "set-key-partition-list", "-S", "apple-tool:,apple:,codesign:",
+     "-s", "-k", password, str(keychain)],
+):
+    result = subprocess.run(arguments, capture_output=True)
+    if result.returncode:
+        raise SystemExit("Dedicated signing keychain setup failed")
+```
+
+Also add the dedicated keychain to the user search list while preserving existing
+entries. `codesign --keychain` alone was insufficient on this host: a separate
+background security session selected an inaccessible duplicate identity from the
+login keychain. Prepending the dedicated keychain fixed the isolated signing probe:
+
+```python
+import shlex
+existing = subprocess.run(["security", "list-keychains", "-d", "user"],
+                          capture_output=True, text=True, check=True)
+keychains = shlex.split(existing.stdout)
+if str(keychain) not in keychains:
+    subprocess.run(["security", "list-keychains", "-d", "user", "-s",
+                    str(keychain), *keychains], capture_output=True, check=True)
+```
+
+Verify the saved password with an explicit lock/unlock cycle before relying on
+it. On this host an already-unlocked keychain masked a saved-password mismatch.
+Keep an encrypted identity backup and its protected password. If recovery is
+needed, preserve the old keychain before restoring the identity into a fresh one;
+Apple notarization credentials must be provisioned again through the setup shortcut.
+
+Verify signing in a temporary LaunchAgent with `SessionCreate=true`, matching
+the real runner, and then remove the probe. A detached subprocess in an existing
+GUI security session does not establish unattended access. Verify `notarytool
+history` uses `DuneCityNotarization` from this keychain without prompts. The actual
+stable job remains the final check. Retry the failed job after the workflow
+completes; an environment repair does not require moving the release tag or
+rebuilding successful platform jobs.
+
+### Interactive notarization credential setup
+
+Run `python3 scripts/setup-macos-notarization.py` from Terminal. The mini's
+Desktop `DuneCity-Automatic-Updates-Setup.command` invokes an installed copy in
+the protected signing directory. The helper checks email/password formatting,
+removes copied surrounding whitespace/quotes and accepts Apple's generated
+four-group password through a hidden prompt. It supplies that value to
+notarytool's hidden TTY prompt, never as a process argument or log field.
+
+After Apple validates the credential, it stores `DuneCityNotarization` in the
+separate `DuneCity-Notarization.keychain-db` and in the signing keychain used by
+the existing release workflow. The separate keychain's random local password is
+kept as `notarization-keychain-password` beside the signing setup files. Preserve
+this keychain when repairing the code-signing identity. No plaintext Apple
+password is saved by the helper. Keep a user-managed credential backup in a
+password manager as well.
+
+`notarization-setup-status.json` contains only a fixed diagnostic stage and time,
+allowing support to distinguish a format problem, Apple's 401 rejection and
+successful stored-profile validation without collecting terminal contents or
+passwords. A 401 after the format check still needs investigation; it is not a
+reason to rebuild or replace the local signing keychain.

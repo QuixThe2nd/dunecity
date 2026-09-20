@@ -19,8 +19,10 @@ char getHouseScenarioLetter(HOUSETYPE house) {
 static GameInitSettings makeCoop(bool campaign, bool bot) {
     GameInitSettings init(HOUSE_ATREIDES, 8, SettingsClass::GameOptionsClass{});
     init.enableCoop(campaign, "Test co-op");
+    init.setCampaignGraphicsSkin(GameInitSettings::GraphicsSkin::Dune2);
     init.setScenarioData("[Atreides]\nBrain=Human\n[Sardaukar]\nBrain=CPU\n");
     GameInitSettings::HouseInfo human(HOUSE_ATREIDES, 1);
+    human.graphicsSkin = GameInitSettings::GraphicsSkin::Dune2;
     human.addPlayerInfo({"Host", HUMANPLAYERCLASS});
     human.addPlayerInfo({"Partner", bot ? "qBotSupportBrutal" : HUMANPLAYERCLASS});
     init.addHouseInfo(human);
@@ -47,6 +49,9 @@ TEST_CASE("Co-op settings preserve shared control, scenario identity and seed ov
     REQUIRE(client.getHouseInfoList().size() == 2);
     const auto& shared = client.getHouseInfoList().front();
     REQUIRE(shared.team == 1);
+    REQUIRE(shared.graphicsSkin == GameInitSettings::GraphicsSkin::Dune2);
+    REQUIRE(client.getHouseInfoList().back().graphicsSkin == GameInitSettings::GraphicsSkin::SimCity);
+    REQUIRE(client.getCampaignGraphicsSkin() == GameInitSettings::GraphicsSkin::Dune2);
     REQUIRE(shared.playerInfoList.size() == 2);
     REQUIRE(shared.playerInfoList.back().playerClass == (bot ? "qBotSupportBrutal" : HUMANPLAYERCLASS));
     REQUIRE(client.getHouseInfoList().back().houseID == HOUSE_SARDAUKAR);
@@ -58,6 +63,7 @@ TEST_CASE("Next co-op mission retains controllers and progress but discards old 
     const auto previous = makeCoop(true, bot);
     GameInitSettings next(previous, 11, 0x123, 0x42);
     REQUIRE(next.getGameType() == GameType::CampaignCoop);
+    REQUIRE(next.getCampaignGraphicsSkin() == GameInitSettings::GraphicsSkin::Dune2);
     REQUIRE(next.getFilename() == "SCENA011.INI");
     REQUIRE(next.getFiledata().empty());
     REQUIRE(next.getAlreadyPlayedRegions() == 0x123);
@@ -91,6 +97,8 @@ TEST_CASE("Campaign save lobby reads mod header and setup colors without consumi
     REQUIRE(parsed.getGameType() == GameType::Campaign);
     REQUIRE(parsed.getHouseID() == HOUSE_ATREIDES);
     REQUIRE(houses.size() == 2);
+    REQUIRE(houses.front().graphicsSkin == GameInitSettings::GraphicsSkin::Dune2);
+    REQUIRE(houses.back().graphicsSkin == GameInitSettings::GraphicsSkin::SimCity);
     REQUIRE(houses.back().houseID == HOUSE_SARDAUKAR);
     REQUIRE(in.readUint32() == 0xabcdef01);
 }
@@ -112,6 +120,8 @@ TEST_CASE("Hosting an existing campaign preserves progress and missing future en
     loaded.configureCoopSave(saved, actual);
     loaded.enableCoop(true, "Hosted campaign");
     REQUIRE(loaded.getGameType() == GameType::LoadCoop);
+    REQUIRE(loaded.getCampaignGraphicsSkin() == GameInitSettings::GraphicsSkin::Dune2);
+    REQUIRE(loaded.getHouseInfoList().front().graphicsSkin == GameInitSettings::GraphicsSkin::Dune2);
     REQUIRE(loaded.getHouseID() == HOUSE_ATREIDES);
     REQUIRE(loaded.getMission() == saved.getMission());
     REQUIRE(loaded.getFiledata() == bytes);

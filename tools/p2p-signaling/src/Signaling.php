@@ -1,5 +1,6 @@
 <?php
 declare(strict_types=1);
+require_once __DIR__.'/LateJoin.php';
 
 /**
  * Introducing two admitted players to each other, and nothing else.
@@ -24,6 +25,7 @@ declare(strict_types=1);
  */
 final class Signaling
 {
+    use LateJoinSignaling;
     public function __construct(private readonly Store $store, private readonly Config $config)
     {
     }
@@ -67,6 +69,11 @@ final class Signaling
                 'control'      => hash('sha256', $control),
                 'visibility'   => $spec['visibility'] === 'public' ? 'public' : 'private',
                 'mode'         => $spec['mode'],
+                'modName'      => $spec['modName'] ?? '',
+                'mapName'      => $spec['mapName'] ?? '',
+                'allowLateJoin'=> $spec['allowLateJoin'] ?? false,
+                'startedAt'    => 0,
+                'joinRequests' => [],
                 'maxPeers'     => (int)$spec['maxPeers'],
                 'gameProtocol' => (int)$spec['gameProtocol'],
                 'contentHash'  => (string)$spec['contentHash'],
@@ -125,6 +132,8 @@ final class Signaling
                 $refusal = 'room_not_found';
             } elseif ($spec['publicOnly'] && $state['visibility'] !== 'public') {
                 $refusal = 'not_listed';
+            } elseif ((string)$state['appVersion'] !== (string)$spec['appVersion']) {
+                $refusal = 'version_mismatch';
             } elseif ((int)$state['gameProtocol'] !== (int)$spec['gameProtocol']
                       || (string)$state['contentHash'] !== (string)$spec['contentHash']) {
                 $refusal = 'content_mismatch';
@@ -134,7 +143,8 @@ final class Signaling
                 $refusal = 'room_full';
             }
             if ($refusal !== null) {
-                return [$state, ['error' => $refusal]];
+                return [$state, ['error' => $refusal, 'hostVersion' => (string)$state['appVersion'],
+                                 'clientVersion' => (string)$spec['appVersion']]];
             }
             $state = self::issueGrant($state, $grant, 'client', $spec, $now);
             $state['lastSeen'] = $now;
@@ -184,7 +194,7 @@ final class Signaling
             if ($nonce !== '' && is_array($recovery) && $recovery['nonce'] === $nonce
                 && $recovery['name'] === $name && $recovery['claims'] === $claims
                 && isset($state['peers'][(string)$recovery['result']['peer']])
-                && !($state['closed'] ?? false) && $state['phase'] === 'lobby') {
+                && !($state['closed'] ?? false) && ($state['phase'] === 'lobby' || ($recovery['result']['spectator'] ?? false))) {
                 return [$state, array_merge($recovery['result'], ['recovered' => true])];
             }
             $record = null;
@@ -218,9 +228,18 @@ final class Signaling
                     }
                 }
             }
+            if ($refusal === null && (string)$state['appVersion'] !== (string)$claims['appVersion']) {
+                return [$state, ['error' => 'version_mismatch', 'hostVersion' => (string)$state['appVersion'],
+                                 'clientVersion' => (string)$claims['appVersion']]];
+            }
             $role = (string)$record['role'];
+            $spectator=(int)$state['gameProtocol']>=8 && ($record['spectator']??false);
+            if($refusal===null && $spectator && ($state['phase']!=='match'
+                || ($record['name']??'')!==$name || empty($record['lateRequest']))) $refusal='unauthorized';
             if ($refusal === null && $role === 'client'
-                && ($state['phase'] !== 'lobby' || $state['everStarted'] === true)) {
+                && !$spectator
+                && ($state['phase'] !== 'lobby' || ($state['everStarted'] === true
+                    && (empty($record['lateRequest']) || ($state['joinWindow']??'')!==$record['lateRequest'] || ($record['name']??'')!==$name)))) {
                 $refusal = 'match_in_progress';
             }
             if ($refusal === null && self::reservedSeats($state) >= (int)$state['maxPeers']) {
@@ -260,6 +279,8 @@ final class Signaling
                 'gameVersion' => (string)$claims['appVersion'],
                 'token'    => hash('sha256', $token),
                 'joinedAt' => $now,
+                'lateRequest' => $record['lateRequest'] ?? '',
+                'spectator' => $spectator,
                 'lastSeen' => $now,
                 'epoch'    => (int)$state['epoch'],
             ];
@@ -267,17 +288,20 @@ final class Signaling
                 $state['hostPeerId'] = $peerId;
                 $state['hostName']   = $name;
             }
+            if(!empty($record['lateRequest'])) $state['joinRequests'][$record['lateRequest']]['state']='joined';
             $state['lastSeen'] = $now;
             $answer = [
                 'peer'        => $peerId,
                 'session'     => $token,
                 'role'        => $role,
+                'spectator'   => $spectator,
                 'phase'       => (string)$state['phase'],
                 'maxPeers'    => (int)$state['maxPeers'],
                 'code'        => (string)$state['code'],
                 'logId'       => (string)$state['logId'],
                 'hostName'    => (string)$state['hostName'],
-                'notification' => self::notificationSnapshot($state),
+                'notification' => self::notificationSnapshot($state, $spectator ? $peerId : 0),
+                'publicActivity' => self::publicActivitySnapshot($state),
                 'peers'       => count($state['peers']),
                 'outstanding' => count($state['grants']),
             ];
@@ -372,6 +396,13 @@ final class Signaling
         return $state;
     }
 
+    private static function versionMismatchError(string $host, string $client): ServiceError
+    {
+        return new ServiceError(409, 'version_mismatch',
+            'Version mismatch. Host: ' . $host . '. Yours: ' . $client
+            . '. Both players must use the same game version. Update or switch versions, then try again.');
+    }
+
     /** Turns a refusal marker into the ServiceError it stands for. */
     private static function refuse(array $result): void
     {
@@ -382,6 +413,7 @@ final class Signaling
             'room_not_found' => new ServiceError(404, 'room_not_found', 'That room code is not open.'),
             'not_listed' => new ServiceError(404, 'room_not_found',
                 'That public game is no longer listed.'),
+            'version_mismatch' => self::versionMismatchError($result['hostVersion'], $result['clientVersion']),
             'content_mismatch' => new ServiceError(409, 'content_mismatch',
                 'This room needs the same game version and content as the host.'),
             'match_in_progress' => new ServiceError(409, 'match_in_progress',
@@ -469,8 +501,10 @@ final class Signaling
             $lines = [];
             $budget = Limits::SIGNAL_MAX_RESPONSE_BYTES - 4096;
             foreach ($state['peers'] as $otherId => $other) {
+                if(!self::visiblePeer($state,$peerId,(int)$otherId)) continue;
                 $lines[] = ['peer', $otherId . '|' . $other['role'] . '|'
-                    . bin2hex((string)$other['name']) . '|' . bin2hex((string)$other['runtime'])];
+                    . bin2hex((string)$other['name']) . '|' . bin2hex((string)$other['runtime'])
+                    . ((int)$state['gameProtocol']>=8 ? '|'.(($other['spectator']??false)?'1':'0') : '')];
             }
             // The client refuses a snapshot that names more departures than a room can hold, one
             // that repeats a departure, or one that says a player both joined and left. The
@@ -493,7 +527,7 @@ final class Signaling
             foreach (($state['fp'] ?? []) as $pair => $binding) {
                 [$from, $to] = explode(':', (string)$pair, 2);
                 if ((int)$to === $peerId && (int)$from !== $peerId
-                    && isset($state['peers'][$from])) {
+                    && isset($state['peers'][$from]) && self::visiblePeer($state,$peerId,(int)$from)) {
                     $lines[] = ['fp', $from . '|' . $peerId . '|' . $binding['a'] . '|'
                                       . $binding['v']];
                 }
@@ -503,7 +537,8 @@ final class Signaling
             $highest = (int)$state['seq'];
             $sent = [];
             foreach (($state['signals'] ?? []) as $record) {
-                if ((int)$record['t'] !== $peerId || (int)$record['s'] <= $cursor) {
+                if ((int)$record['t'] !== $peerId || (int)$record['s'] <= $cursor
+                    || !self::visiblePeer($state,$peerId,(int)$record['f'])) {
                     continue;
                 }
                 if ($delivered >= Limits::SIGNAL_MAX_PER_POLL) {
@@ -574,7 +609,7 @@ final class Signaling
             $from = $who['peerId'];
             // Membership is the authorisation. A recipient that is not in this room right now,
             // in this epoch, is not addressable - there is no such thing as a cross-room send.
-            if ($from === $to || !isset($state['peers'][(string)$to])) {
+            if ($from === $to || !isset($state['peers'][(string)$to]) || !self::visiblePeer($state,$from,$to)) {
                 throw new ServiceError(403, 'forbidden', 'That player is not in this room.');
             }
             if ((int)$state['peers'][(string)$from]['epoch'] !== (int)$state['epoch']
@@ -705,7 +740,10 @@ final class Signaling
             $state['peers'][(string)$who['peerId']]['lastSeen'] = $now;
             $state['lastSeen'] = $now;
             if ($phase === 'match') {
-                $ids = array_map('intval', array_keys($state['peers'])); sort($ids, SORT_NUMERIC);
+                // Controller slots remain a game rule; observers only need transport seats.
+                if(($state['allowLateJoin']??false) && (int)$state['gameProtocol']>=7) $state['maxPeers']=Limits::MAX_PEERS_PER_ROOM;
+                $controllers=array_filter($state['peers'],static fn(array $p)=>!($p['spectator']??false));
+                $ids = array_map('intval', array_keys($controllers)); sort($ids, SORT_NUMERIC);
                 if ($roster !== implode(',', $ids)) {
                     throw new ServiceError(409, 'roster_changed', 'The players changed. Check the lobby before starting.');
                 }
@@ -713,20 +751,31 @@ final class Signaling
                 $state['grants'] = [];
                 $state['redemptions'] = [];
             }
+            $resuming=!empty($state['joinWindow']);
+            $joinedPeer = 0;
+            if ($phase === 'match' && $resuming) {
+                foreach ($state['peers'] as $id => $peer) {
+                    if (($peer['lateRequest'] ?? '') === $state['joinWindow'] && !($peer['spectator'] ?? false))
+                        $joinedPeer = (int)$id;
+                }
+            }
+            if($phase==='match') $state['joinWindow']='';
             $phaseChanged = (string)$state['phase'] !== $phase;
             if ($phaseChanged) {
                 $state['phase'] = $phase;
                 $state['epoch'] = (int)$state['epoch'] + 1;
                 if ($phase === 'match') {
                     $state['everStarted'] = true;
+                    if (empty($state['startedAt'])) $state['startedAt'] = $now;
                 }
                 foreach ($state['peers'] as $peerId => $peer) {
                     $state['peers'][$peerId]['epoch'] = (int)$state['epoch'];
                 }
             }
             return [$state, ['phase' => (string)$state['phase'], 'epoch' => (int)$state['epoch'],
-                             'phaseChanged' => $phaseChanged,
-                             'notification' => self::notificationSnapshot($state),
+                             'phaseChanged' => $phaseChanged, 'resuming' => $resuming,
+                             'notification' => self::notificationSnapshot($state, $joinedPeer),
+                             'publicActivity' => self::publicActivitySnapshot($state),
                              'everStarted' => (bool)$state['everStarted'],
                              'startId' => $state['startId'] ?? '', 'roster' => $roster,
                              'logId' => $state['logId'],
@@ -758,6 +807,14 @@ final class Signaling
                 'logId'  => (string)$state['logId'],
             ]];
         });
+    }
+
+    /** Spectators have a host-only stream; they cannot contact another player's game. */
+    private static function visiblePeer(array $state, int $a, int $b): bool
+    {
+        if($a===$b || $a===(int)$state['hostPeerId'] || $b===(int)$state['hostPeerId']) return true;
+        return !($state['peers'][(string)$a]['spectator']??false)
+            && !($state['peers'][(string)$b]['spectator']??false);
     }
 
     private static function removePeer(array $state, int $peerId, int $now): array
@@ -808,18 +865,46 @@ final class Signaling
         return $state;
     }
 
-    /** Trusted deployment notification fields. Never include invitation or transport secrets. */
-    private static function notificationSnapshot(array $state): array
+    /** Public activity contains display names, never invitation or transport credentials. */
+    private static function publicActivitySnapshot(array $state): array
     {
-        return [
+        if ($state['visibility'] !== 'public') return [];
+        $players=[];
+        foreach ($state['peers'] as $id => $peer) $players[]=[
+            'id'=>(int)$id, 'name'=>(string)$peer['name'], 'role'=>(string)$peer['role'],
+            'runtime'=>(string)$peer['runtime']];
+        return ['room_id'=>(string)$state['logId'], 'player_name'=>(string)$state['hostName'],
+            'mod_name'=>(string)($state['modName'] ?? ''), 'mode'=>(string)$state['mode'],
+            'game_version'=>(string)$state['appVersion'], 'players'=>$players,
+            'start_id'=>(string)($state['startId'] ?? '')];
+    }
+
+    /** Trusted deployment notification fields. Never include invitation or transport secrets. */
+    private static function notificationSnapshot(array $state, int $joinedPeer = 0): array
+    {
+        $players = []; $spectators = [];
+        foreach ($state['peers'] as $peer) {
+            if ($peer['spectator'] ?? false) $spectators[] = (string)$peer['name'];
+            else $players[] = (string)$peer['name'];
+        }
+        $event = [
             'room_log_id' => (string)$state['logId'],
             'mode' => (string)$state['mode'],
             'visibility' => (string)$state['visibility'],
             'host' => (string)$state['hostName'],
             'version' => (string)$state['appVersion'],
-            'players' => count($state['peers']),
+            'players' => count($players),
+            'player_names' => $players,
+            'spectator_names' => $spectators,
             'max_players' => (int)$state['maxPeers'],
         ];
+        if ($joinedPeer && isset($state['peers'][(string)$joinedPeer])) {
+            $peer = $state['peers'][(string)$joinedPeer];
+            $event['participant_id'] = $joinedPeer;
+            $event['joined_name'] = (string)$peer['name'];
+            $event['joined_role'] = ($peer['spectator'] ?? false) ? 'spectator' : 'player';
+        }
+        return $event;
     }
 
     /** Only listing fields, derived from current authoritative room state. */
@@ -837,6 +922,11 @@ final class Signaling
                 'peers' => count($state['peers']), 'outstanding' => count($state['grants']),
                 'maxPeers' => $state['maxPeers'], 'mode' => $state['mode'],
                 'gameProtocol' => $state['gameProtocol'], 'contentHash' => $state['contentHash'],
+                'modName' => $state['modName'] ?? '',
+                'mapName' => $state['mapName'] ?? '',
+                'allowLateJoin' => $state['allowLateJoin'] ?? false,
+                'elapsed' => empty($state['startedAt']) ? 0 : max(0, intdiv($now-(int)$state['startedAt'],1000)),
+                'hostActive' => isset($state['peers'][(string)$state['hostPeerId']]) && $now-(int)$state['peers'][(string)$state['hostPeerId']]['lastSeen'] < 45000,
                 'createdAt' => $state['createdAt'],
             ]];
         });

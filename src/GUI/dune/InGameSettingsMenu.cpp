@@ -29,75 +29,41 @@
 #include <ScreenBorder.h>
 
 #include <GUI/Spacer.h>
+#include <misc/MenuPalette.h>
+#include <misc/WebRuntime.h>
 
 
 InGameSettingsMenu::InGameSettingsMenu() : Window(0,0,0,0) {
-    int houseID = pLocalHouse->getHouseID();
-    const int visualHouseID = getHouseVisualHouse(houseID);
-    Uint32 color1 = getHouseColorRGB(visualHouseID, 2);
-    Uint32 color2 = getHouseColorRGB(visualHouseID, 3);
-
-    // set up window
-    SDL_Texture *pBackground = pGFXManager->getUIGraphic(UI_OptionsMenu, houseID);
-    setBackground(pBackground);
-
-    setCurrentPosition(calcAlignedDrawingRect(pBackground, HAlign::Center, VAlign::Center));
-
+    const int width=440,height=352;
+    setCurrentPosition((getRendererWidth()-width)/2,(getRendererHeight()-height)/2,width,height);
     setWindowWidget(&windowWidget);
-
-    // Game speed
-    gameSpeedMinus.setTextures(pGFXManager->getUIGraphic(UI_Minus, houseID), pGFXManager->getUIGraphic(UI_Minus_Pressed, houseID));
-    gameSpeedMinus.setOnClick(std::bind(&InGameSettingsMenu::onGameSpeedMinus, this));
-    windowWidget.addWidget(&gameSpeedMinus, Point(5,52), gameSpeedMinus.getSize());
-
-    gameSpeedBar.setColor(color1);
-    windowWidget.addWidget(&gameSpeedBar, Point(23,56), Point(146,6));
-
-    gameSpeedPlus.setTextures(pGFXManager->getUIGraphic(UI_Plus, houseID), pGFXManager->getUIGraphic(UI_Plus_Pressed, houseID));
-    gameSpeedPlus.setOnClick(std::bind(&InGameSettingsMenu::onGameSpeedPlus, this));
-    windowWidget.addWidget(&gameSpeedPlus, Point(172,52), gameSpeedPlus.getSize());
-
-    // Volume
-    volumeMinus.setTextures(pGFXManager->getUIGraphic(UI_Minus, houseID), pGFXManager->getUIGraphic(UI_Minus_Pressed, houseID));
-    volumeMinus.setOnClick(std::bind(&InGameSettingsMenu::onVolumeMinus, this));
-    windowWidget.addWidget(&volumeMinus, Point(5,83), volumeMinus.getSize());
-
-    volumeBar.setColor(color1);
-    windowWidget.addWidget(&volumeBar, Point(23,87), Point(146,6));
-
-    volumePlus.setTextures(pGFXManager->getUIGraphic(UI_Plus, houseID), pGFXManager->getUIGraphic(UI_Plus_Pressed, houseID));
-    volumePlus.setOnClick(std::bind(&InGameSettingsMenu::onVolumePlus, this));
-    windowWidget.addWidget(&volumePlus, Point(172,83), volumePlus.getSize());
-
-
-    // Scroll speed
-    scrollSpeedMinus.setTextures(pGFXManager->getUIGraphic(UI_Minus, houseID), pGFXManager->getUIGraphic(UI_Minus_Pressed, houseID));
-    scrollSpeedMinus.setOnClick(std::bind(&InGameSettingsMenu::onScrollSpeedMinus, this));
-    windowWidget.addWidget(&scrollSpeedMinus, Point(5,114), scrollSpeedMinus.getSize());
-
-    scrollSpeedBar.setColor(color1);
-    windowWidget.addWidget(&scrollSpeedBar, Point(23,118), Point(146,6));
-
-    scrollSpeedPlus.setTextures(pGFXManager->getUIGraphic(UI_Plus, houseID), pGFXManager->getUIGraphic(UI_Plus_Pressed, houseID));
-    scrollSpeedPlus.setOnClick(std::bind(&InGameSettingsMenu::onScrollSpeedPlus, this));
-    windowWidget.addWidget(&scrollSpeedPlus, Point(172,114), scrollSpeedPlus.getSize());
-
-    // Credits SFX checkbox
-    playCreditsSFXCheckbox.setText(_("Credits SFX"));
-    playCreditsSFXCheckbox.setTextColor(color2);
+    title.setText(_("Game settings"));title.setTextFontSize(24);title.setAlignment(Alignment_HCenter);
+    title.setTextColor(MenuTheme::text,COLOR_TRANSPARENT);
+    windowWidget.addWidget(&title,Point(20,12),Point(400,36));
+    auto addRow=[&](Label& label,TextButton& minus,ProgressBar& bar,TextButton& plus,
+                   const char* text,int y,auto decrease,auto increase) {
+        label.setText(_(text));label.setTextFontSize(18);label.setAlignment(Alignment_Left);
+        windowWidget.addWidget(&label,Point(24,y),Point(392,26));
+        minus.setText("-");minus.setOnClick(decrease);
+        windowWidget.addWidget(&minus,Point(24,y+30),Point(36,32));
+        plus.setText("+");plus.setOnClick(increase);
+        windowWidget.addWidget(&plus,Point(380,y+30),Point(36,32));
+        bar.setColor(MenuTheme::accent);
+        windowWidget.addWidget(&bar,Point(72,y+38),Point(296,16));
+    };
+    addRow(gameSpeedLabel,gameSpeedMinus,gameSpeedBar,gameSpeedPlus,"Game speed",52,
+        std::bind(&InGameSettingsMenu::onGameSpeedMinus,this),std::bind(&InGameSettingsMenu::onGameSpeedPlus,this));
+    addRow(volumeLabel,volumeMinus,volumeBar,volumePlus,"Sound volume",122,
+        std::bind(&InGameSettingsMenu::onVolumeMinus,this),std::bind(&InGameSettingsMenu::onVolumePlus,this));
+    addRow(scrollSpeedLabel,scrollSpeedMinus,scrollSpeedBar,scrollSpeedPlus,"Scroll speed",192,
+        std::bind(&InGameSettingsMenu::onScrollSpeedMinus,this),std::bind(&InGameSettingsMenu::onScrollSpeedPlus,this));
+    playCreditsSFXCheckbox.setText(_("Credits sound"));
     playCreditsSFXCheckbox.setChecked(settings.audio.playCreditsSFX);
-    windowWidget.addWidget(&playCreditsSFXCheckbox, Point(5,127), Point(180,22));
-
-    // buttons
-    okButton.setText(_("OK"));
-    okButton.setTextColor(color2);
-    okButton.setOnClick(std::bind(&InGameSettingsMenu::onOK, this));
-    windowWidget.addWidget(&okButton, Point(12,152), Point(79,13));
-
-    cancelButton.setText(_("Cancel"));
-    cancelButton.setTextColor(color2);
-    cancelButton.setOnClick(std::bind(&InGameSettingsMenu::onCancel, this));
-    windowWidget.addWidget(&cancelButton, Point(101,152), Point(79,13));
+    windowWidget.addWidget(&playCreditsSFXCheckbox,Point(24,260),Point(392,28));
+    okButton.setText(_("Apply"));okButton.setOnClick(std::bind(&InGameSettingsMenu::onOK,this));
+    cancelButton.setText(_("Cancel"));cancelButton.setOnClick(std::bind(&InGameSettingsMenu::onCancel,this));
+    windowWidget.addWidget(&okButton,Point(24,300),Point(190,36));
+    windowWidget.addWidget(&cancelButton,Point(226,300),Point(190,36));
 
     init();
 }
@@ -160,6 +126,7 @@ void InGameSettingsMenu::onOK() {
     myINIFile.setBoolValue("Audio","Play Credits SFX", settings.audio.playCreditsSFX);
     myINIFile.setIntValue("Game Options","Game Speed", settings.gameOptions.gameSpeed);
     myINIFile.saveChangesTo(getConfigFilepath());
+    WebRuntime::syncPersistentFiles();
 
     Window* pParentWindow = dynamic_cast<Window*>(getParent());
     if(pParentWindow != nullptr) {

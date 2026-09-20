@@ -35,11 +35,16 @@ parser.add_argument('--partner-difficulty', choices=('easy','medium','hard','bru
 parser.add_argument('--enemy-ai', choices=('quantbot','ai-player'), default='quantbot', help='Enemy controller family; AI Player has Easy/Medium/Hard')
 parser.add_argument('--enemy-difficulty', choices=('easy','medium','hard','brutal'), default='easy')
 parser.add_argument('--shared-spending-probe', action='store_true')
+parser.add_argument('--controls-probe', action='store_true')
+parser.add_argument('--sourceforge-probe', action='store_true')
+parser.add_argument('--harvester-safety-probe', action='store_true')
+parser.add_argument('--city-placement-probe', action='store_true')
 parser.add_argument('--opening-economy-probe', action='store_true')
 parser.add_argument('--starport-probe', action='store_true', help='Exercise reserved cash with above-normal Starport prices')
 parser.add_argument('--helper-economy-probe', action='store_true', help='Verify advanced campaign helper worker investment and paid imports')
 parser.add_argument('--stats-probe', action='store_true', help='Verify campaign results with a shared human/AI house')
 parser.add_argument('--nuclear-probe', action='store_true')
+parser.add_argument('--reactor-safety-probe', action='store_true')
 parser.add_argument('--radar-probe', action='store_true')
 parser.add_argument('--army-probe', action='store_true')
 parser.add_argument('--factory-recovery-probe', action='store_true')
@@ -155,8 +160,17 @@ if args.custom_map:
     env['BALANCE_ROSTER'] = ','.join(f'{house}:{team}' for house, team in roster)
 (out/'setup.json').write_text(json.dumps({**vars(args), 'resolved_roster': roster}, default=str, indent=2)+'\n')
 if args.shared_spending_probe: env['BALANCE_SHARED_SPENDING_PROBE'] = '1'
+if args.harvester_safety_probe: env['BALANCE_HARVESTER_SAFETY_PROBE'] = '1'
+if args.sourceforge_probe: env['BALANCE_SOURCEFORGE_PROBE'] = '1'
+if args.controls_probe or args.sourceforge_probe:
+    if args.controls_probe: env['BALANCE_CONTROLS_PROBE'] = '1'
+    profile = out/'profile'
+    profile.mkdir(exist_ok=True)
+    (profile/'Dune City.ini').write_text('[Video]\nPhysical Width = 640\nPhysical Height = 480\nWidth = 640\nHeight = 480\nInterface Height = 480\nFullscreen = false\n[General]\nPlay Intro = false\n')
+if args.city_placement_probe: env['BALANCE_CITY_PLACEMENT_PROBE'] = '1'
 if args.opening_economy_probe: env['BALANCE_OPENING_ECONOMY_PROBE'] = '1'
-if args.nuclear_probe: env['BALANCE_NUCLEAR_PROBE'] = '1'
+if args.nuclear_probe or args.reactor_safety_probe: env['BALANCE_NUCLEAR_PROBE'] = '1'
+if args.reactor_safety_probe: env['BALANCE_REACTOR_SAFETY_PROBE'] = '1'
 if args.radar_probe: env['BALANCE_RADAR_PROBE'] = '1'
 if args.army_probe: env['BALANCE_ARMY_PROBE'] = '1'
 if args.factory_recovery_probe: env['BALANCE_FACTORY_RECOVERY_PROBE'] = '1'

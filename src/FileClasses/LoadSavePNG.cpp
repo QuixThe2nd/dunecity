@@ -155,7 +155,7 @@ sdl2::surface_ptr LoadPNG_RW(SDL_RWops* RWop) {
 }
 
 int SavePNG_RW(SDL_Surface* surface, SDL_RWops* RWop) {
-    if(surface == nullptr) {
+    if(surface == nullptr || RWop == nullptr) {
         return -1;
     }
 
