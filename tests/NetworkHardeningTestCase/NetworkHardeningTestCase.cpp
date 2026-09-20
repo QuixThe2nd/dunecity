@@ -799,6 +799,22 @@ TEST_CASE_METHOD(ENetRuntime, "Lobby: a normal change event list round-trips",
     REQUIRE(iter->newStringValue == "stefan");
 }
 
+TEST_CASE_METHOD(ENetRuntime, "Lobby: graphics skin changes round-trip",
+                 "[network][security][lobby][skins]") {
+    ChangeEventList original;
+    original.changeEventList.emplace_back(
+        ChangeEventList::ChangeEvent::EventType::ChangeGraphicsSkin, 1u, 1u);
+    ENetPacketOStream out(ENET_PACKET_FLAG_RELIABLE);
+    original.save(out);
+    ENetPacketIStream in(out.getPacket());
+    ChangeEventList decoded(in);
+    REQUIRE(decoded.changeEventList.size() == 1);
+    const auto& event = decoded.changeEventList.front();
+    REQUIRE(event.eventType == ChangeEventList::ChangeEvent::EventType::ChangeGraphicsSkin);
+    REQUIRE(event.slot == 1);
+    REQUIRE(event.newValue == 1);
+}
+
 TEST_CASE_METHOD(ENetRuntime, "Lobby: malformed change event lists are refused",
                  "[network][security][lobby]") {
     SECTION("event count near the 32 bit maximum") {
@@ -1354,6 +1370,19 @@ TEST_CASE("Lobby authorization: house settings are restricted to the sender's ow
                 == LobbyDecision::RejectNotYourHouse);
         REQUIRE(judge(lobby, "stefan", houseChange(EventType::ChangeColor, 3, 1))
                 == LobbyDecision::RejectNotYourHouse);
+    }
+
+    SECTION("skin choices follow the same house ownership rules") {
+        REQUIRE(judge(lobby, "stefan", houseChange(EventType::ChangeGraphicsSkin, 1, 1))
+                == LobbyDecision::Allow);
+        REQUIRE(judge(lobby, "quix", houseChange(EventType::ChangeGraphicsSkin, 1, 0))
+                == LobbyDecision::Allow);
+        REQUIRE(judge(lobby, "stefan", houseChange(EventType::ChangeGraphicsSkin, 0, 1))
+                == LobbyDecision::RejectNotYourHouse);
+        REQUIRE(judge(lobby, "intruder", houseChange(EventType::ChangeGraphicsSkin, 1, 1))
+                == LobbyDecision::RejectUnknownSender);
+        REQUIRE(judge(lobby, "stefan", houseChange(EventType::ChangeGraphicsSkin, 4, 1))
+                == LobbyDecision::RejectSlotOutOfRange);
     }
 
     SECTION("changing the partner slot of the sender's own house is allowed") {

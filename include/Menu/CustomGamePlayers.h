@@ -105,6 +105,7 @@ private:
     void onChangeHousesDropDownBoxes(bool bInteractive, int houseInfoNum = -1);
     void onChangeTeamDropDownBoxes(bool bInteractive, int houseInfoNum = -1);
     void onChangeColorDropDownBoxes(bool bInteractive, int houseInfoNum = -1);
+    void onChangeGraphicsSkinDropDownBoxes(bool bInteractive, int houseInfoNum = -1);
     void onBonusColorCheckbox(int houseInfoNum);
     void onChangePlayerDropDownBoxes(bool bInteractive, int boxnum);
     void onClickPlayerDropDownBox(int boxnum);
@@ -177,6 +178,8 @@ private:
         DropDownBox     teamDropDown;
         Checkbox        bonusColorCheckbox;
         DropDownBox     colorDropDown;
+        Label           graphicsSkinLabel;
+        DropDownBox     graphicsSkinDropDown;
         HBox            playerHBox;
         PictureLabel    player1ArrowLabel;
         Label           player1Label;
@@ -189,6 +192,7 @@ private:
     std::array<int, MAX_CUSTOM_GAME_PLAYERS * 2> lastPlayerSelections{};
     bool                    bServer;
     bool                    bLANServer;
+    bool                    duneCitySkinControls;
     HouseInfo               houseInfo[MAX_CUSTOM_GAME_PLAYERS];
     int                     numHouses;
     std::list<HOUSETYPE>    boundHousesOnMap;

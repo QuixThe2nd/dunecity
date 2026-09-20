@@ -32,6 +32,7 @@
 namespace {
 constexpr Uint32 GAMEINIT_MOD_MARKER = 0x4D4F4421;   // "MOD!"
 constexpr Uint32 GAMEINIT_MOD2_MARKER = 0x4D4F4432;  // "MOD2"
+constexpr Uint32 GAMEINIT_MOD3_MARKER = 0x4D4F4433;  // "MOD3": graphics-only DuneCity skins
 }
 
 // Helper to capture current mod info
@@ -48,6 +49,7 @@ static void setModInfo(std::string& modName, std::string& modChecksum) {
 GameInitSettings::GameInitSettings() {
     randomSeed = getRandomInt();
     setModInfo(modName, modChecksum);
+    campaignGraphicsSkin = sanitizeGraphicsSkin(settings.general.duneCityCampaignSkin);
 }
 
 GameInitSettings::GameInitSettings(HOUSETYPE newHouseID, const SettingsClass::GameOptionsClass& gameOptions, int startLevel)
@@ -55,6 +57,7 @@ GameInitSettings::GameInitSettings(HOUSETYPE newHouseID, const SettingsClass::Ga
     filename = getScenarioFilename(houseID, mission);
     randomSeed = getRandomInt();
     setModInfo(modName, modChecksum);
+    campaignGraphicsSkin = sanitizeGraphicsSkin(settings.general.duneCityCampaignSkin);
 }
 
 GameInitSettings::GameInitSettings(const GameInitSettings& prevGameInitInfoClass, int nextMission, Uint32 alreadyPlayedRegions, Uint32 alreadyShownTutorialHints) {
@@ -137,11 +140,11 @@ GameInitSettings::GameInitSettings(InputStream& stream) {
     // Use marker to detect presence for backward compatibility
     try {
         Uint32 modMarker = stream.readUint32();
-        if (modMarker == GAMEINIT_MOD_MARKER || modMarker == GAMEINIT_MOD2_MARKER) {
+        if (modMarker == GAMEINIT_MOD_MARKER || modMarker == GAMEINIT_MOD2_MARKER || modMarker == GAMEINIT_MOD3_MARKER) {
             modName = stream.readString();
             modChecksum = stream.readString();
 
-            if(modMarker == GAMEINIT_MOD2_MARKER) {
+            if(modMarker == GAMEINIT_MOD2_MARKER || modMarker == GAMEINIT_MOD3_MARKER) {
                 Uint32 numHouseColors = stream.readUint32();
                 stream.requireReadableElements(numHouseColors, 4);
                 for(Uint32 i = 0; i < numHouseColors; i++) {
@@ -150,6 +153,17 @@ GameInitSettings::GameInitSettings(InputStream& stream) {
                         houseInfoList[i].colorOfHouse = colorOfHouse;
                     }
                 }
+            }
+            if(modMarker == GAMEINIT_MOD3_MARKER) {
+                const Uint32 numHouseSkins = stream.readUint32();
+                stream.requireReadableElements(numHouseSkins, 4);
+                for(Uint32 i = 0; i < numHouseSkins; ++i) {
+                    const GraphicsSkin skin = sanitizeGraphicsSkin(stream.readUint32());
+                    if(i < houseInfoList.size()) {
+                        houseInfoList[i].graphicsSkin = skin;
+                    }
+                }
+                campaignGraphicsSkin = sanitizeGraphicsSkin(stream.readUint32());
             }
         }
     } catch (InputStream::eof&) {
@@ -166,6 +180,7 @@ void GameInitSettings::configureCoopSave(const GameInitSettings& saved, const Ho
     gameOptions = saved.gameOptions;
     modName = saved.modName;
     modChecksum = saved.modChecksum;
+    campaignGraphicsSkin = saved.campaignGraphicsSkin;
     houseInfoList = houses;
     // Future campaign missions can introduce enemies not present in this save.
     for(const auto& planned : saved.houseInfoList) {
@@ -202,6 +217,13 @@ GameInitSettings GameInitSettings::readSaveSetup(InputStream& stream, HouseInfoL
             house.colorOfHouse = stream.readSint32();
             if(version <= 9820) house.colorOfHouse = migrateLegacyHouseColorSlot(house.colorOfHouse);
         }
+    }
+    // HouseInfo's standalone save block predates skins; MOD3 owns that data.
+    // Match by house identity because setup rows can differ from init ordering.
+    for(auto& house : houses) {
+        const auto init = std::find_if(saved.houseInfoList.begin(), saved.houseInfoList.end(),
+            [&](const HouseInfo& candidate) { return candidate.houseID == house.houseID; });
+        if(init != saved.houseInfoList.end()) house.graphicsSkin = init->graphicsSkin;
     }
     return saved;
 }
@@ -243,7 +265,7 @@ void GameInitSettings::save(OutputStream& stream) const {
     }
     
     // Write mod info with marker for forward compatibility
-    stream.writeUint32(GAMEINIT_MOD2_MARKER);
+    stream.writeUint32(GAMEINIT_MOD3_MARKER);
     stream.writeString(modName);
     stream.writeString(modChecksum);
 
@@ -251,6 +273,12 @@ void GameInitSettings::save(OutputStream& stream) const {
     for(const HouseInfo& houseInfo : houseInfoList) {
         stream.writeSint32(houseInfo.colorOfHouse);
     }
+
+    stream.writeUint32(houseInfoList.size());
+    for(const HouseInfo& houseInfo : houseInfoList) {
+        stream.writeUint32(static_cast<Uint32>(houseInfo.graphicsSkin));
+    }
+    stream.writeUint32(static_cast<Uint32>(campaignGraphicsSkin));
 }
 
 

@@ -701,6 +701,7 @@ void createDefaultConfigFile(const std::string& configfilepath, const std::strin
                                 "Language = %s               # en = English, fr = French, de = German\n"
                                 "Scroll Speed = 50           # Amount to scroll the map when the cursor is near the screen border\n"
                                 "Show Tutorial Hints = true  # Show tutorial hints during the game\n"
+                                "DuneCity Campaign Skin = 0 # 0 = SimCity, 1 = Dune2 (presentation only)\n"
                                 "Multiple Players Per House = false  # Custom game: allow two players per house\n"
                                 "\n"
                                 "[Video]\n"
@@ -1163,6 +1164,8 @@ int main(int argc, char *argv[]) {
             SDL_LogSetPriority(SDL_LOG_CATEGORY_APPLICATION, settings.general.diagnosticLogs
                 ? SDL_LOG_PRIORITY_VERBOSE : SDL_LOG_PRIORITY_WARN);
             settings.general.showTutorialHints = myINIFile.getBoolValue("General","Show Tutorial Hints",true);
+            settings.general.duneCityCampaignSkin = std::clamp(
+                myINIFile.getIntValue("General", "DuneCity Campaign Skin", 0), 0, 1);
             settings.general.multiplePlayersPerHouse = myINIFile.getBoolValue("General","Multiple Players Per House",false);
             settings.video.width = myINIFile.getIntValue("Video","Width",640);
             settings.video.height = myINIFile.getIntValue("Video","Height",480);

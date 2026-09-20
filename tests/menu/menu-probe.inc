@@ -355,7 +355,16 @@ int runMenuProbe() {
     }
     for(const auto& mod : {std::string("vanilla"),std::string("dunecity")}) {
         menuRequire(ModManager::instance().setActiveMod(mod), "City status fixture unavailable");
-        CustomGamePlayers menu(init,true);
+        GameInitSettings skinInit(getBasename(map,true),readCompleteFile(map),false,setup.rules);
+        CustomGamePlayers menu(skinInit,true);
+        menuRequire(menu.mainVBox.getMinimumSize().x<=menu.mainVBox.getSize().x,"Skin controls exceed menu width");
+        if(mod=="dunecity") {
+            menuRequire(menu.duneCitySkinControls,"Dune City lobby skin selector missing");
+            menu.houseInfo[0].graphicsSkinDropDown.setSelectedItem(1);
+            menu.addAllPlayersToGameInitSettings();
+            menuRequire(menu.gameInitSettings.getHouseInfoList().front().graphicsSkin==GameInitSettings::GraphicsSkin::Dune2,
+                "Lobby skin selection is not retained in game settings");
+        }
         menuRequire(menu.mapPropertyCity.getText()==(mod=="dunecity" ? _("On") : _("Off")), "Lobby city status disagrees with mod");
         menuCapture(menu,"city-status-"+mod);
     }
@@ -558,6 +567,19 @@ int runMenuProbe() {
             && savedOptions.getBoolValue("General","Left Click Orders",false)
             && !savedOptions.getBoolValue("General","Movement Paths",true),"Input options not persisted");
         menuRequire(menu.isQuiting(),"Unchanged legacy network field blocked audio apply");
+    }
+    {
+        menuRequire(ModManager::instance().setActiveMod("dunecity"),"Skin options fixture mod unavailable");
+        OptionsMenu menu;
+        menu.showPage(0);
+        menuRequire(menu.pages[0].getMinimumSize().y<=menu.pages[0].getSize().y,"Campaign skin controls overflow Settings");
+        menu.duneCityCampaignSkinDropDownBox.setSelectedItem(1);
+        menu.onOptionsOK();
+        menuRequire(settings.general.duneCityCampaignSkin==1,"Campaign skin preference not applied");
+        INIFile savedOptions(getConfigFilepath());
+        menuRequire(savedOptions.getIntValue("General","DuneCity Campaign Skin",0)==1,"Campaign skin preference not persisted");
+        menuCapture(menu,"settings-dunecity-skin");
+        ModManager::instance().setActiveMod("vanilla");
     }
     { AboutMenu menu;menuCapture(menu,"about"); }
     { HowToPlayMenu menu;menuCapture(menu,"help"); }
