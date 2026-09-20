@@ -17,8 +17,12 @@ live notifier and signaling SHA-256 hashes match the tested local sources. Game
 source commit fe29d281 is packaged by that deployment; game release 733 remains
 unpublished. A fresh public Twin Cities lobby hosted by Codex Web 733 is waiting
 for Stefan to join before start, to check named start and hot-join Discord messages.
-The previous browser match had already returned to the online menu. New live
-notification delivery still awaits observation during this joint test.
+The previous browser match had already returned to the online menu. Stefan confirmed the live start announcement names Codex Web 733 and ggtothemax.
+A second Chrome client, Codex Web Guest (tab 1889837000), hot-joined that running
+match as a spectator, loaded the map, requested play, and was approved to share
+Codex Web 733. It resumed without the Spectating label and continued simulating.
+Both browser tabs are retained; do not close either while this match is running.
+Delivery of the two hot-join Discord announcements still awaits user confirmation.
 
 Stefan confirmed the local 733 web-host/native-Air hot join and approved shared
 control work. This is additional user acceptance evidence for the next section.
