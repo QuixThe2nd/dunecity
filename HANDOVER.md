@@ -1,3 +1,56 @@
+## 2026-09-20 — Hot-join restoration, progress and recovery (unreleased 733)
+
+Branch `fix/hot-join-progress-733`. The Air's installed 732 log was preserved before
+any restart: at cycle 42200 its RNG and object digest matched the host but its house
+digest differed. The live host is Brave on the Air; its exact saved checkpoint and
+host log were not retrieved. Stefan does not want console/export/manual diagnostic
+steps. Local real-peer reproductions provided the required evidence instead.
+
+Fixed unit registration on checkpoint load: temporarily deviated units count toward
+their original house, and loading does not add military value already restored from
+the save a second time. A converted-unit test reproduced the house mismatch before
+the change and passes afterward. A populated four-corner match additionally exposed
+lost harvester path-failure counters and sandworm attack modes being overwritten on
+load. Runtime supplement version 3 preserves the counters; loaded worms retain their
+saved mode. Ordinary save layout remains unchanged.
+
+Added actual byte progress to the joining lobby/controller dialog, then a map banner
+for catch-up progress. Host-frontier packets and a 64-tick replay window let viewers
+catch up in bounded batches. Fingerprint mismatches request a fresh checkpoint, with
+distinct snapshot epochs and at most two restarts per connection. Transfer expiry
+also uses that bounded recovery. Permanent failure returns the viewer to a usable
+lobby with a message; the host keeps playing. Both sides require 733, enforced by the
+existing exact-version gate. See docs/late-join-protocol.md.
+
+Validation: native dependency audits/build and all eight CTest suites pass; browser
+build passes. Real-peer regressions pass for deviated ownership with 300 ms snapshot
+polling, transient mismatch recovery, permanent mismatch with two retries and host
+continuation, and three-peer approved shared control retaining the AI. The populated
+four-corner regression joins at cycle 42100, stalls the viewer for five seconds and
+matches state at 45000. Native screenshots verify download/catch-up bars, including
+640/854/1280 lobby layouts. An actual Chrome 733 client joined a native host checkpoint
+at cycle 4212 (2,203,318 bytes), rendered the map and stayed connected beyond host cycle
+10531; this is browser-as-viewer evidence, not the user's Brave-as-host reproduction.
+
+Signed/notarized local Mac ZIP and DMG are in task work/hotjoin-733/signed-verified.
+The DMG passes stapler, Gatekeeper, strict signature, portable-library and actual SDL
+runtime rendering checks on the mini. It is copied to the Air's Desktop as
+DuneCity-1.0.733-macOS.dmg; its hash, signature, Gatekeeper and isolated dummy-video
+runtime probe pass there too. Existing installed apps, profiles and running games
+were not changed. DMG SHA256:
+e2be6b993d41fbc8aa1e9544dcb346cdecf9c0e9fb584af8020e9eb559585172.
+
+Evidence directory: /Users/stefan/Documents/Codex/2026-09-19/i-h/work/hotjoin-733.
+Includes preserved Air log/replay, before/after checkpoints, regression logs, UI PNGs,
+browser observations, Apple acceptance JSON and package verification logs. An initial
+signing process was waiting on the locked keychain; stopped only that process,
+unlocked the existing signing/notarization keychains using protected saved credentials
+and rebuilt in signed-verified. No new credential or user setup is needed.
+
+733 has not been pushed, tagged, or published to the website/update feeds/installers.
+Public release remains 732. Do not ask Stefan for manual console diagnostics or
+another password setup; prepare any next release through the existing release process.
+
 ## 2026-09-20 — Dune City 1.0.732 published and verified
 
 Release source/tag: a319a104b83d9b53ce31ffcf7ee7d171cc5bad2e / v1.0.732.

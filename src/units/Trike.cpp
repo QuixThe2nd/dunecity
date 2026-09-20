@@ -38,7 +38,7 @@ Trike::Trike(InputStream& stream) : GroundUnit(stream) {
 
 void Trike::init() {
     itemID = Unit_Trike;
-    owner->incrementUnits(itemID);
+    registerUnit();
 
     numWeapons = 2;
     bulletType = Bullet_ShellSmall;

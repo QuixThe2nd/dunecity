@@ -509,11 +509,11 @@ void House::update() {
 
 
 
-void House::incrementUnits(int itemID) {
+void House::incrementUnits(int itemID, bool addMilitaryValue) {
     numUnits++;
     numItem[itemID]++;
 
-    if(itemID != Unit_Saboteur
+    if(addMilitaryValue && itemID != Unit_Saboteur
        && itemID != Unit_Frigate
        && !isCarryallUnit(itemID)
        && itemID != Unit_MCV

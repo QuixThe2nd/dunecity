@@ -36,7 +36,7 @@ Trooper::Trooper(InputStream& stream) : InfantryBase(stream) {
 
 void Trooper::init() {
     itemID = Unit_Trooper;
-    owner->incrementUnits(itemID);
+    registerUnit();
 
     numWeapons = 1;
     const bool kleshmershTrooper = ModManager::instance().isTornieContentActive()

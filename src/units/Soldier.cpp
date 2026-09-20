@@ -35,7 +35,7 @@ Soldier::Soldier(InputStream& stream) : InfantryBase(stream) {
 
 void Soldier::init() {
     itemID = Unit_Soldier;
-    owner->incrementUnits(itemID);
+    registerUnit();
 
     numWeapons = 1;
     bulletType = Bullet_ShellSmall;

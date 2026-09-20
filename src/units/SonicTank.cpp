@@ -40,7 +40,7 @@ SonicTank::SonicTank(InputStream& stream) : TrackedUnit(stream) {
 
 void SonicTank::init() {
     itemID = Unit_SonicTank;
-    owner->incrementUnits(itemID);
+    registerUnit();
 
     numWeapons = 1;
     bulletType = Bullet_Sonic;

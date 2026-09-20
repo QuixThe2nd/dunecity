@@ -49,7 +49,7 @@ Devastator::Devastator(InputStream& stream) : TrackedUnit(stream)
 void Devastator::init()
 {
     itemID = Unit_Devastator;
-    owner->incrementUnits(itemID);
+    registerUnit();
 
     numWeapons = 2;
     bulletType = Bullet_ShellLarge;

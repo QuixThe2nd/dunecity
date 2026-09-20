@@ -40,7 +40,7 @@ EliteLauncher::EliteLauncher(InputStream& stream) : TrackedUnit(stream) {
 
 void EliteLauncher::init() {
     itemID = Unit_EliteLauncher;
-    owner->incrementUnits(itemID);
+    registerUnit();
 
     graphicID = ObjPic_Tank_Base;
     const bool tornieActive = ModManager::instance().isInitialized()

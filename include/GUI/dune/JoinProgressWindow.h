@@ -3,6 +3,7 @@
 #include <GUI/Window.h>
 #include <GUI/VBox.h>
 #include <GUI/Label.h>
+#include <GUI/ProgressBar.h>
 #include <GUI/TextButton.h>
 #include <Network/NetworkManager.h>
 #include <globals.h>
@@ -19,11 +20,13 @@ public:
     }
     void refresh() {
         if(!pNetworkManager) return;
-        status.setText(pNetworkManager->lateJoinStatus());
+        title.setText(pNetworkManager->isSpectating() ? "Refreshing game state" : "Adding a player");
+        status.setText(pNetworkManager->lateJoinProgressText());
+        status.setProgress(pNetworkManager->lateJoinPercent());
         cancel.setVisible(pNetworkManager->isServer());
         cancel.setEnabled(pNetworkManager->canCancelLateJoin());
     }
 private:
-    VBox box; Label title,status; TextButton cancel;
+    VBox box; Label title; TextProgressBar status; TextButton cancel;
 };
 #endif

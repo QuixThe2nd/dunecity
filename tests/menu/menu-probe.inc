@@ -1,3 +1,4 @@
+#include <Network/NetworkManager.h>
 // Test-only entry point, linked against the real menu objects by run-menu-probe.py.
 #include <Menu/HouseChoiceMenu.h>
 #include <Menu/CustomGamePlayers.h>
@@ -402,6 +403,24 @@ int runMenuProbe() {
             menu.update();
             menuRequire(!menu.hasChildWindow(),"Version prompt reopened without another join attempt");
         }
+        menu.joiningRunning=true;
+        menu.stage=CrossplayMenu::Stage::ClientWaiting;
+        pNetworkManager=std::make_unique<NetworkManager>(NetworkManager::Transport::DirectP2P);
+        auto& progressNetwork=*pNetworkManager;
+        progressNetwork.playerName=settingsName;
+        progressNetwork.spectators.insert(settingsName);
+        progressNetwork.joinStage=NetworkManager::JoinStage::Receiving;
+        progressNetwork.observerTotal=128*1024;
+        progressNetwork.observerBytes.assign(64*1024,'x');
+        menu.update();
+        menuRequire(menu.joinProgress.isVisible() && !menu.statusLabel.isVisible(),"Join progress is not visible");
+        menuRequire(menu.joinProgress.getProgress()==50 && menu.joinProgress.getText().find("64 / 128 KiB")!=std::string::npos,
+            "Join progress does not describe received bytes");
+        menuCapture(menu,"hot-join-download-progress");
+        menu.teardownSession("Test transfer ended. Please try joining again.");
+        menuRequire(!menu.joinProgress.isVisible() && menu.statusLabel.isVisible() && !menu.joiningRunning,
+            "Join failure did not restore usable lobby controls");
+        menuRequire(menu.statusLabel.getText().find("Please try")!=std::string::npos,"Join failure reason disappeared");
         menu.joiningRunning=false;
         menu.chat.cancel(); menu.chatSession.clear(); menu.chatPending=false;
         menu.nextChatPoll=0;

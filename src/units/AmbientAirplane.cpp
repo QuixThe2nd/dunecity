@@ -28,7 +28,7 @@ AmbientAirplane::AmbientAirplane(InputStream& stream) : AirUnit(stream)
 void AmbientAirplane::init()
 {
     itemID = Unit_AmbientAirplane;
-    owner->incrementUnits(itemID);
+    registerUnit();
 
     canAttackStuff = false;
 

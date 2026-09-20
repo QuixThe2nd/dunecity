@@ -8,6 +8,8 @@
 #include <Menu/CrossplayMenu.h>
 #include <players/HumanPlayer.h>
 #include <units/UnitBase.h>
+#include <units/Harvester.h>
+#include <units/RebelHarvester.h>
 #include <SpatialGrid.h>
 #include <misc/OMemoryStream.h>
 #include <misc/IMemoryStream.h>
@@ -25,6 +27,30 @@ static void joinCapture(Game& game, const std::string& path) {
     sdl2::surface_ptr image{SDL_CreateRGBSurfaceWithFormat(0,getRendererWidth(),getRendererHeight(),32,SDL_PIXELFORMAT_ARGB8888)};
     if(!image || SDL_RenderReadPixels(renderer,nullptr,image->format->format,image->pixels,image->pitch)!=0
        || SDL_SaveBMP(image.get(),path.c_str())!=0) throw std::runtime_error("could not capture join UI");
+}
+static void joinCheckpointTrace(Game& game, const std::string& role, const std::string& out) {
+    if(!std::getenv("JOIN_CHECKPOINT_TRACE")) return;
+    const auto dir=out+"/checkpoint-"+std::to_string(game.getGameCycleCount())+"-"+role;
+    if(std::filesystem::exists(dir)) return;
+    std::filesystem::create_directory(dir);
+    joinWrite(dir+"/digest",GameStateDigest::describe(game.computeStateDigest()));
+    joinWrite(dir+"/runtime",game.saveObserverRuntime());
+    OMemoryStream save; save.open(); game.saveGame(save);
+    joinWrite(dir+"/save",std::string(save.getData(),save.getDataLength()));
+    std::ostringstream counters;
+    for(const auto* unit : unitList) {
+        if(const auto* h=dynamic_cast<const Harvester*>(unit))
+            counters<<unit->getObjectID()<<" harvester "<<int(h->pathFailCounter)<<' '<<int(h->returnPathFailCounter)<<'\n';
+        if(const auto* h=dynamic_cast<const RebelHarvester*>(unit))
+            counters<<unit->getObjectID()<<" rebel "<<int(h->pathFailCounter)<<' '<<int(h->returnPathFailCounter)<<'\n';
+    }
+    for(const auto& h : game.house) if(h) counters<<"house "<<h->getHouseID()<<' '<<h->getCredits()<<' '
+        <<h->getNumUnits()<<' '<<h->getNumStructures()<<' '<<h->getMilitaryValue()<<'\n';
+    joinWrite(dir+"/counters",counters.str());
+    game.objectManager.forEachObject([&](Uint32 id,const ObjectBase* obj) {
+        OMemoryStream bytes; bytes.open(); game.saveObject(bytes,const_cast<ObjectBase*>(obj));
+        joinWrite(dir+"/object-"+std::to_string(id),std::string(bytes.getData(),bytes.getDataLength()));
+    });
 }
 int runLateJoinProbe() {
     const std::string role=std::getenv("JOIN_ROLE"), out=std::getenv("JOIN_OUT"), endpoint=std::getenv("JOIN_ENDPOINT");
@@ -117,7 +143,21 @@ int runLateJoinProbe() {
         // cadence. Several queued snapshot chunks can arrive in each read window.
         const Uint32 snapshotPollMs=std::getenv("JOIN_SNAPSHOT_POLL_MS")
             ? std::stoul(std::getenv("JOIN_SNAPSHOT_POLL_MS")) : 0;
-        wait([&](){ if(snapshotPollMs) SDL_Delay(snapshotPollMs); network.update(); return network.lateJoinReady() || cancelled; });
+        int previousPercent=0; Uint32 previousEpoch=0; bool sawProgress=false;
+        wait([&](){
+            if(snapshotPollMs) SDL_Delay(snapshotPollMs);
+            network.update();
+            if(observer && network.joinStage==NetworkManager::JoinStage::Receiving) {
+                const int percent=network.lateJoinPercent();
+                if(network.observerEpoch==previousEpoch && percent<previousPercent)
+                    throw std::runtime_error("download progress moved backwards inside one transfer");
+                if(percent>0 && percent<100) sawProgress=true;
+                previousEpoch=network.observerEpoch; previousPercent=percent;
+            }
+            return network.lateJoinReady() || cancelled;
+        });
+        if(observer && !cancelled && (!sawProgress || network.lateJoinPercent()!=100))
+            throw std::runtime_error("download progress did not report actual transfer completion");
         if(cancelled && mode=="abort") { joinWrite(out+"/Newcomer-cancelled","yes"); network.setOnPeerDisconnected({}); pNetworkManager.reset(); return MENU_QUIT_DEFAULT; }
         if(observer) {
             joinWrite(out+"/observer-delaying",std::to_string(network.observerFrontier()));
@@ -133,13 +173,19 @@ int runLateJoinProbe() {
         init=*network.takeLateJoin();
     }
     auto game=std::make_unique<Game>(); currentGame=game.get(); game->initGame(init); game->initializeGameLoop();
-    if(newcomer) joinWrite(out+"/Newcomer-loaded","yes");
+    if(newcomer) {
+        joinCheckpointTrace(*game,role,out);
+        joinWrite(out+"/Newcomer-loaded","yes");
+        if(std::getenv("JOIN_DESYNC_ONCE") || std::getenv("JOIN_DESYNC_ALWAYS")) game->getHouse(HOUSE_ATREIDES)->addCityCredits(100);
+    }
     bool requested=false, resumed=newcomer || observer, rejected=false, playRequested=false, retried=false;
     std::string declinedRequest;
     Uint32 lastProgress=0;
     Uint32 lastOrdersCycle=~Uint32(0);
     bool targetOrderChecked=false;
     bool warmupReleased=false;
+    bool deviationInjected=false;
+    bool capturedCatchup=false;
     const bool checkDeparture=observer && !promotion && !std::getenv("JOIN_BROWSER");
     const Uint32 joinCycle=std::getenv("JOIN_AT_CYCLE") ? std::stoul(std::getenv("JOIN_AT_CYCLE")) : 60;
     while(!SDL_TICKS_PASSED(SDL_GetTicks(),deadline)) {
@@ -176,6 +222,9 @@ int runLateJoinProbe() {
                 targetOrderChecked=true;
             }
         }
+        if(newcomer && network.observerCatchingUp() && network.observerHostCycle && network.lateJoinPercent()>=20 && !capturedCatchup) {
+            joinCapture(*game,out+"/catchup-progress.bmp"); capturedCatchup=true;
+        }
         if(std::getenv("JOIN_TRACE") && game->getGameCycleCount()%200==0) {
             const auto path=out+"/"+role+"-state-"+std::to_string(game->getGameCycleCount());
             if(!std::filesystem::exists(path)) {
@@ -196,6 +245,12 @@ int runLateJoinProbe() {
         const Uint32 target=std::getenv("JOIN_BROWSER") ? 30000 : (checkDeparture && !newcomer && std::filesystem::exists(out+"/Newcomer-left") ? verifyCycle+100 : verifyCycle);
         const bool waiting=game->handleNetworkUpdates();
         if(!network.observerTransfers.empty()) warmupReleased=true;
+        if(host) for(const auto& transfer : network.observerTransfers)
+            if(!transfer.second.began) { joinCheckpointTrace(*game,role,out); break; }
+        if(newcomer && std::getenv("JOIN_DESYNC_ALWAYS") && !network.joinFailure().empty()) {
+            if(network.observerResyncAttempts!=2) throw std::runtime_error("retry limit was not enforced");
+            joinWrite(out+"/Newcomer-left",network.joinFailure()); break;
+        }
         if(newcomer && !network.getRelayClient()->isJoined())
             throw std::runtime_error("newcomer lost its session before state verification");
         if(SDL_GetTicks()-lastProgress>5000) {
@@ -209,6 +264,8 @@ int runLateJoinProbe() {
         if(network.lateJoinReady()) {
             auto snapshot=network.takeLateJoin(); game.reset(); currentGame=nullptr;
             game=std::make_unique<Game>(); currentGame=game.get(); game->initGame(*snapshot); game->initializeGameLoop(); resumed=true;
+            joinCheckpointTrace(*game,role,out);
+            if(newcomer && std::getenv("JOIN_DESYNC_ALWAYS")) game->getHouse(HOUSE_ATREIDES)->addCityCredits(100);
             if(browserPromotion) {
                 // Manual browser interaction may take longer than 1,800 ticks.
                 // Compare both original peers at the same post-checkpoint cycle.
@@ -218,6 +275,15 @@ int runLateJoinProbe() {
             joinWrite(out+"/"+role+"-loaded","yes");
         }
         if(host && !requested && game->getGameCycleCount()>=joinCycle) {
+            if(std::getenv("JOIN_DEVIATED_UNIT") && !deviationInjected) {
+                for(auto* unit : unitList) if(unit->getOriginalHouseID()==HOUSE_ATREIDES) {
+                    unit->deviate(game->getHouse(HOUSE_HARKONNEN));
+                    deviationInjected=true;
+                    SDL_Log("Checkpoint regression: deviated unit %u",unit->getObjectID());
+                    break;
+                }
+                if(!deviationInjected) throw std::runtime_error("No unit available for deviation regression");
+            }
             joinWrite(out+"/running","yes");
             const auto& requests=network.getDirectTransport()->joinRequests();
             if(!requests.empty() && observer && (!promotion || requests[0].spectator)) {
@@ -308,13 +374,17 @@ int runLateJoinProbe() {
             if(mode=="abort" && (!network.getRelayClient()->isJoined() || !game->getPlayerByName("Enemy AI") || game->getPlayerByName("Newcomer"))) throw std::runtime_error("abort changed the original match");
             if(!std::filesystem::exists(out+"/"+role+"-digest")) joinWrite(out+"/"+role+"-digest",GameStateDigest::describe(game->computeStateDigest()));
             if(checkDeparture && newcomer && std::filesystem::exists(out+"/Host-digest") && (solo || std::filesystem::exists(out+"/Partner-digest"))) {
+                if(std::getenv("JOIN_DESYNC_ONCE") && network.observerResyncAttempts!=1)
+                    throw std::runtime_error("transient mismatch was not recovered exactly once");
+                if(network.observerCatchingUp()) throw std::runtime_error("progress did not finish after catching up");
                 network.disconnect(); joinWrite(out+"/Newcomer-left","yes"); break;
             }
             if(std::filesystem::exists(out+"/done")) break;
         }
-        SDL_Delay(fastWarmup && host && game->getGameCycleCount()<joinCycle ? 0 : 16);
+        SDL_Delay((fastWarmup && host && game->getGameCycleCount()<joinCycle) ||
+            (newcomer && network.isSpectating() && network.observerCatchingUp()) ? 0 : 16);
     }
-    if(!std::filesystem::exists(out+"/"+role+"-digest")) throw std::runtime_error("simulation did not resume: "+network.lateJoinStatus());
+    if(!(newcomer && std::getenv("JOIN_DESYNC_ALWAYS") && std::filesystem::exists(out+"/Newcomer-left")) && !std::filesystem::exists(out+"/"+role+"-digest")) throw std::runtime_error("simulation did not resume: "+network.lateJoinStatus());
     network.setOnPeerDisconnected({}); game.reset(); currentGame=nullptr; pNetworkManager.reset();
     SDL_Log("LATE_JOIN_PROBE_PASS: %s",role.c_str()); return MENU_QUIT_DEFAULT;
 }
