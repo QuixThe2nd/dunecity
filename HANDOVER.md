@@ -1,3 +1,38 @@
+## 2026-09-20 — Dune City 1.0.734 published and upgrade ready
+
+PR61 merged as c505255c6fd23ef92f2ec91a60c5eeb8c4bde8b7; tag v1.0.734 points there.
+Stable build 35485484374 passed and published all 13 assets (eight packages and
+five signed feeds). Independently downloaded the release and verified all three
+Ed25519 manifests, archive sizes/hashes and both appcast signatures. The exact
+VR48 latest-feed URLs embedded in the Air's installed 733 app return valid 734
+Mac feeds. The Air installation was left untouched for Stefan's upgrade test.
+
+Both the Mac DMG and update ZIP pass strict signatures, stapler and Gatekeeper
+as Notarized Developer ID. The DMG also passes portable-library, metadata and
+isolated SDL rendering checks. Public DMG SHA256:
+697c1ad848c69b49d062ab1b1d9736b11d1414cc6bca91c45952b470b7094409.
+
+At Stefan's request the browser was deployed before the slow Windows release job
+finished: website PR11, merge 4760d7e, deployment 35486509988. It uses the exact
+stable run's Emscripten artifact. The later release-link deployment 35486713967
+also passed. All seven live browser artifacts match the 734 tagged manifest;
+both download pages and their public package URLs pass checks. A fresh Chrome
+tab renders v1.0.734; signaling health is status=ok. Redundant browser workflow
+35486716168 was cancelled after this verified publication.
+
+SourceForge run 35486716196 passed: nine uploaded files readback-hashed, released
+source refs updated and Windows/macOS/Linux defaults confirmed. Existing local
+733 browser test clients were preserved. Evidence is task work/release734-*.
+
+Windows slowness was diagnosed from the PR build log: the removed x-gha backend
+disabled binary caching; dependencies took 13m17s (OpenSSL 7.7 minutes) before
+8m17s of compilation. A files-provider cache fix is committed separately in
+PR62, worktree task work/windows-cache-fix. Its first CI run 35486310606 is still
+running; do not claim warm-cache performance or that the fix has merged yet.
+No paid runner or Windows-laptop setup was performed. Stefan offered a laptop;
+we recommended measuring the cache repair first, then trusted self-hosted builds
+if needed. The release and Mac upgrade are ready independently of that work.
+
 ## 2026-09-20 — Prominent in-game join names (local 734)
 
 The map notice now names the first player requesting approval, with an additional
