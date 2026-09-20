@@ -163,6 +163,17 @@ No paid runner or Windows-laptop setup was performed. Stefan offered a laptop;
 we recommended measuring the cache repair first, then trusted self-hosted builds
 if needed. The release and Mac upgrade are ready independently of that work.
 
+## 2026-09-20 — Windows dependency-cache repair
+
+The 734 PR run 35484459930 spent 13m17s configuring dependencies (OpenSSL alone
+7.7 minutes), then 8m17s compiling. Its log explicitly warns that run-vcpkg's
+`clear;x-gha,readwrite` selects a removed backend, disabling reusable binaries.
+Windows now uses the same files-provider approach as Linux/Mac, persisted through
+actions/cache. Cache keys include runner image and manifest; prefix restores keep
+compatible packages across version bumps, with vcpkg performing ABI validation.
+This infrastructure change does not alter the already-tagged 734 release. A cold
+run must populate the cache before a later run can demonstrate the time saved.
+
 ## 2026-09-20 — Prominent in-game join names (local 734)
 
 The map notice now names the first player requesting approval, with an additional

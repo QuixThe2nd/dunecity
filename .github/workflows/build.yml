@@ -227,6 +227,23 @@ jobs:
             exit 1
           }
 
+      - name: Set Windows dependency cache location
+        id: windows-vcpkg-cache
+        run: |
+          $cache = Join-Path $env:LOCALAPPDATA 'vcpkg/archives'
+          New-Item -ItemType Directory -Force -Path $cache | Out-Null
+          "path=$cache" >> $env:GITHUB_OUTPUT
+          "image=$env:ImageVersion" >> $env:GITHUB_OUTPUT
+
+      - name: Cache Windows dependency binaries
+        uses: actions/cache@v6
+        with:
+          path: ${{ steps.windows-vcpkg-cache.outputs.path }}
+          key: vcpkg-windows-x64-v1-${{ steps.windows-vcpkg-cache.outputs.image }}-${{ hashFiles('vcpkg.json') }}
+          restore-keys: |
+            vcpkg-windows-x64-v1-${{ steps.windows-vcpkg-cache.outputs.image }}-
+            vcpkg-windows-x64-v1-
+
       - name: Setup vcpkg
         uses: lukka/run-vcpkg@v11
         with:
@@ -244,6 +261,15 @@ jobs:
       - name: Install the pinned p2pkit SDK headers
         working-directory: platform/web
         run: npm ci --ignore-scripts
+
+      # run-vcpkg still selects the removed x-gha backend and clears the
+      # default cache. Use the persisted files provider, as on Linux/macOS.
+      # vcpkg validates package ABIs before reusing restored binaries.
+      - name: Enable Windows dependency binary caching
+        env:
+          WINDOWS_VCPKG_CACHE: ${{ steps.windows-vcpkg-cache.outputs.path }}
+        run: |
+          "VCPKG_BINARY_SOURCES=clear;files,$env:WINDOWS_VCPKG_CACHE,readwrite" >> $env:GITHUB_ENV
 
       - name: Configure CMake
         # Quote the -D arg so PowerShell expands $env:VCPKG_ROOT instead
