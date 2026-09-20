@@ -96,6 +96,8 @@ private:
     HBox        generalHBox;
     DropDownBox aiDropDownBox;
     Checkbox    introCheckbox;
+    HBox        duneCitySkinHBox;
+    DropDownBox duneCityCampaignSkinDropDownBox;
 
     HBox        resolutionHBox;
     DropDownBox resolutionDropDownBox;

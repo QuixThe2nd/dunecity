@@ -158,7 +158,9 @@ int resolveSelectedColorSlot(int selectedColor, int selectedHouse) {
 
 
 CustomGamePlayers::CustomGamePlayers(const GameInitSettings& newGameInitSettings, bool server, bool LANServer, CustomPlaySetup* newSetup, const ChangeEventList* initialPlayers)
- : MenuBase(), gameInitSettings(newGameInitSettings), bServer(server), bLANServer(LANServer), startGameTime(0), bConfigMismatchDetected(false), bModDownloadInProgress(false), bWaitingForModAcks(false), brainEqHumanSlot(-1) {
+ : MenuBase(), gameInitSettings(newGameInitSettings), bServer(server), bLANServer(LANServer),
+   duneCitySkinControls(newGameInitSettings.getModName() == "dunecity"), startGameTime(0),
+   bConfigMismatchDetected(false), bModDownloadInProgress(false), bWaitingForModAcks(false), brainEqHumanSlot(-1) {
     setup = newSetup;
     const bool compactPlayers = getRendererWidth() < 800;
 
@@ -401,7 +403,7 @@ CustomGamePlayers::CustomGamePlayers(const GameInitSettings& newGameInitSettings
             curHouseInfo.houseDropDown.setEnabled(bServer);
         }
         curHouseInfo.houseDropDown.setOnSelectionChange(std::bind(&CustomGamePlayers::onChangeHousesDropDownBoxes, this, std::placeholders::_1, i));
-        curHouseInfo.houseHBox.addWidget(&curHouseInfo.houseDropDown, compactPlayers && bBonusHouseColorsAvailable ? 85 : 95);
+        curHouseInfo.houseHBox.addWidget(&curHouseInfo.houseDropDown, compactPlayers && (bBonusHouseColorsAvailable || duneCitySkinControls) ? 85 : 95);
 
         if(bLoadMultiplayer) {
             if(i < (int) houseInfoListSetup.size()) {
@@ -420,8 +422,30 @@ CustomGamePlayers::CustomGamePlayers(const GameInitSettings& newGameInitSettings
             curHouseInfo.teamDropDown.setEnabled(bServer);
         }
         curHouseInfo.teamDropDown.setOnSelectionChange(std::bind(&CustomGamePlayers::onChangeTeamDropDownBoxes, this, std::placeholders::_1, i));
-        curHouseInfo.houseHBox.addWidget(HSpacer::create(10));
-        curHouseInfo.houseHBox.addWidget(&curHouseInfo.teamDropDown, compactPlayers && bBonusHouseColorsAvailable ? 70 : 85);
+        curHouseInfo.houseHBox.addWidget(HSpacer::create(compactPlayers && duneCitySkinControls ? 5 : 10));
+        curHouseInfo.houseHBox.addWidget(&curHouseInfo.teamDropDown, compactPlayers && (bBonusHouseColorsAvailable || duneCitySkinControls) ? 70 : 85);
+
+        if(duneCitySkinControls) {
+            GameInitSettings::GraphicsSkin selectedSkin = GameInitSettings::GraphicsSkin::SimCity;
+            if(bLoadMultiplayer && i < static_cast<int>(houseInfoListSetup.size())) {
+                selectedSkin = houseInfoListSetup.at(i).graphicsSkin;
+            }
+            curHouseInfo.graphicsSkinLabel.setText(_("Skin"));
+            curHouseInfo.graphicsSkinLabel.setTextFontSize(12);
+            curHouseInfo.graphicsSkinDropDown.addEntry(
+                _("SimCity"), static_cast<int>(GameInitSettings::GraphicsSkin::SimCity));
+            curHouseInfo.graphicsSkinDropDown.addEntry(
+                _("Dune2"), static_cast<int>(GameInitSettings::GraphicsSkin::Dune2));
+            curHouseInfo.graphicsSkinDropDown.setSelectedItem(
+                selectedSkin == GameInitSettings::GraphicsSkin::Dune2 ? 1 : 0);
+            curHouseInfo.graphicsSkinDropDown.setEnabled(!bLoadMultiplayer && bServer);
+            curHouseInfo.graphicsSkinDropDown.setOnSelectionChange(
+                std::bind(&CustomGamePlayers::onChangeGraphicsSkinDropDownBoxes,
+                          this, std::placeholders::_1, i));
+            curHouseInfo.houseHBox.addWidget(HSpacer::create(6));
+            curHouseInfo.houseHBox.addWidget(&curHouseInfo.graphicsSkinLabel, 30);
+            curHouseInfo.houseHBox.addWidget(&curHouseInfo.graphicsSkinDropDown, 72);
+        }
 
         int selectedColor = HOUSE_INVALID;
         if(bLoadMultiplayer) {
@@ -444,12 +468,12 @@ CustomGamePlayers::CustomGamePlayers(const GameInitSettings& newGameInitSettings
         }
         curHouseInfo.bonusColorCheckbox.setOnClick(std::bind(&CustomGamePlayers::onBonusColorCheckbox, this, i));
         curHouseInfo.colorDropDown.setOnSelectionChange(std::bind(&CustomGamePlayers::onChangeColorDropDownBoxes, this, std::placeholders::_1, i));
-        curHouseInfo.houseHBox.addWidget(HSpacer::create(10));
+        curHouseInfo.houseHBox.addWidget(HSpacer::create(compactPlayers && duneCitySkinControls ? 5 : 10));
         if(bBonusHouseColorsAvailable) {
             curHouseInfo.houseHBox.addWidget(&curHouseInfo.bonusColorCheckbox, 75);
             curHouseInfo.houseHBox.addWidget(HSpacer::create(6));
         }
-        curHouseInfo.houseHBox.addWidget(&curHouseInfo.colorDropDown, compactPlayers && bBonusHouseColorsAvailable ? 85 : 95);
+        curHouseInfo.houseHBox.addWidget(&curHouseInfo.colorDropDown, compactPlayers && (bBonusHouseColorsAvailable || duneCitySkinControls) ? 85 : 95);
 
         curHouseInfo.houseInfoVBox.addWidget(&curHouseInfo.houseHBox);
 
@@ -965,6 +989,13 @@ void CustomGamePlayers::onReceiveChangeEventList(const std::string& senderName,
                 onChangeHousesDropDownBoxes(false, changeEvent.slot);
             } break;
 
+            case ChangeEventList::ChangeEvent::EventType::ChangeGraphicsSkin: {
+                const auto skin = GameInitSettings::sanitizeGraphicsSkin(changeEvent.newValue);
+                HouseInfo& curHouseInfo = houseInfo[changeEvent.slot];
+                curHouseInfo.graphicsSkinDropDown.setSelectedItem(
+                    skin == GameInitSettings::GraphicsSkin::Dune2 ? 1 : 0);
+            } break;
+
             case ChangeEventList::ChangeEvent::EventType::ChangePlayer: {
                 int newPlayer = (int) changeEvent.newValue;
 
@@ -1029,6 +1060,11 @@ ChangeEventList CustomGamePlayers::getChangeEventList()
         changeEventList.changeEventList.push_back(ChangeEventList::ChangeEvent(ChangeEventList::ChangeEvent::EventType::ChangeHouse, i, houseID));
         changeEventList.changeEventList.push_back(ChangeEventList::ChangeEvent(ChangeEventList::ChangeEvent::EventType::ChangeTeam, i, team));
         changeEventList.changeEventList.push_back(ChangeEventList::ChangeEvent(ChangeEventList::ChangeEvent::EventType::ChangeColor, i, color));
+        if(duneCitySkinControls) {
+            const int skin = curHouseInfo.graphicsSkinDropDown.getSelectedEntryIntData();
+            changeEventList.changeEventList.emplace_back(
+                ChangeEventList::ChangeEvent::EventType::ChangeGraphicsSkin, i, skin);
+        }
 
         if(player1 == PLAYER_HUMAN) {
             std::string playername = curHouseInfo.player1DropDown.getSelectedEntry();
@@ -1736,6 +1772,10 @@ void CustomGamePlayers::addAllPlayersToGameInitSettings()
                 if(fixed.houseID == houseID) colorOfHouse = fixed.colorOfHouse;
         }
         GameInitSettings::HouseInfo newHouseInfo((HOUSETYPE) houseID, team);
+        if(duneCitySkinControls) {
+            newHouseInfo.graphicsSkin = GameInitSettings::sanitizeGraphicsSkin(
+                curHouseInfo.graphicsSkinDropDown.getSelectedEntryIntData());
+        }
         colorOfHouse = resolveSelectedColorSlot(colorOfHouse, houseID);
         if(isValidHouseColorSlot(colorOfHouse)) {
             newHouseInfo.colorOfHouse = colorOfHouse;
@@ -2114,6 +2154,20 @@ void CustomGamePlayers::onChangeColorDropDownBoxes(bool bInteractive, int houseI
     }
 }
 
+void CustomGamePlayers::onChangeGraphicsSkinDropDownBoxes(bool bInteractive, int houseInfoNum) {
+    if(!duneCitySkinControls || houseInfoNum < 0 || houseInfoNum >= numHouses) {
+        return;
+    }
+    if(bInteractive && pNetworkManager != nullptr) {
+        const int selectedSkin = houseInfo[houseInfoNum].graphicsSkinDropDown.getSelectedEntryIntData();
+        ChangeEventList changeEventList;
+        changeEventList.changeEventList.emplace_back(
+            ChangeEventList::ChangeEvent::EventType::ChangeGraphicsSkin,
+            houseInfoNum, selectedSkin);
+        pNetworkManager->sendChangeEventList(changeEventList);
+    }
+}
+
 void CustomGamePlayers::onBonusColorCheckbox(int houseInfoNum) {
     if(houseInfoNum < 0 || houseInfoNum >= numHouses) {
         return;
@@ -2337,6 +2391,7 @@ void CustomGamePlayers::setPlayer2Slot(const std::string& playername, int slot) 
             houseInfo[i].teamDropDown.setEnabled(bIsThisPlayer);
             houseInfo[i].bonusColorCheckbox.setEnabled(bIsThisPlayer);
             houseInfo[i].colorDropDown.setEnabled(bIsThisPlayer);
+            houseInfo[i].graphicsSkinDropDown.setEnabled(duneCitySkinControls && bIsThisPlayer);
         }
     }
 
@@ -2503,6 +2558,8 @@ void CustomGamePlayers::disableAllDropDownBoxes() {
         curHouseInfo.bonusColorCheckbox.setEnabled(false);
         curHouseInfo.colorDropDown.setEnabled(false);
         curHouseInfo.colorDropDown.setOnClickEnabled(false);
+        curHouseInfo.graphicsSkinDropDown.setEnabled(false);
+        curHouseInfo.graphicsSkinDropDown.setOnClickEnabled(false);
         curHouseInfo.player1DropDown.setEnabled(false);
         curHouseInfo.player1DropDown.setOnClickEnabled(false);
         curHouseInfo.player2DropDown.setEnabled(false);

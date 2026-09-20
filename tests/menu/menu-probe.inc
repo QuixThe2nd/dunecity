@@ -45,6 +45,47 @@ int runMenuProbe() {
     effectiveGameOptions = ModManager::instance().loadEffectiveGameOptions(settings.gameOptions);
     {
         HouseChoiceMenu menu;
+        for(auto* dropdown : {&menu.modDropDown, &menu.enemyAIDropDown,
+                              &menu.supportBotDropDown, &menu.startLevelDropDown}) {
+            dropdown->onOpenListBoxButton();
+            menuCapture(menu, dropdown == &menu.modDropDown ? "campaign-mod-open" : "campaign-options-open");
+            const auto* geometry = menu.windowWidget.getWidgetDataFromWidget(dropdown);
+            const int top = geometry->position.y + (dropdown->bListBoxAbove
+                ? -dropdown->listBox.getSize().y : dropdown->getSize().y);
+            menuRequire(top >= 0 && top + dropdown->listBox.getSize().y <= menu.getSize().y,
+                        "Campaign dropdown extends outside the menu clip rectangle");
+            dropdown->onOpenListBoxButton();
+        }
+        // A long list must shrink to whole rows, expose its scrollbar, and
+        // still accept a click on the last item after wheel scrolling.
+        auto& dropdown = menu.supportBotDropDown;
+        dropdown.setNumVisibleEntries(40);
+        for(int i = dropdown.getNumEntries(); i < 40; ++i)
+            dropdown.addEntry("Extra partner " + std::to_string(i), i);
+        dropdown.onOpenListBoxButton();
+        menuCapture(menu, "campaign-scrolling-options");
+        auto& list = dropdown.listBox;
+        menuRequire(list.isScrollbarVisible(), "Constrained dropdown has no scrollbar");
+        const auto* geometry = menu.windowWidget.getWidgetDataFromWidget(&dropdown);
+        const int top = geometry->position.y + (dropdown.bListBoxAbove
+            ? -list.getSize().y : dropdown.getSize().y);
+        menuRequire(top >= 0 && top + list.getSize().y <= menu.getSize().y,
+                    "Long campaign dropdown extends outside the menu");
+        const int entryHeight = GUIStyle::getInstance().getListBoxEntryHeight();
+        menuRequire((list.getSize().y - 2) % entryHeight == 0, "Dropdown clips a partial row");
+        const int x = menu.getPosition().x + geometry->position.x + 10;
+        const int y = menu.getPosition().y + top + 3;
+        for(int i = 0; i < 40; ++i) menu.handleMouseWheel(x, y, false);
+        const int lastRow = 39 - list.firstVisibleElement;
+        menuRequire(lastRow >= 0 && (lastRow + 1) * entryHeight <= list.getSize().y - 2,
+                    "Wheel scrolling cannot reach the last dropdown entry");
+        menu.handleMouseLeft(x, y + lastRow * entryHeight, true);
+        menuRequire(dropdown.getSelectedIndex() == 39 && !dropdown.bShowListBox,
+                    "Last visible dropdown entry cannot be selected through the menu");
+        dropdown.setSelectedItem(0);
+    }
+    {
+        HouseChoiceMenu menu;
         menuRequire(HouseChoiceMenu::isPublicGame(),"Campaign should default to public");
         menu.supportBotDropDown.setSelectedItem(4);
         menuRequire(HouseChoiceMenu::getSupportBotIndex()==4,"Support setup fixture failed");
@@ -314,7 +355,16 @@ int runMenuProbe() {
     }
     for(const auto& mod : {std::string("vanilla"),std::string("dunecity")}) {
         menuRequire(ModManager::instance().setActiveMod(mod), "City status fixture unavailable");
-        CustomGamePlayers menu(init,true);
+        GameInitSettings skinInit(getBasename(map,true),readCompleteFile(map),false,setup.rules);
+        CustomGamePlayers menu(skinInit,true);
+        menuRequire(menu.mainVBox.getMinimumSize().x<=menu.mainVBox.getSize().x,"Skin controls exceed menu width");
+        if(mod=="dunecity") {
+            menuRequire(menu.duneCitySkinControls,"Dune City lobby skin selector missing");
+            menu.houseInfo[0].graphicsSkinDropDown.setSelectedItem(1);
+            menu.addAllPlayersToGameInitSettings();
+            menuRequire(menu.gameInitSettings.getHouseInfoList().front().graphicsSkin==GameInitSettings::GraphicsSkin::Dune2,
+                "Lobby skin selection is not retained in game settings");
+        }
         menuRequire(menu.mapPropertyCity.getText()==(mod=="dunecity" ? _("On") : _("Off")), "Lobby city status disagrees with mod");
         menuCapture(menu,"city-status-"+mod);
     }
@@ -517,6 +567,19 @@ int runMenuProbe() {
             && savedOptions.getBoolValue("General","Left Click Orders",false)
             && !savedOptions.getBoolValue("General","Movement Paths",true),"Input options not persisted");
         menuRequire(menu.isQuiting(),"Unchanged legacy network field blocked audio apply");
+    }
+    {
+        menuRequire(ModManager::instance().setActiveMod("dunecity"),"Skin options fixture mod unavailable");
+        OptionsMenu menu;
+        menu.showPage(0);
+        menuRequire(menu.pages[0].getMinimumSize().y<=menu.pages[0].getSize().y,"Campaign skin controls overflow Settings");
+        menu.duneCityCampaignSkinDropDownBox.setSelectedItem(1);
+        menu.onOptionsOK();
+        menuRequire(settings.general.duneCityCampaignSkin==1,"Campaign skin preference not applied");
+        INIFile savedOptions(getConfigFilepath());
+        menuRequire(savedOptions.getIntValue("General","DuneCity Campaign Skin",0)==1,"Campaign skin preference not persisted");
+        menuCapture(menu,"settings-dunecity-skin");
+        ModManager::instance().setActiveMod("vanilla");
     }
     { AboutMenu menu;menuCapture(menu,"about"); }
     { HowToPlayMenu menu;menuCapture(menu,"help"); }

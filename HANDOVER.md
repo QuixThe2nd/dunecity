@@ -29,6 +29,140 @@ The production matchmaking WebSocket service must be deployed separately;
 configuration, trust model, STUN defaults and fixture provenance are documented
 in `platform/web/README.md`. This review does not publish or merge the game.
 
+## 2026-09-20 — Graphics skins integrated with current main, 1.0.735
+
+PR53 integrates canonical main 24eed049, including PR63 campaign dropdowns. Preserve the new
+selectable skins and high-detail Compacts together with current hot-join,
+campaign controls, preview bounds and platform build support. Desktop metadata
+is 1.0.735; Android retains the PR's independent 0.2.26 / 1000546 metadata.
+Stefan requested the v1.0.735 release tag after integration. PR63 created that
+tag concurrently; its unpublished build 35489068976 was cancelled so the final
+735 tag can include both feature sets. No published release assets were replaced.
+
+Integration fixes: the wire parser accepts ChangeGraphicsSkin; the lobby applies
+the same own-house authorization as team/color changes; readSaveSetup restores
+MOD3 skins by house identity; co-op save configuration retains campaign skin.
+Compact lobby rows make room for the skin selector beside the map preview.
+
+Validation: clean native Release build and dependency audits, all seven non-UI
+CTest groups, four skin-packaging tests (Python 3.14/Pillow), and the menu probe
+at 640/854/1280 widths pass. Regression coverage includes skin wire round trips,
+unauthorized lobby changes, co-op/save skin retention, and real lobby/settings
+widgets. This is local native validation; release CI and public publication are
+tracked separately. Release notes: releases/desktop/1.0.735.md.
+
+## 2026-09-18 — High-detail DuneCity Compact source contract
+
+Classic Dune II object sheets are indexed 8-bit art and use DuneLegacy's real
+tiled Scale2x/Scale3x path. DuneCity skin PNGs are RGBA; the compatibility atlas
+path fits those images into native SimCity cells and therefore cannot retain
+extra source detail. Zone manifests already separate source-frame dimensions
+from the immutable logical footprint. The DuneCity packager now preserves a
+declared 1x-4x Compact frame and records its logical 16px/tile footprint
+separately, so a 64x64 source can still occupy a 2x2 / 32x32 world rectangle at
+base zoom. R/C/I placement, collision, and simulation remain 2x2.
+
+Special DuneCity buildings now have a direct manifest-frame draw path. It draws
+the selected high-detail frame into the classic destination rectangle already
+calculated by `StructureBase`, preserving exact on-map size, anchor, engine
+animation frame selection, and fog fallback while bypassing the lossy native
+atlas round trip. Native SimCity compatibility atlases and UI portraits remain
+available and fixed to their existing slots. The bot-side `Compact All` modal
+selects 1x-4x (16-64 source pixels per tile) and current-unit/all-DuneCity scope.
+
+Successful Compact All batches now feed a repeatable local play-test pipeline.
+`sync-dunecity-skins.py` discovers Oathkeeper manifests, transactionally replaces
+supported zone/building packages, and preserves authored icons.
+`deploy-dunecity-skin-test.ps1` then waits for the Windows and Android builds and
+installs the APK when ADB has an authorized device. Oathkeeper streams stage
+progress into its config panel and distinguishes Compact failures from later
+packaging/build failures. The same wrapper is the manual recovery path; no
+hand-copied per-unit filename list is required.
+
+## 2026-09-17 — Selectable DuneCity graphics skins on canonical main
+
+Ported the presentation-only SimCity/Dune2 skin system onto a clean worktree of
+`ggtothemax/dunecity` main at `52fe7aca`; the older QBot simulator was used only
+as the source of previously tested visual-integration changes. Campaign options
+and custom/multiplayer house slots now select and serialize skins independently.
+The Dune2 path mounts all currently authored zone and special-building Compacts,
+derives matching construction/detail portraits, preserves native SimCity art as
+the per-cell fallback, and suppresses the native R/C/I colour overlay only for
+Dune2-skinned houses. Complete-cell RGBA replacement prevents SimCity art from
+bleeding through transparent pixels. Skin-only alpha-aware, cell-isolated
+Scale2x/Scale3x leaves the classic indexed-palette scaler unchanged.
+
+The Android debug package uses DuneCity payload 1.0.707 and includes the full
+graphics-skin tree. This is a local playable integration build, not a release or
+version bump. Installed and exercised on the connected Armor 21: Dune2 zone
+Compacts replace (rather than alpha-overlay) native cells, the first eight
+residential occupants advance through the authored growth stages, and no native
+green/blue R/C/I background remains. Construction-list and selected-building
+portraits resolve against the active owning house and derive directly from the
+accepted Compact named by `zone.ini`; the native 15x8 SimCity atlas layout is
+not used to crop a 4x4 authored skin. Portrait creation also does not require a
+per-house native atlas surface: non-Harkonnen houses normally palette-map the
+single native base atlas, while their Dune2 portraits must load their own
+manifest Compacts independently. A future authored `icon.png` remains the
+highest-priority override. Nothing was pushed or deployed.
+
+Skirmish and multiplayer use the same per-house path: the lobby's Skin dropdown
+emits `ChangeGraphicsSkin`, hosts mirror it to the matching slot, MOD3 settings
+serialize one value per `HouseInfo`, and match initialization applies those
+values before construction/detail portraits are requested. Campaign applies its
+single selection to every participating house. Live Android verification covers
+the three campaign houses; the custom/network serialization path was inspected
+but has not yet been exercised with a second connected client.
+## 2026-09-20 — Campaign dropdown visibility (local 1.0.735)
+
+Fixed dropdown placement to respect the menu's SDL clip rectangle and include
+the closed control's height when checking available space. Campaign mod and AI
+lists now open upward when needed; oversized lists fit whole rows and use the
+existing scrollbar and mouse wheel. The selected row stays visible on resizing.
+
+The menu regression reproduced the old clipping failure, then passed at
+640x480, 854x480 and 1280x720. It checks all four lower campaign selectors and
+scrolls a constrained 40-entry list to select its final row through the menu.
+Rendered screenshots were visually checked. Native build, dependency audits,
+version consistency and all eight CTest suites pass. Local build/bin/dunecity.app
+is 1.0.735; the existing running process needs a restart. No push, tag or public
+release performed.
+
+## 2026-09-20 — Dune City 1.0.734 published and upgrade ready
+
+PR61 merged as c505255c6fd23ef92f2ec91a60c5eeb8c4bde8b7; tag v1.0.734 points there.
+Stable build 35485484374 passed and published all 13 assets (eight packages and
+five signed feeds). Independently downloaded the release and verified all three
+Ed25519 manifests, archive sizes/hashes and both appcast signatures. The exact
+VR48 latest-feed URLs embedded in the Air's installed 733 app return valid 734
+Mac feeds. The Air installation was left untouched for Stefan's upgrade test.
+
+Both the Mac DMG and update ZIP pass strict signatures, stapler and Gatekeeper
+as Notarized Developer ID. The DMG also passes portable-library, metadata and
+isolated SDL rendering checks. Public DMG SHA256:
+697c1ad848c69b49d062ab1b1d9736b11d1414cc6bca91c45952b470b7094409.
+
+At Stefan's request the browser was deployed before the slow Windows release job
+finished: website PR11, merge 4760d7e, deployment 35486509988. It uses the exact
+stable run's Emscripten artifact. The later release-link deployment 35486713967
+also passed. All seven live browser artifacts match the 734 tagged manifest;
+both download pages and their public package URLs pass checks. A fresh Chrome
+tab renders v1.0.734; signaling health is status=ok. Redundant browser workflow
+35486716168 was cancelled after this verified publication.
+
+SourceForge run 35486716196 passed: nine uploaded files readback-hashed, released
+source refs updated and Windows/macOS/Linux defaults confirmed. Existing local
+733 browser test clients were preserved. Evidence is task work/release734-*.
+
+Windows slowness was diagnosed from the PR build log: the removed x-gha backend
+disabled binary caching; dependencies took 13m17s (OpenSSL 7.7 minutes) before
+8m17s of compilation. A files-provider cache fix is committed separately in
+PR62, worktree task work/windows-cache-fix. Its first CI run 35486310606 is still
+running; do not claim warm-cache performance or that the fix has merged yet.
+No paid runner or Windows-laptop setup was performed. Stefan offered a laptop;
+we recommended measuring the cache repair first, then trusted self-hosted builds
+if needed. The release and Mac upgrade are ready independently of that work.
+
 ## 2026-09-20 — Prominent in-game join names (local 734)
 
 The map notice now names the first player requesting approval, with an additional
@@ -7209,3 +7343,20 @@ interrupted one parallel review worker; this is limited review, not full securit
 certification. Existing production/watchdog gates remain. Browser match logs
 advanced beyond31500 cycles with a tested movement order and no reported state
 digest mismatch; host and guest continued exchanging performance reports.
+
+## 2026-09-18 — DuneCity skin synchronization eligibility
+
+The automated DuneCity skin synchronizer now counts only Compact slots that its
+selected engine packager can consume. Zone packages require `building_idle/d*_v*`
+atlas cells within the manifest's declared density/value bounds; special buildings
+use numbered `frame_*` slots, falling back to `default` only when no numbered frame
+exists. Legacy default-only zone masters (currently Rebels Industrial) are reported
+and skipped instead of entering the transactional staging pass and aborting all
+otherwise valid packages. Regression coverage reproduces that legacy manifest shape.
+
+The 2026-09-18 all-assets test deployment synchronized 20 packages (16 zones and
+4 special buildings). All 256 populated zone cells are 128x128 RGBA sources with
+`PixelsPerTile=64` while retaining their 2x2 logical engine footprint. Windows and
+Android builds completed from that package tree; the Android APK assembled as
+version 0.2.26 with DuneCity payload 1.0.708. ADB had no authorized device at the
+end of the run, so installation was skipped without invalidating either build.

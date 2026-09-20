@@ -37,7 +37,8 @@ public:
             ChangeTeam,
             ChangeColor,
             ChangePlayer,
-            SetHumanPlayer
+            SetHumanPlayer,
+            ChangeGraphicsSkin
         };
 
 
@@ -52,7 +53,7 @@ public:
 
         explicit ChangeEvent(InputStream& stream) {
             const Uint32 rawEventType = stream.readUint32();
-            if(rawEventType > static_cast<Uint32>(EventType::SetHumanPlayer)) {
+            if(rawEventType > static_cast<Uint32>(EventType::ChangeGraphicsSkin)) {
                 throw InputStream::error("ChangeEventList: unknown change event type!");
             }
             eventType = static_cast<EventType>(rawEventType);

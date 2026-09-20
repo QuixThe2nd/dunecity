@@ -198,7 +198,8 @@ inline Decision authorizeClientEvent(const SeatSnapshot& snapshot, const std::st
 
         case ChangeEventList::ChangeEvent::EventType::ChangeHouse:
         case ChangeEventList::ChangeEvent::EventType::ChangeTeam:
-        case ChangeEventList::ChangeEvent::EventType::ChangeColor: {
+        case ChangeEventList::ChangeEvent::EventType::ChangeColor:
+        case ChangeEventList::ChangeEvent::EventType::ChangeGraphicsSkin: {
             // House-level settings: the slot is the house row itself.
             if(slot >= static_cast<Uint32>(snapshot.numHouses)) {
                 return Decision::RejectSlotOutOfRange;

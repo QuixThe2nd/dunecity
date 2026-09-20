@@ -240,8 +240,31 @@ void DropDownBox::draw(Point position) {
 }
 
 void DropDownBox::drawOverlay(Point position) {
-    if(bShowListBox) {
-        bListBoxAbove = (position.y + listBox.getSize().y > getRendererHeight());
+    if(isVisible() && bShowListBox) {
+        // Menus can clip to a smaller panel than the renderer. Keep the entire
+        // popup (including the control's height) inside that visible area.
+        int top = 0;
+        int bottom = getRendererHeight();
+        if(SDL_RenderIsClipEnabled(renderer)) {
+            SDL_Rect clip;
+            SDL_RenderGetClipRect(renderer, &clip);
+            top = std::max(top, clip.y);
+            bottom = std::min(bottom, clip.y + clip.h);
+        }
+        const int above = std::max(0, position.y - top);
+        const int below = std::max(0, bottom - position.y - getSize().y);
+        const int entryHeight = GUIStyle::getInstance().getListBoxEntryHeight();
+        const int requestedRows = std::max(1, std::min(numVisibleEntries, getNumEntries()));
+        bListBoxAbove = below < requestedRows * entryHeight + 2 && above > below;
+        const int availableHeight = bListBoxAbove ? above : below;
+        const int visibleRows = std::max(1, std::min(requestedRows, (availableHeight - 2) / entryHeight));
+        const int height = visibleRows * entryHeight + 2;
+        if(listBox.getSize().y != height) {
+            listBox.resize(getSize().x - 1, height);
+            // Resizing must keep the selected row visible without notifying
+            // the menu or closing the popup. Overflow uses ListBox's scrollbar.
+            listBox.setSelectedItem(listBox.getSelectedIndex());
+        }
         listBox.draw(position + Point(0,bListBoxAbove ? -listBox.getSize().y : getSize().y));
     }
 }
