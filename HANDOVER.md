@@ -1,3 +1,69 @@
+## 2026-09-20 — Dune City 1.0.732 published and verified
+
+Release source/tag: a319a104b83d9b53ce31ffcf7ee7d171cc5bad2e / v1.0.732.
+Stable build 35474893099 succeeded on attempt 3 and published 13 assets: eight
+packages and five signed update-feed files. Independently downloaded the public
+release and verified all three Ed25519 manifests, both appcast signatures and
+actual archive sizes/hashes. The game's existing VR48 latest/download URLs
+redirect to the same verified public feeds.
+
+The published Mac DMG and update ZIP both pass stapler and Gatekeeper as
+Notarized Developer ID. The mounted DMG passes strict signature, portable-library,
+bundle metadata and actual SDL hidden-window rendering checks. CI's vcpkg build
+uses static SDL. This verifies the public CI artifacts, not just the earlier
+Homebrew package tested on the Air.
+
+- Published DMG SHA256: e145a4c70bf74d9c61e5dba98bca1edcacdc6f43644fa50fdc10692da6dac6ab
+- Published Mac ZIP SHA256: 7a19cffd790bf2e72d6efc9cd21955ac68bd3b346b9731d4ba4a76a84b691455
+- SourceForge workflow 35477564826 verified all nine files, published the tagged
+  source, advanced its dunecity branch and confirmed EXE/DMG/AppImage defaults.
+- Website PR9 merged as 3aa679cf7ffb30cfa24fd83ec9ba26907e6f675c. Deployment
+  35477688189 passed. Browser assets reuse the stable run's exact Emscripten
+  artifact and identify a319a104 in build.json; redundant rebuild 35477564808
+  was cancelled before publication.
+- Independently hashed all seven live browser artifacts, checked both download
+  pages and every desktop download link, and verified public signaling health.
+  A fresh Chrome tab rendered the main menu with v1.0.732 visible.
+
+Apple setup is complete. Both DuneCity-Signing and the separate
+DuneCity-Notarization keychain profiles independently authenticate. The revised
+interactive setup does not save plaintext Apple passwords; future signing-key
+repairs must preserve the separate notarization keychain and its protected local
+password. No more user credential setup is pending.
+
+Existing native/host games were not interrupted. Earlier game versions require
+one manual install to gain the updater. Android stays on its independent 0.2.25
+release. Actual old-to-new installation/relaunch tests on every supported OS
+remain separate validation; this release verification does not claim those tests.
+
+## 2026-09-20 — Release 732 publication and signing setup recovery
+
+PR59 is merged at a319a104b83d9b53ce31ffcf7ee7d171cc5bad2e and v1.0.732 points
+at that source. Stable run 35474893099 passed Linux/Windows/browser and test jobs;
+Mac signing failed in attempts 1 and 2. No stable 732 assets are published yet.
+Website PR9 contains matching browser artifacts and download copy, has passed
+checks and awaits desktop publication before merge.
+
+The dedicated signing keychain was absent from the user search list. A successful
+GUI signing probe used a duplicate login identity and did not establish runner
+access. The saved dedicated-keychain password also failed once the keychain was
+locked. Preserved the original keychain and saved password in the protected
+signing directory, restored the identity from its encrypted P12, and verified an
+explicit lock/unlock cycle. Prepending the dedicated keychain while preserving
+existing search entries makes a SessionCreate=true LaunchAgent signing probe
+pass. No runner session setting was changed.
+
+The original notarization credential remains in the preserved, locked keychain.
+User re-entry initially received Apple's HTTP 401. Verified Chrome's Apple
+account is icloudlogin@fastmail.com and the regenerated DuneCity Mac mini entry
+exists. Added setup-macos-notarization.py to check paste formatting, use a hidden
+TTY instead of password process arguments, and retain a separate encrypted
+notarization profile after successful authentication. Its local prompt transport,
+redaction, input validation and timeout cleanup pass with fake credentials.
+The user completed the revised setup; both stored profiles pass independent
+notarytool history authentication. Stable run attempt 3 is now rebuilding Mac.
+Publication remains pending that run. See the runner runbook.
+
 ## 2026-09-19 — Fix packaged SDL3 startup failure (unreleased 732)
 
 Stefan's 731 installer failed at startup with "Failed loading SDL3 library."
