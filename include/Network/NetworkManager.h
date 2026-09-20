@@ -229,6 +229,19 @@ public:
     bool lateJoinReady() const { return joinStage == JoinStage::Ready; }
     bool lateJoinLoading() const { return joinLoading; }
     const std::string& lateJoinStatus() const { return joinStatus; }
+    const std::string& lateJoinPlayerName() const { return joinName; }
+    std::string recentJoinNotice() const {
+        return SDL_GetTicks() - joinNoticeTime < 12000 ? joinNotice : std::string();
+    }
+    // Percent describes the current stage, not an estimated elapsed duration.
+    int lateJoinPercent() const;
+    std::string lateJoinProgressText() const;
+    bool observerCatchingUp() const { return observerCatchup; }
+    void observerAdvanced(Uint32 cycle);
+    const std::string& joinFailure() const { return joinFailureReason; }
+    void failObserver(const std::string& reason);
+    bool requestObserverResync(Uint32 cycle);
+    bool observerResyncWaiting() const { return observerResyncPending; }
     std::unique_ptr<GameInitSettings> takeLateJoin();
     void expectLateJoin() { joinExpected=true; }
     bool isSpectator(const std::string& name) const {
@@ -466,6 +479,8 @@ private:
     bool joinExpected = false, joinLoading = false, joinAsSpectator = false;
     std::set<std::string> spectators, joinSpectators;
     std::string joinRequestId, joinName, joinBytes, joinStatus;
+    std::string joinNotice;
+    Uint32 joinNoticeTime = 0;
     std::vector<Uint32> joinOriginalPeers;
     std::map<Uint32,Uint32> joinAcks;
     std::unique_ptr<GameInitSettings> joinSnapshot;
@@ -480,12 +495,19 @@ private:
         std::string snapshot;
         Uint32 epoch=0, offset=0, sent=0, nextCycle=0, ackCycle=0, deadline=0;
         bool began=false, ready=false;
+        Uint32 progressAt=0;
     };
     std::map<Uint32,ObserverTransfer> observerTransfers;
     std::deque<std::pair<Uint32,std::string>> observerHistory, observerIncoming;
     std::size_t observerHistoryBytes=0;
     std::string observerBytes, observerRuntime;
     Uint32 observerEpoch=0, observerTotal=0, observerNextCycle=0, observerSendCursor=0;
+    Uint32 observerStartCycle=0, observerHostCycle=0, observerAppliedCycle=0;
+    bool observerCatchup=false, observerResyncPending=false;
+    Uint32 observerResyncDeadline=0, observerSnapshotSerial=0;
+    unsigned observerResyncAttempts=0;
+    std::map<Uint32,unsigned> observerRestarts;
+    std::string joinFailureReason;
     void abortLateJoin(const std::string& reason);
     bool sendJoinSync(Uint32 operation, Uint32 offset, const std::string& data, Uint32 recipient = 0);
     bool publicRelayRoom = false;

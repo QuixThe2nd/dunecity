@@ -39,7 +39,7 @@ ChemicalSiegeTank::ChemicalSiegeTank(InputStream& stream) : TankBase(stream) {
 
 void ChemicalSiegeTank::init() {
     itemID = Unit_ChemicalSiegeTank;
-    owner->incrementUnits(itemID);
+    registerUnit();
     numWeapons = 2;
     bulletType = Bullet_ShellLarge;
     graphicID = ObjPic_Siegetank_Base;

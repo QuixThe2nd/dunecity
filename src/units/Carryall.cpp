@@ -63,7 +63,7 @@ Carryall::Carryall(InputStream& stream, int unitItemID) : AirUnit(stream)
 void Carryall::init(int unitItemID)
 {
     itemID = unitItemID;
-    owner->incrementUnits(itemID);
+    registerUnit();
 
     canAttackStuff = false;
 

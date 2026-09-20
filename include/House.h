@@ -210,7 +210,7 @@ public:
 
     void update();
 
-    void incrementUnits(int itemID);
+    void incrementUnits(int itemID, bool addMilitaryValue = true);
     void decrementUnits(int itemID);
     void cancelCreatedUnit(int itemID);
     void incrementStructures(int itemID);

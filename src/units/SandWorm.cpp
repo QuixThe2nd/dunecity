@@ -53,6 +53,8 @@ static_assert(warningWormSignMaskForHouse(HOUSE_CUSTOM) != 0,
 Sandworm::Sandworm(House* newOwner) : GroundUnit(newOwner) {
 
     Sandworm::init();
+    // New worms default to ambush; loaded worms retain their saved orders.
+    doSetAttackMode(AMBUSH);
 
     setHealth(getMaxHealth());
 
@@ -85,7 +87,7 @@ Sandworm::Sandworm(InputStream& stream) : GroundUnit(stream) {
 
 void Sandworm::init() {
     itemID = Unit_Sandworm;
-    owner->incrementUnits(itemID);
+    registerUnit();
 
     numWeapons = 0;
 
@@ -97,8 +99,7 @@ void Sandworm::init() {
 
     drawnFrame = INVALID;
     
-    // Set to AMBUSH mode to limit pursuit range to view range
-    doSetAttackMode(AMBUSH);
+
 }
 
 Sandworm::~Sandworm() = default;

@@ -3,15 +3,20 @@
 #include <GUI/Window.h>
 #include <GUI/VBox.h>
 #include <GUI/Label.h>
+#include <GUI/ProgressBar.h>
 #include <GUI/TextButton.h>
 #include <Network/NetworkManager.h>
 #include <globals.h>
 class JoinProgressWindow : public Window {
 public:
-    JoinProgressWindow() : Window(0,0,500,116) {
+    JoinProgressWindow() : Window(0,0,580,196) {
         setWindowWidget(&box);
-        setCurrentPosition((getRendererWidth()-500)/2,(getRendererHeight()-116)/2,500,116);
-        title.setText("Adding a player"); title.setTextFontSize(20); box.addWidget(&title,32);
+        const int width=std::min(580,getRendererWidth()-24);
+        setCurrentPosition((getRendererWidth()-width)/2,(getRendererHeight()-196)/2,width,196);
+        title.setText("Joining player"); title.setTextFontSize(18); box.addWidget(&title,28);
+        player.setTextFontSize(22); player.setTextColor(COLOR_RGB(255,210,64));
+        player.setAlignment(static_cast<Alignment_Enum>(Alignment_HCenter | Alignment_VCenter));
+        box.addWidget(&player,84);
         box.addWidget(&status,44);
         cancel.setText("Cancel join and continue");
         cancel.setOnClick([](){if(pNetworkManager) pNetworkManager->cancelLateJoin();});
@@ -19,11 +24,15 @@ public:
     }
     void refresh() {
         if(!pNetworkManager) return;
-        status.setText(pNetworkManager->lateJoinStatus());
+        title.setText(pNetworkManager->isSpectating() ? "Refreshing game state" : "Joining player");
+        player.setText(pNetworkManager->lateJoinPlayerName().empty()
+            ? settings.general.playerName : pNetworkManager->lateJoinPlayerName());
+        status.setText(pNetworkManager->lateJoinProgressText());
+        status.setProgress(pNetworkManager->lateJoinPercent());
         cancel.setVisible(pNetworkManager->isServer());
         cancel.setEnabled(pNetworkManager->canCancelLateJoin());
     }
 private:
-    VBox box; Label title,status; TextButton cancel;
+    VBox box; Label title, player; TextProgressBar status; TextButton cancel;
 };
 #endif

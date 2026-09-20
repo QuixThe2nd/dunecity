@@ -41,7 +41,7 @@ FlameTank::FlameTank(InputStream& stream) : TrackedUnit(stream) {
 
 void FlameTank::init() {
     itemID = Unit_FlameTank;
-    owner->incrementUnits(itemID);
+    registerUnit();
 
     numWeapons = 1;
     bulletType = Bullet_Flame;

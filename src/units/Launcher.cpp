@@ -38,7 +38,7 @@ Launcher::Launcher(InputStream& stream) : TrackedUnit(stream) {
 }
 void Launcher::init() {
     itemID = Unit_Launcher;
-    owner->incrementUnits(itemID);
+    registerUnit();
 
     graphicID = ObjPic_Tank_Base;
     gunGraphicID = ObjPic_Launcher_Gun;

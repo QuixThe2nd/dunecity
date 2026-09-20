@@ -30,6 +30,8 @@ public:
     virtual ~Harvester();
 
     void save(OutputStream& stream) const override;
+    void saveObserverRuntime(OutputStream& stream) const override;
+    void loadObserverRuntime(InputStream& stream) override;
 
     void blitToScreen() override;
 

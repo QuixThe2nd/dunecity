@@ -43,7 +43,7 @@ Deviator::Deviator(InputStream& stream) : TrackedUnit(stream)
 void Deviator::init()
 {
     itemID = Unit_Deviator;
-    owner->incrementUnits(itemID);
+    registerUnit();
 
     usesFullSprite = false;
     graphicID = ObjPic_Tank_Base;

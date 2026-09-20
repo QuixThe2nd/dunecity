@@ -17,6 +17,7 @@
 
 #ifndef GAME_H
 #define GAME_H
+#include <GUI/ProgressBar.h>
 
 #include <misc/Random.h>
 #include <misc/RobustList.h>
@@ -1030,6 +1031,7 @@ private:
     void loadObserverRuntime(const std::string& bytes);
     void prepareObserverStreams();
     bool observerCyclePrepared = false;
+    TextProgressBar observerProgress;
 
     /**
         Builds the deterministic fingerprint described in Network/GameStateDigest.h.

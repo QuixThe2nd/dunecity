@@ -30,6 +30,7 @@
 #include <GUI/DropDownBox.h>
 #include <GUI/HBox.h>
 #include <GUI/Label.h>
+#include <GUI/ProgressBar.h>
 #include <GUI/ListBox.h>
 #include <GUI/StaticContainer.h>
 #include <GUI/TextBox.h>
@@ -170,6 +171,7 @@ private:
     ListBox         publicGameList;
 
     Label           statusLabel;
+    TextProgressBar joinProgress;
     Label           roomCodeLabel;
     HBox            roomCodeHBox;
     TextButton      copyCodeButton;
