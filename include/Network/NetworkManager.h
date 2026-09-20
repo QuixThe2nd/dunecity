@@ -240,7 +240,7 @@ public:
 
 #ifdef __EMSCRIPTEN__
     /// Coarse transport state for UI (connecting/connected/error indicators).
-    WebRtcTransport::State getWebRtcState() const { return pWebRtcTransport->getState(); }
+    WebRtcTransport::State getWebRtcState() const { return pWebRtcTransport ? pWebRtcTransport->getState() : WebRtcTransport::State::Idle; }
 
     /**
         Sets the function that should be called when the matchmaking lobby pairs us.
@@ -267,6 +267,30 @@ public:
         transfers, stop being accepted from this point on.
         \param  seed    the shared simulation seed
     */
+    bool beginLateJoin(const std::string& requestId, const std::string& name, const GameInitSettings& snapshot, bool spectator = false);
+    bool canCancelLateJoin() const { return bIsServer && lateJoinPaused() && joinStage!=JoinStage::Starting && joinStage!=JoinStage::Ready; }
+    void cancelLateJoin() { if(canCancelLateJoin()) abortLateJoin("The host cancelled the join request."); }
+    bool lateJoinPaused() const { return joinStage != JoinStage::Idle; }
+    bool lateJoinReady() const { return joinStage == JoinStage::Ready; }
+    bool lateJoinLoading() const { return joinLoading; }
+    const std::string& lateJoinStatus() const { return joinStatus; }
+    std::unique_ptr<GameInitSettings> takeLateJoin();
+    void expectLateJoin() { joinExpected=true; }
+    bool isSpectator(const std::string& name) const {
+        if(spectators.count(name)) return true;
+        if(const auto* direct=getDirectTransport()) for(const auto& p : direct->peers())
+            if(p.name==name) return p.spectator;
+        return false;
+    }
+    bool isSpectating() const { return (getDirectTransport() && getDirectTransport()->isSpectating()) || isSpectator(playerName); }
+    std::vector<Uint32> observersNeedingSnapshot() const;
+    bool beginObserverSnapshot(Uint32 peer, const GameInitSettings& snapshot, const std::string& runtime, Uint32 cycle);
+    void publishObserverCycle(Uint32 cycle, const std::string& bytes);
+    bool hasObserverStreams() const { return !observerTransfers.empty(); }
+    bool takeObserverCycle(Uint32 cycle, std::string& bytes);
+    std::string takeObserverRuntime() { auto bytes=std::move(observerRuntime); observerRuntime.clear(); return bytes; }
+    void observerLoaded(Uint32 cycle);
+    Uint32 observerFrontier() const { return observerNextCycle; }
     void beginSimulation(Uint32 seed);
     void sendCommandList(const CommandList& commandList);
 
@@ -277,7 +301,7 @@ public:
 
         if(pRelayClient) {
             for(const RoomSessionTransport::Peer& peer : pRelayClient->peers()) {
-                peerNameList.push_back(peer.name);
+                if(!peer.spectator) peerNameList.push_back(peer.name);
             }
             return peerNameList;
         }
@@ -483,6 +507,34 @@ public:
     }
 
 private:
+    enum class JoinStage { Idle, Preparing, Admission, Connecting, Sending, Receiving, Starting, Ready };
+    JoinStage joinStage = JoinStage::Idle;
+    Uint32 joinTotal = 0, joinTransaction = 0, joinDeadline = 0, joinOffset = 0, joinNextOffset = 0, resumeSeed = 0;
+    bool joinExpected = false, joinLoading = false, joinAsSpectator = false;
+    std::set<std::string> spectators, joinSpectators;
+    std::string joinRequestId, joinName, joinBytes, joinStatus;
+    std::vector<Uint32> joinOriginalPeers;
+    std::map<Uint32,Uint32> joinAcks;
+    std::unique_ptr<GameInitSettings> joinSnapshot;
+    std::function<void (Uint32, Uint32, Uint32, Uint32, const std::string&)> pOnJoinSync;
+    void receiveJoinSync(Uint32 peer, Uint32 operation, Uint32 transaction, Uint32 offset, const std::string& data);
+    void updateLateJoin();
+    bool sendObserverPacket(Uint32 peer, Uint32 operation, Uint32 epoch, Uint32 offset, const std::string& data);
+    void receiveObserverPacket(Uint32 peer, Uint32 operation, Uint32 epoch, Uint32 offset, const std::string& data);
+    void updateObservers();
+    void forwardObserverChat(const std::string& sender, const std::string& message);
+    struct ObserverTransfer {
+        std::string snapshot;
+        Uint32 epoch=0, offset=0, sent=0, nextCycle=0, ackCycle=0, deadline=0;
+        bool began=false, ready=false;
+    };
+    std::map<Uint32,ObserverTransfer> observerTransfers;
+    std::deque<std::pair<Uint32,std::string>> observerHistory, observerIncoming;
+    std::size_t observerHistoryBytes=0;
+    std::string observerBytes, observerRuntime;
+    Uint32 observerEpoch=0, observerTotal=0, observerNextCycle=0, observerSendCursor=0;
+    void abortLateJoin(const std::string& reason);
+    bool sendJoinSync(Uint32 operation, Uint32 offset, const std::string& data, Uint32 recipient = 0);
     bool publicRelayRoom = false;
     static void debugNetwork(PRINTF_FORMAT_STRING const char* fmt, ...) PRINTF_VARARG_FUNC(1);
 
@@ -536,6 +588,9 @@ private:
     void disconnectPeer(NetPeer* peer, int cause);
     /// Drop all peer bookkeeping after the transport went away.
     void clearAllPeers();
+    void drainWebRtcDisconnects();
+    void releaseWebRtcPeer(NetPeer* peer, int cause, bool notify);
+    std::map<uint32_t, int> pendingWebRtcDisconnects;
 #else
     void disconnectPeer(ENetPeer* peer, enet_uint32 cause) {
         enet_peer_disconnect_later(peer, cause);

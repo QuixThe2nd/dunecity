@@ -527,6 +527,14 @@ void testAdmissionParsing() {
           && response.games.size() == 1 && response.games[0].hostName == "Alice"
           && response.games[0].players == 1 && response.games[0].maxPeers == 4,
           "public directory decodes host, room and seat counts");
+    check(RoomAdmission::parseAdmissionResponse(listHeader +
+          "game=H4PQ-7T2M-9XKB|1|4|custom|416c696365|abcdef|64756e6563697479\n", response, error, true)
+          && response.games[0].modName == "dunecity" && response.games[0].contentHash == "abcdef",
+          "all-mod directory carries compatible content and installed mod identity");
+    for(const std::string& metadata : {"|bad hash|61", "|abcd|0a", "|abcd|zz", "|abcd", "|abcd|61|extra"}) {
+        check(!RoomAdmission::parseAdmissionResponse(listHeader + listedGame.substr(0,listedGame.size()-1)
+            + metadata + "\n", response, error, true), "malformed mod metadata rejected");
+    }
     check(!RoomAdmission::parseAdmissionResponse(listHeader + listedGame + listedGame,
           response, error, true), "duplicate listed rooms are rejected");
     check(!RoomAdmission::parseAdmissionResponse(listHeader + "next=1\n", response, error, true),
@@ -847,6 +855,16 @@ void testLobbyChatParsing() {
     check(!parse(header + "cursor=0\n", AdmissionOperation::ChatEnter), "chat confirmation requires token");
     check(parse(header + "cursor=1\nchat=1|c3816c696365|68656c6c6f\n", AdmissionOperation::ChatPoll)
           && response.messages[0].name == "\xc3\x81lice", "chat preserves UTF-8 bytes");
+    check(parse(header + "cursor=0\nonline=2\nwaiting=416c696365\nwaiting=426f62\n", AdmissionOperation::ChatPoll)
+          && response.hasPresence && response.onlineCount==2 && response.waitingNames.size()==2,
+          "presence decodes player count and names");
+    check(parse(header + "cursor=0\nonline=0\n", AdmissionOperation::ChatPoll)
+          && response.hasPresence && response.waitingNames.empty(), "empty presence clears names");
+    for(const std::string& invalid : {"online=2\nonline=2\n", "online=10001\n", "online=-1\n",
+            "waiting=41\n", "online=0\nwaiting=41\n", "online=1\nwaiting=0a\n"}) {
+        check(!parse(header + "cursor=0\n" + invalid, AdmissionOperation::ChatPoll), "malformed presence rejected");
+    }
+    check(!parse(header + "cursor=0\nonline=0\n", AdmissionOperation::ChatSay), "presence belongs to polling");
     check(!parse(header + "cursor=1\nchat=2|41|42\n", AdmissionOperation::ChatPoll), "chat cursor cannot precede messages");
     check(!parse(header + "cursor=1\nchat=1|41|420a\n", AdmissionOperation::ChatPoll), "chat refuses control injection");
     check(!parse(header + "cursor=1\nchat=1|41|42\nchat=1|41|42\n", AdmissionOperation::ChatPoll), "chat refuses repeated ids");

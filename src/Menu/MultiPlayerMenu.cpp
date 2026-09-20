@@ -74,6 +74,11 @@ MultiPlayerMenu::MultiPlayerMenu() : MenuBase() {
     backButton.setText(_("Back"));
     backButton.setOnClick(std::bind(&MultiPlayerMenu::onQuit, this));
 
+    mainVBox.addWidget(Spacer::create(), 1.0);
+    mainVBox.addWidget(&buttonHBox, 24);
+    buttonHBox.addWidget(&backButton, 100);
+    buttonHBox.addWidget(Spacer::create());
+
     // Start Network Manager (browser transport; no LAN discovery)
     SDL_Log("Starting network...");
     try {
@@ -285,6 +290,8 @@ void MultiPlayerMenu::onMatched(bool bHost) {
         // Host continuation: pick the game. The lobby screen's startServer
         // takes the server role while the transport is already paired.
         CustomGameMenu(true, true).showMenu();
+        // Back from map selection must also release the already matched pair.
+        if(pNetworkManager) pNetworkManager->disconnect();
     }
     // Joiner continuation: nothing to do here; the host's game info arrives
     // through onReceiveGameInfo once the data channels are open.

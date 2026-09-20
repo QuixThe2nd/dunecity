@@ -74,6 +74,8 @@ CustomGameMenu::CustomGameMenu(bool multiplayer, bool LANServer, CustomPlaySetup
             const bool online = connectionChoice.getSelectedIndex() == 1;
             visibilityChoice.setVisible(online);
             visibilityChoice.setEnabled(online);
+            allowJoinAfterStartCheckbox.setVisible(online);
+            allowJoinAfterStartCheckbox.setEnabled(online);
         });
         connectionRow.addWidget(&connectionChoice, 130);
         connectionRow.addWidget(HSpacer::create(8));
@@ -85,6 +87,11 @@ CustomGameMenu::CustomGameMenu(bool multiplayer, bool LANServer, CustomPlaySetup
         connectionRow.addWidget(&visibilityChoice, 180);
         connectionRow.addWidget(Spacer::create());
         mainVBox.addWidget(&connectionRow, 28);
+        allowJoinAfterStartCheckbox.setText(_("Allow hot join"));
+        allowJoinAfterStartCheckbox.setChecked(setup->allowJoinAfterStart);
+        allowJoinAfterStartCheckbox.setVisible(setup->online);
+        allowJoinAfterStartCheckbox.setEnabled(setup->online);
+        mainVBox.addWidget(&allowJoinAfterStartCheckbox, 24);
     }
 
     mainVBox.addWidget(Spacer::create(), 0.05);
@@ -320,6 +327,7 @@ void CustomGameMenu::onNext()
         setup->mod = selectedMod;
         setup->online = connectionChoice.getSelectedIndex() == 1;
         setup->publicGame = visibilityChoice.getSelectedIndex() == 1;
+        setup->allowJoinAfterStart = allowJoinAfterStartCheckbox.isChecked();
         setup->sharedHouse = multiplePlayersPerHouseCheckbox.isChecked();
         setup->rules = currentGameOptions;
         quit(MENU_SETUP_PLAYERS);

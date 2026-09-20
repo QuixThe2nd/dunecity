@@ -1,6 +1,9 @@
 // Diagnostic-only real construction queue checks for both campaign roles.
 void runCampaignRepairProbe(Game& game) {
     auto require=[](bool ok,const char* reason){if(!ok){SDL_Log("CAMPAIGN_REPAIR_FAIL: %s",reason);throw std::runtime_error(reason);}};
+    if(game.isCitySimEnabled())
+        for(int y=0;y<currentGameMap->getSizeY();++y)for(int x=0;x<currentGameMap->getSizeX();++x)
+            if(!currentGameMap->getTile(x,y)->hasAStructure())currentGameMap->getTile(x,y)->setType(Terrain_Rock);
     QuantBot* partner=nullptr;QuantBot* enemy=nullptr;
     for(int h=0;h<NUM_HOUSES;++h) if(auto* house=game.getHouse(h))
         for(const auto& player:house->getPlayerList()) if(auto* bot=dynamic_cast<QuantBot*>(player.get())) {
@@ -9,7 +12,7 @@ void runCampaignRepairProbe(Game& game) {
         }
     require(partner && enemy,"Repair fixture requires both campaign roles");
     for(auto* bot:{partner,enemy}) {
-        require(bot->difficulty>=QuantBot::Difficulty::Hard,"Run repair probe with Hard or Brutal controllers");
+        bot->difficulty=QuantBot::Difficulty::Hard;
         auto* house=const_cast<House*>(bot->getHouse());
         auto place=[&](Uint32 item) {
             for(int y=1;y<currentGameMap->getSizeY()-4;y+=4)
@@ -23,6 +26,7 @@ void runCampaignRepairProbe(Game& game) {
         };
         for(auto item:{Structure_WindTrap,Structure_Refinery,Structure_HeavyFactory,Structure_LightFactory})
             if(!house->getNumItems(item))place(item);
+        if((bot==partner || game.isCitySimEnabled()) && !house->getNumItems(Structure_StarPort))place(Structure_StarPort);
         if(!house->getNumItems(Unit_Harvester))house->createUnit(Unit_Harvester,true);
         auto originalStructures=structureList;
         for(auto* building:originalStructures)
@@ -35,6 +39,9 @@ void runCampaignRepairProbe(Game& game) {
         require(yard,"Missing fixture construction yard");
         yard->updateBuildList();
         require(yard->isAvailableToBuild(Structure_Radar),"Radar prerequisites missing in fixture");
+        // Keep this fixture about repair prerequisites; Medium correctly
+        // prioritizes required power before optional construction.
+        while(house->getProducedPower()<house->getPowerRequirement()+200)place(Structure_WindTrap);
         house->addCredits(10000);bot->lastCalculatedSpice=100000;
         if(bot==partner) bot->gameMode=QuantBot::GameMode::Custom;
         bot->build(4000);
@@ -44,6 +51,36 @@ void runCampaignRepairProbe(Game& game) {
         bot->reservedStructures.erase(yard->getObjectID());
         place(Structure_Radar);yard->updateBuildList();
         require(yard->isAvailableToBuild(Structure_RepairYard),"Repair prerequisites still missing");
+        bot->difficulty=QuantBot::Difficulty::Medium;
+        bot->initialItemCount[Structure_RepairYard]=0; // Only vanilla Medium is replacement-only.
+        for(int attempt=0;attempt<3;++attempt) {
+            bot->build(4000);
+            if(game.isCitySimEnabled())
+                require(yard->getCurrentProducedItem()==Structure_RepairYard,"City Medium failed to add a repair yard");
+            for(auto* building:structureList) if(building->getOwner()==house)
+                if(auto* builder=dynamic_cast<BuilderBase*>(building)) {
+                    for(const auto& item:builder->currentProductionQueue)
+                        require(game.isCitySimEnabled() || item.itemID!=Structure_RepairYard,"Vanilla Medium queued a repair yard");
+                    while(builder->getProductionQueueSize()) builder->doCancelItem(builder->getCurrentProducedItem());
+                    bot->builderPlaceLocations.erase(builder->getObjectID());
+                    bot->reservedStructures.erase(builder->getObjectID());
+                }
+        }
+        // An authored yard is still replaced, using the same rebuild count.
+        bot->initialItemCount[Structure_RepairYard]=1;
+        bot->build(4000);
+        require(yard->getCurrentProducedItem()==Structure_RepairYard,"Medium failed to replace its authored repair yard");
+        bot->build(4000);
+        int mediumQueued=0;
+        for(auto* building:structureList) if(building->getOwner()==house)
+            if(auto* builder=dynamic_cast<BuilderBase*>(building))
+                for(const auto& item:builder->currentProductionQueue)
+                    if(item.itemID==Structure_RepairYard)++mediumQueued;
+        require(mediumQueued==1,"Medium expanded beyond its authored repair-yard count");
+        yard->doCancelItem(Structure_RepairYard);
+        bot->builderPlaceLocations.erase(yard->getObjectID());
+        bot->reservedStructures.erase(yard->getObjectID());
+        bot->difficulty=QuantBot::Difficulty::Hard;
         bot->build(4000);
         require(yard->getCurrentProducedItem()==Structure_RepairYard,"Missing repair yard was not prioritized");
         bot->build(4000);

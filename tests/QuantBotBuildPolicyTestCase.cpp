@@ -8,6 +8,7 @@
 #include <players/AirStrikePolicy.h>
 #include <players/QuantBotBuildPolicy.h>
 #include <players/CityEconomyInvestmentPolicy.h>
+#include <players/QuantBotSpendingPolicy.h>
 #include <set>
 
 using namespace QuantBotBuildPolicy;
@@ -169,20 +170,14 @@ TEST_CASE("QuantBot converts the observed city cash surplus into troop capacity"
     REQUIRE(desiredHeavyFactories(true, 0, -100) == 1);
 }
 
-TEST_CASE("QuantBot repair expansion follows load and heavy production capacity", "[quantbot][production]") {
-    // Current-game regressions: four/six yards with just two factories.
-    REQUIRE_FALSE(needsExtraRepairYard(3, 3, 2, 19520));
-    REQUIRE_FALSE(needsExtraRepairYard(5, 5, 2, 30200));
-    REQUIRE_FALSE(needsExtraRepairYard(1, 1, 2, 19520));
-    // Productive army with a busy repair yard can add a second.
-    REQUIRE(needsExtraRepairYard(1, 1, 3, 19520));
-    REQUIRE(needsExtraRepairYard(1, 0, 3, 19520)); // Fleet already warrants a second bay.
-    // One busy yard plus another queued must not trigger a third order.
-    REQUIRE_FALSE(needsExtraRepairYard(2, 1, 6, 12000));
-    REQUIRE(needsExtraRepairYard(2, 2, 6, 30000));
-    REQUIRE_FALSE(needsExtraRepairYard(2, 2, 6, 12000));
-    REQUIRE_FALSE(needsExtraRepairYard(0, 0, 0, 30000));
-    REQUIRE_FALSE(needsExtraRepairYard(4, 4, 20, 80000));
+TEST_CASE("QuantBot support queues expand occupied services without duplicating pending capacity", "[quantbot][production]") {
+    CHECK(supportQueueTarget(2,2,2,2,3)==3); // Busy with three unserved jobs.
+    CHECK(supportQueueTarget(2,2,3,2,3)==2); // Third supplier already coming.
+    CHECK(supportQueueTarget(2,2,2,1,3)==2); // An existing supplier is idle.
+    CHECK(supportQueueTarget(2,2,2,2,1)==2); // A single waiting job is normal.
+    CHECK(supportQueueTarget(4,2,2,0,0)==4); // Ratio anticipates a growing fleet.
+    CHECK(supportQueueTarget(1,4,4,0,8)==1); // Completed repairs awaiting transport are not busy repair bays.
+    CHECK(supportQueueTarget(0,0,0,0,3)==0); // No useful fleet/service to bootstrap.
 }
 
 TEST_CASE("QuantBot prioritizes the live jobs demand seen in the current game", "[quantbot][city]") {
@@ -810,13 +805,14 @@ TEST_CASE("Campaign alliance gates overlapping houses and recovery independently
     REQUIRE_FALSE(canLaunch(easy,ended,1099,0,100));
     REQUIRE(canLaunch(easy,ended,1100,0,100));
     REQUIRE_FALSE(canLaunch(easy,{},1100,1200,100));
-    REQUIRE_FALSE(fits(easy,{1,4,1400,0},300)); // Value cap, even with a troop slot.
+    REQUIRE(fits(easy,{1,4,1400,0},300)); // The late Easy wave may reach 1,700.
+    REQUIRE_FALSE(fits(easy,{1,4,1400,0},301)); // Value cap, even with a troop slot.
     REQUIRE_FALSE(fits(easy,{1,5,500,0},50)); // Count cap, even with cheap infantry.
-    // A large first army cannot consume the second Hard house's attack slot.
+    // Hard has a fixed credit budget; Brutal retains unlimited wave size.
     const Pressure largeArmy{1,40,30000,1000};
-    REQUIRE(canLaunch(hard,largeArmy,10000,0,100));
+    REQUIRE_FALSE(canLaunch(hard,largeArmy,10000,0,100));
     REQUIRE(canLaunch(brutal,largeArmy,10000,0,100));
-    REQUIRE(fits(hard,largeArmy,1000));
+    REQUIRE_FALSE(fits(hard,largeArmy,1000));
     REQUIRE(fits(brutal,largeArmy,1000));
     REQUIRE_FALSE(canLaunch(hard,{},1100,1200,100));
     REQUIRE_FALSE(canLaunch(brutal,ended,1099,0,100));
@@ -833,6 +829,28 @@ TEST_CASE("Campaign wave membership and deadlines survive stream round trips", "
     REQUIRE(restored.lastActive==original.lastActive);
     REQUIRE(restored.members==original.members);
     REQUIRE(restored.front==original.front);
+}
+TEST_CASE("Easy campaign pressure stays small with one-to-three-minute repeat waves", "[quantbot][campaign]") {
+    using namespace CampaignDifficultyPolicy;
+    // Opening missions keep their old budgets; late waves can add a tank
+    // behind three 450-credit launchers, without admitting a fourth launcher.
+    REQUIRE(profile(0,3).value==900);
+    REQUIRE(profile(0,6).value==1200);
+    const auto easy=profile(0,8);
+    REQUIRE(fits(easy,{1,3,1350,0},300));
+    REQUIRE_FALSE(fits(easy,{1,3,1350,0},450));
+    REQUIRE(easy.enemyCommitPercent==50);
+    for(uint32_t seed:{0u,99480356u,540497013u,UINT32_MAX})
+        for(uint32_t house=0;house<6;++house)
+            for(uint32_t cycle:{45000u,90000u,120000u}) {
+                const auto easyDelay=repeatDelayMs(0,seed,cycle,house);
+                const auto mediumDelay=repeatDelayMs(1,seed,cycle,house);
+                REQUIRE(easyDelay>=60000);
+                REQUIRE(easyDelay<=180000);
+                REQUIRE(mediumDelay>=60000);
+                REQUIRE(mediumDelay<=180000);
+                REQUIRE(repeatDelayMs(0,seed,cycle,house)==easyDelay);
+            }
 }
 TEST_CASE("Campaign windtrap accounting covers commitments without duplicate generators", "[quantbot][campaign][power]") {
     using namespace CampaignDifficultyPolicy;
@@ -1186,16 +1204,12 @@ TEST_CASE("Spice fleet targets retain runway without retiring workers too early"
 }
 
 TEST_CASE("QuantBot establishes repair support before expanding the opening vehicle fleet", "[quantbot][repair]") {
-    REQUIRE(baselineRepairYards(0, 5100) == 0);
-    REQUIRE(baselineRepairYards(1, 6100) == 1); // Latest game 3:04: no yard yet.
-    REQUIRE(baselineRepairYards(4, 8050) == 2); // Latest game 5:06: still zero yards.
-    REQUIRE(baselineRepairYards(9, 10300) == 2);
-    REQUIRE(baselineRepairYards(15, 29050) == 4);
-    REQUIRE(baselineRepairYards(30, 80000) == 4);
-    REQUIRE(baselineRepairYards(1, 80000) == 1);
-    REQUIRE(needsExtraRepairYard(0, 0, 1, 6100));
-    REQUIRE(needsExtraRepairYard(1, 0, 4, 8050));
-    REQUIRE_FALSE(needsExtraRepairYard(2, 0, 4, 8050)); // Both built/queued slots covered.
+    CHECK(baselineRepairYards(0,0)==0);
+    CHECK(baselineRepairYards(0,10)==1); // Working spice fleet needs a first repair bay.
+    CHECK(baselineRepairYards(25,10)==1);
+    CHECK(baselineRepairYards(26,10)==2);
+    CHECK(baselineRepairYards(100,10)==4);
+    CHECK(baselineRepairYards(175,10)==7); // Imported armies are not capped by heavy-factory count.
 }
 
 TEST_CASE("Opening transport precedes repeated heavy factories and saves for the first carryall", "[quantbot][production][air]") {
@@ -1204,9 +1218,11 @@ TEST_CASE("Opening transport precedes repeated heavy factories and saves for the
     CHECK_FALSE(firstTransportNeeded(true,0,3,0));
     CHECK_FALSE(firstTransportNeeded(true,1,0,0));
     CHECK_FALSE(firstTransportNeeded(true,1,3,1)); // Existing or queued carryall releases expansion.
-    CHECK(carryallTarget(0,1)==1); // Old formula rounded early transport to zero.
-    CHECK(carryallTarget(0,0)==0);
-    CHECK(carryallTarget(30000,30)==15);
+    CHECK(carryallTarget(1,0,0)==1);
+    CHECK(carryallTarget(0,0,0)==0);
+    CHECK(carryallTarget(30,60,0)==6); // No repair yards: only harvest transport.
+    CHECK(carryallTarget(30,60,1)==8); // Two repair flights per bay bound the repair allowance.
+    CHECK(carryallTarget(30,60,3)==9);
     for (bool city : {false,true}) {
         CHECK(productionPlanningPriority(city,Structure_HighTechFactory,false,true)
             > productionPlanningPriority(city,Structure_ConstructionYard,true,true));
@@ -1231,7 +1247,6 @@ TEST_CASE("Busy military factories must not create one refinery per harvester", 
     // 638 Ordos at 20 minutes: 32 refineries/workers, one R and 47 tax/min.
     CHECK_FALSE(processingCapacityNeeded(32,32,246,1757));
     CHECK_FALSE(considerRefinery(false,true,true)); // Busy still means capable of supply.
-    CHECK(taxHedgeNeeded(47,0,32*246));
     CHECK_FALSE(preferRefinery(Investment{521,246,3,11861,1000,689},
         Investment{130,23,0,4350,1000},considerRefinery(false,true,true),false));
     CHECK(considerRefinery(false,true,true,true)); // Recover a workforce below two.
@@ -1242,14 +1257,56 @@ TEST_CASE("Busy military factories must not create one refinery per harvester", 
     CHECK(factoryHarvesterTarget(0,120)==0);
 }
 
-TEST_CASE("City income hedge grows with the spice economy and credits pending development", "[quantbot][city][economy]") {
-    using namespace CityEconomyInvestmentPolicy;
-    CHECK(taxHedgeNeeded(30,0,3*320));
-    CHECK(taxHedgeNeeded(300,0,3*320));
-    CHECK_FALSE(taxHedgeNeeded(320,0,3*320));
-    CHECK_FALSE(taxHedgeNeeded(300,20,3*320));
-    CHECK(taxHedgeNeeded(320,20,6*320));
-    CHECK_FALSE(taxHedgeNeeded(30,0,0)); // Depleted fields cannot justify new bays.
+TEST_CASE("Finite spice investment only credits income beyond the existing fleet", "[quantbot][economy]") {
+    using namespace QuantBotSpendingPolicy;
+    // Four minutes, one-minute delivery delay; ample, partly exhausted, exhausted.
+    CHECK(marginalSpice(20000,600,900,3750,15000,3750)==900);
+    CHECK(marginalSpice(3000,600,900,3750,15000,3750)==600);
+    CHECK(marginalSpice(2000,600,900,3750,15000,3750)==0);
+    CHECK(marginalSpice(0,0,900,0,15000,3750)==0);
+    CHECK(marginalSpice(20000,900,900,3750,15000,3750)==0); // Existing bays full.
+    CHECK(marginalSpice(20000,600,900,15000,15000,3750)==0); // Delivery too late.
+}
+
+TEST_CASE("Shared capital compares readiness with return and protects only the next purchase", "[quantbot][economy]") {
+    using namespace QuantBotSpendingPolicy;
+    CHECK(economyScore(900,300)>militaryScore(300,300,2000,10000,false));
+    CHECK(militaryScore(300,300,2000,10000,true)>economyScore(900,300));
+    CHECK(militaryScore(150,300,2000,10000,false)>militaryScore(300,300,2000,10000,false));
+    CHECK(militaryScore(300,300,10000,10000,true)==0);
+    CHECK(economyScore(100,130)>0); // Permanent zoning can grow below four-minute payback.
+    CHECK(reserveForOther(400,300,false,false,false)==300); // Remaining100 buys a plot.
+    CHECK(reserveForOther(200,300,false,false,false)==200); // Save; don't repeatedly spend it.
+    CHECK(reserveForOther(400,300,true,false,false)==0);
+    CHECK(reserveForOther(400,300,false,true,false)==0);
+    CHECK(reserveForOther(400,300,false,false,true)==0); // Emergency recovery may spend it.
+}
+
+TEST_CASE("Additional factories require funded work beyond existing capacity", "[quantbot][economy]") {
+    using namespace QuantBotSpendingPolicy;
+    CHECK(additionalProduction(3000,4000,2000,10000,600)==0); // Money is the bottleneck.
+    CHECK(additionalProduction(10000,4000,2000,3000,600)==0); // Enough production already.
+    CHECK(additionalProduction(6000,4000,2000,10000,600)==1400);
+    CHECK(additionalProduction(10000,4000,2000,10000,600)==2000);
+    CHECK(productionScore(0,600,2000,10000)==0);
+    CHECK(productionScore(2000,600,2000,10000)>productionScore(2000,600,9000,10000));
+}
+
+TEST_CASE("Cash runway covers both unit lines and the economy pipeline", "[quantbot][economy]") {
+    using namespace QuantBotSpendingPolicy;
+    const auto opening=cashFlow(100000,95000,0,15000,20000,2000);
+    CHECK(opening.fundsParallelProduction);
+    CHECK(opening.projectedCash==80000); // Existing 5,000 queue is not charged twice.
+    const auto crowded=cashFlow(20000,18000,4000,22000,24000,2000);
+    CHECK_FALSE(crowded.fundsParallelProduction);
+    CHECK(crowded.projectedCash==0);
+    CHECK(crowded.netBurnPerMinute==5000);
+    CHECK(crowded.runwaySeconds==216);
+    const auto growing=cashFlow(20000,18000,28000,22000,24000,2000);
+    CHECK(growing.fundsParallelProduction);
+    CHECK(growing.runwaySeconds==-1);
+    CHECK(growing.netBurnPerMinute==-1000);
+    CHECK_FALSE(cashFlow(300,100,28000,22000,24000,2000).fundsParallelProduction);
 }
 
 TEST_CASE("Refineries catch up to profitable fleet queues even while tax hedge is short", "[quantbot][city][economy]") {
@@ -1449,4 +1506,39 @@ TEST_CASE("MCVs choose nearby usable rock without chasing distant space or clear
     result=choose(w,h,tiles,{23*w+90},{},{},22*w+4);
     REQUIRE(result.valid());CHECK(result.x>=20);CHECK(result.x<28); // MCV beside far island
 
+}
+
+TEST_CASE("Campaign opening follows authored trigger with independent bounded delays", "[quantbot][campaign]") {
+    using namespace CampaignDifficultyPolicy;
+    std::set<uint32_t> offsets;
+    for(uint32_t seed=0;seed<32;++seed) for(uint32_t house=0;house<6;++house) {
+        for(int tier=0;tier<3;++tier) {
+            const auto delay=openingDelayMs(tier,seed,45000,house);
+            CHECK(delay<=120000);
+            CHECK(delay==openingDelayMs(tier,seed,45000,house));
+            offsets.insert(delay);
+        }
+        CHECK(openingDelayMs(3,seed,45000,house)==0);
+    }
+    CHECK(offsets.size()>100);
+}
+
+TEST_CASE("Medium and Hard campaign waves use fixed credits and independent opening delays", "[quantbot][campaign]") {
+    using namespace CampaignDifficultyPolicy;
+    for (int tech : {1, 4, 8}) {
+        for (int difficulty : {1, 2}) {
+            const auto p=profile(difficulty,tech);
+            const int budget=difficulty==1 ? 2500 : 3500;
+            CHECK(p.enemyCommitPercent==100);
+            CHECK(fits(p,{1,100,budget-100,0},100));
+            CHECK_FALSE(fits(p,{1,1,budget-100,0},101));
+            for (uint32_t house=0;house<6;++house) {
+                CHECK(openingDelayMs(difficulty,1599783965,45000,house)<=120000);
+                const auto delay=repeatDelayMs(difficulty,1599783965,45000,house);
+                CHECK(delay>=60000);CHECK(delay<=180000);
+            }
+        }
+    }
+    CHECK(openingDelayMs(3,1599783965,45000,0)==0);
+    CHECK(openingDelayMs(2,1599783965,45000,0)!=openingDelayMs(2,1599783965,45000,1));
 }

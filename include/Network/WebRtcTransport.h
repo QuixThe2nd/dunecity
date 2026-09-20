@@ -28,7 +28,7 @@
     (platform/web/dunecity_webrtc_config.js) in src/CMakeLists.txt. Only usable
     in Emscripten builds; native desktop builds compile the same API as an
     inert stub so NetworkManager stays buildable everywhere. See
-    docs/webrtc/IMPLEMENTATION-PLAN.md for the channel mapping:
+    platform/web/README.md for the channel mapping:
       channel 0 = control DataChannel  { ordered: true }
       channel 1 = commands DataChannel { ordered: false, maxRetransmits: 0 }
     DuneCity keeps this historical global alias so existing call sites (and the

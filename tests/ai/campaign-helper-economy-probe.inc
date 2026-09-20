@@ -7,6 +7,25 @@ void runCampaignHelperEconomyProbe(Game& game) {
         if(auto* candidate=dynamic_cast<QuantBot*>(player.get()))bot=candidate;
     require(bot && !bot->isCampaignEnemy(),"Missing human-side campaign helper");
     require(bot->difficulty>=QuantBot::Difficulty::Hard,"Fixture requires Hard/Brutal helper");
+    if (game.isCitySimEnabled()) {
+        // SCENH022, seed 1221113892: cramped human start, no income or factory.
+        require(house->getCredits()==1000 && house->getNumItems(Structure_ConstructionYard)==1
+            && house->getNumItems(Structure_HeavyFactory)==0 && house->getNumItems(Structure_Refinery)==0,
+            "Run city helper opening fixture on the unmodified Harkonnen level-nine start");
+        bot->build(4200);
+        require(bot->rockExpansionSite.isValid(),"Fixture must offer an expansion that could reserve MCV cash");
+        bool windtrapQueued=false;
+        for (const auto* structure:structureList)
+            if (structure->getOwner()==house && structure->getItemID()==Structure_ConstructionYard)
+                windtrapQueued=static_cast<const BuilderBase*>(structure)->getCurrentProducedItem()==Structure_WindTrap;
+        require(windtrapQueued,"Helper reserved nonexistent factory's MCV cash instead of buying its first windtrap");
+        while (!game.finished && game.getGameCycleCount()<MILLI2CYCLES(300000)) game.updateGameState();
+        require(house->getNumItems(Structure_WindTrap)>0 && house->getNumItems(Structure_Refinery)>0
+            && house->getNumItems(Unit_Harvester)>0,"Helper failed to establish power and spice income within five minutes");
+        SDL_Log("CAMPAIGN_HELPER_ECONOMY_PASS: cramped 1000-credit city start buys power, refinery and harvester before reserving expansion money");
+        SDL_Log("CAMPAIGN_BALANCE_RESULT: probe=helper_city_opening outcome=passed");
+        return;
+    }
     auto place=[&](Uint32 item) {
         for(int y=1;y+3<currentGameMap->getSizeY();y+=4)
             for(int x=1;x+3<currentGameMap->getSizeX();x+=4) {
@@ -31,6 +50,7 @@ void runCampaignHelperEconomyProbe(Game& game) {
     }
     port->updateBuildList();
     require(!market.isCheap(Unit_Harvester),"Fixture requires above-market harvesters");
+    game.gameInitSettings.gameOptions.maximumNumberOfHarvestersOverride=15;
     bot->gameMode=QuantBot::GameMode::Custom;bot->harvesterLimit=15;
     bot->militaryValueLimit=40000;bot->lastCalculatedSpice=36000;
     house->takeCredits(house->getCredits());house->addCredits(9000);

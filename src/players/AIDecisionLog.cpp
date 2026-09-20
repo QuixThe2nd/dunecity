@@ -28,7 +28,7 @@ Record& Record::set(const std::string& key, const Record& value) { add(key, valu
 
 bool DecisionLog::start(const std::string& directory, const Record& metadata, uint64_t byteLimit) {
     stop();
-    sequence = bytes = 0;
+    sequence = bytes = 0; captureLimited = false;
     lastCycle = 0; economy.clear(); observationCounts.clear();
     performanceMetrics.clear(); worstFrameUs = -1; worstFrame = Record();
     performanceCycle = 0; performanceDropped = 0;
@@ -65,15 +65,22 @@ uint64_t DecisionLog::write(uint32_t cycle, int house, int player,
     lastCycle = std::max(lastCycle, cycle);
     const bool routine=event=="city_growth_sample" || event=="harvest_rally_move_order";
     if (routine && (++observationCounts[event]-1)%8!=0) return 0;
-    const bool terminal=event=="game_summary" || event=="session_end" || event=="simulation_exception";
-    if (limit>=1024*1024 && !terminal && bytes>=limit-limit/16) return 0;
+    const bool terminal=event=="game_summary" || event=="session_end" || event=="simulation_exception" || event=="capture_limit";
+    if (limit>=1024*1024 && !terminal && bytes>=limit-limit/16) {
+        if (!captureLimited) {
+            captureLimited=true;
+            write(cycle,-1,-1,"capture_limit",Record().set("byte_limit",limit)
+                .set("captured_bytes",bytes).set("terminal_events_retained",1));
+        }
+        return 0;
+    }
     const uint64_t id = ++sequence;
-    const auto row = Record().set("schema_version", 1).set("telemetry_version", 11).set("policy_version", "nearby-safe-rock-expansion-v67")
+    const auto row = Record().set("schema_version", 1).set("telemetry_version", 16).set("policy_version", "safe-rear-reactor-placement-v73")
         .set("session", session).set("seq", id).set("cycle", cycle)
         .set("house", house).set("player", player).set("event", event).set("data", details).json() + '\n';
     if (bytes + row.size() > limit) {
         // Explicit terminal marker; a few hundred bytes beyond the configured cap.
-        stream << Record().set("schema_version", 1).set("telemetry_version", 11).set("policy_version", "nearby-safe-rock-expansion-v67").set("session", session).set("seq", id)
+        stream << Record().set("schema_version", 1).set("telemetry_version", 16).set("policy_version", "safe-rear-reactor-placement-v73").set("session", session).set("seq", id)
             .set("cycle", cycle).set("house", -1).set("player", -1)
             .set("event", "capture_limit").set("data", Record().set("byte_limit", limit)).json() << '\n';
         stream.close();
@@ -118,6 +125,13 @@ void DecisionLog::performance(uint32_t cycle, int house, const std::string& scop
 void DecisionLog::slowFrame(uint32_t cycle, int64_t microseconds, const Record& context) {
     if (!enabled() || microseconds <= worstFrameUs) return;
     worstFrameUs = microseconds; worstFrameCycle = cycle; worstFrame = context;
+}
+void DecisionLog::frameStall(uint32_t cycle, int64_t microseconds, const Record& context) {
+    if (!enabled() || microseconds<100000) return;
+    const auto now=std::chrono::steady_clock::now();
+    write(cycle,-1,-1,"frame_stall",Record().set("duration_us",microseconds)
+        .set("session_wall_us",std::chrono::duration_cast<std::chrono::microseconds>(now-sessionStart).count())
+        .set("context",context));
 }
 bool DecisionLog::performanceDue() const {
     return enabled() && std::chrono::steady_clock::now() - performanceStart >= std::chrono::seconds(5);
@@ -176,8 +190,9 @@ Record DecisionLog::economyTotals(int house) const {
     return result;
 }
 DecisionLog& log() { static DecisionLog instance; return instance; }
-void startGame(const Record& metadata) {
+void startGame(const Record& metadata, bool diagnosticsEnabled) {
     log().stop();
+    if (!diagnosticsEnabled) return;
     const char* enabled = std::getenv("DUNECITY_AI_TELEMETRY");
     if (enabled && std::string(enabled) == "0") return;
     char root[FILENAME_MAX];

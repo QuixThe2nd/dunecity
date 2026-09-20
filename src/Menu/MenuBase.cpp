@@ -84,7 +84,7 @@ int MenuBase::showMenu() {
             SDL_RenderClear(renderer);
         }
         draw();
-        SDL_RenderPresent(renderer);
+        presentWithCursor();
 
         while(SDL_PollEvent(&event)) {
             updateCursorVisibilityForInput(event);
@@ -170,15 +170,9 @@ bool MenuBase::doInput(SDL_Event &event) {
                 case SDLK_PRINTSCREEN:
                 case SDLK_SYSREQ: {
 
-                    std::string screenshotFilename;
-                    int i = 1;
-                    do {
-                        screenshotFilename = "Screenshot" + std::to_string(i) + ".png";
-                        i++;
-                    } while(existsFile(screenshotFilename) == true);
-
-                    sdl2::surface_ptr pCurrentScreen = renderReadSurface(renderer);
-                    SavePNG(pCurrentScreen.get(), screenshotFilename.c_str());
+                    std::string filename;
+                    if(saveScreenshot(renderer,filename)) SDL_Log("Screenshot saved: %s",filename.c_str());
+                    else SDL_Log("Could not save screenshot: %s",SDL_GetError());
                 } break;
 
                 case SDLK_TAB: {

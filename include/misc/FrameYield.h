@@ -19,7 +19,7 @@
 
 /**
     Single seam for letting the browser event loop run while the game sits in
-    a nested blocking loop (menu, game, cutscene). See docs/webrtc/IMPLEMENTATION-PLAN.md
+    a nested blocking loop (menu, game, cutscene). See platform/web/README.md
     for the recorded main-loop decision: DuneCity's menus nest several blocking
     showMenu() loops deep, so instead of rewriting them all into an
     emscripten_set_main_loop state machine, the Emscripten build compiles with

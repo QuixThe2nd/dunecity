@@ -98,6 +98,7 @@ function createDunecityWebRtc(overrides) {
     const config = Object.assign({
         signaling: page.signaling,
         iceServers: page.iceServers,
+        disconnectCause: 2, // NETWORKDISCONNECT_TIMEOUT: the remote connection vanished
         p2pkit: null, // resolved below, after overrides are merged
         RTCPeerConnection: (typeof RTCPeerConnection !== 'undefined') ? RTCPeerConnection
             : ((typeof window !== 'undefined' && window.RTCPeerConnection) ? window.RTCPeerConnection : undefined),
@@ -135,6 +136,7 @@ if (typeof mergeInto === 'function' && typeof LibraryManager !== 'undefined') {
         $webrtcInit: function () {
             if (Module.__dunecityWebrtc) return;
             Module.__dunecityWebrtc = createP2pkitWasmGlue({
+                disconnectCause: 2, // NETWORKDISCONNECT_TIMEOUT
                 signaling: (typeof DUNECITY_WEBRTC_CONFIG !== 'undefined' && DUNECITY_WEBRTC_CONFIG && DUNECITY_WEBRTC_CONFIG.signaling) || undefined,
                 iceServers: (typeof DUNECITY_WEBRTC_CONFIG !== 'undefined' && DUNECITY_WEBRTC_CONFIG && DUNECITY_WEBRTC_CONFIG.iceServers) || undefined,
                 p2pkit: (typeof globalThis !== 'undefined') ? globalThis.P2PKIT_IIFE : undefined,

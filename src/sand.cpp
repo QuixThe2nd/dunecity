@@ -965,6 +965,10 @@ void startMultiPlayerGame(const GameInitSettings& init)
             currentGame->initGame(currentGameInitInfo);
             currentGameInitInfo = currentGame->getGameInitSettings();
             currentGame->runMainLoop();
+            if(auto resumed=pNetworkManager->takeLateJoin()) {
+                delete currentGame; currentGame=nullptr; resetHouseVisualHouseMapping();
+                currentGameInitInfo=*resumed; continue;
+            }
             int action = currentGame->whatNext();
             if(action == GAME_CUSTOM_GAME_STATS) {
                 CustomGameStatsMenu().showMenu();

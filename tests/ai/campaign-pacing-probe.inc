@@ -10,12 +10,12 @@ void runCampaignPacingProbe(Game& game) {
         }
     require(partner && !enemies.empty(),"Pacing fixture needs partner and enemy");
     auto* bot=enemies.front();
-    for(auto tier:{QuantBot::Difficulty::Easy,QuantBot::Difficulty::Medium,QuantBot::Difficulty::Hard}) {
+    for(auto tier:{QuantBot::Difficulty::Easy,QuantBot::Difficulty::Medium,QuantBot::Difficulty::Hard,QuantBot::Difficulty::Brutal}) {
         bot->difficulty=tier;bot->initialItemCount[Structure_Refinery]=2;
         bot->initialMilitaryValue=1000;bot->lastCalculatedSpice=200000;bot->harvesterLimit=100;
         game.gameInitSettings.gameOptions.maximumNumberOfHarvestersOverride=100;
         bot->update();
-        const int expected=2*getQuantBotConfig().getSettings(int(tier)).harvesterLimitPerRefineryMultiplier;
+        const int expected=tier==QuantBot::Difficulty::Brutal ? 7 : 2*getQuantBotConfig().getSettings(int(tier)).harvesterLimitPerRefineryMultiplier;
         require(bot->harvesterLimit==expected,"High game ceiling replaced campaign difficulty economy cap");
         bot->update();require(bot->harvesterLimit==expected,"Campaign worker cap drifted on next update");
         game.gameInitSettings.gameOptions.maximumNumberOfHarvestersOverride=1;
@@ -25,6 +25,51 @@ void runCampaignPacingProbe(Game& game) {
     game.gameInitSettings.gameOptions.maximumNumberOfHarvestersOverride=100;
     partner->lastCalculatedSpice=200000;partner->update();
     require(partner->harvesterLimit>2,"Human partner incorrectly inherited small enemy worker cap");
+    partner->difficulty=QuantBot::Difficulty::Brutal;
+    game.gameInitSettings.gameOptions.maximumNumberOfHarvestersOverride=15;
+    partner->update();require(partner->harvesterLimit==15,"Brutal helper inherited the enemy seven-worker cap");
+    const auto savedMission=game.gameInitSettings.mission;
+    auto* partnerHouse=const_cast<House*>(partner->getHouse());
+    const int savedWorkerLimit=partnerHouse->maxHarvesters;
+    partnerHouse->maxHarvesters=15;
+    game.gameInitSettings.gameOptions.maximumNumberOfHarvestersOverride=-1;
+    for (int mission : {17,20,21,22}) {
+        game.gameInitSettings.mission=mission;
+        const int expected=mission>=20 ? 20 : 100;
+        partner->lastCalculatedSpice=200000;partner->update();
+        require(partner->harvesterLimit==expected && partnerHouse->getMaxHarvesters()==0,
+            "Friendly Brutal default did not distinguish campaign levels seven and eight/nine");
+    }
+    partner->difficulty=QuantBot::Difficulty::Hard;partner->update();
+    require(partnerHouse->getMaxHarvesters()==0 && partner->harvesterLimit==100,"Hard retained the old default engine ceiling");
+    partner->difficulty=QuantBot::Difficulty::Brutal;
+    partner->lastCalculatedSpice=18000;partner->update();
+    require(partner->harvesterLimit==9 && partnerHouse->getMaxHarvesters()==0,"Maximum20 became a mandatory worker target");
+    game.gameInitSettings.gameOptions.maximumNumberOfHarvestersOverride=3;partner->update();
+    require(partner->harvesterLimit==3 && partner->campaignAllyHarvesterLimit()==0,"Explicit worker override ignored");
+    game.gameInitSettings.mission=savedMission;partnerHouse->maxHarvesters=savedWorkerLimit;
+    game.gameInitSettings.gameOptions.maximumNumberOfHarvestersOverride=15;
+    partner->lastCalculatedSpice=200000;partner->update();
+    partner->gameMode=QuantBot::GameMode::Campaign;
+    partner->attackTimer=MILLI2CYCLES(720000);partner->update();
+    require(partner->attackTimer==0 && partner->campaignCanLaunch(),"New ally retained campaign opening delay");
+    partner->attackTimer=MILLI2CYCLES(720000);partner->update();
+    require(partner->attackTimer==0,"Loaded ally retained legacy opening delay");
+    partner->attack(100000);
+    require(partner->attackTimer==MILLI2CYCLES(60000),"Campaign ally attack interval is not60 seconds");
+    partner->update();
+    require(partner->attackTimer==MILLI2CYCLES(60000),"Ally lost its break between attacks");
+    SDL_Log("ALLIED_CAMPAIGN_LIMITS_PASS: no default engine cap, level8/9 Brutal house target20, override3, spice target9, attack interval60s");
+    auto* allyHouse=const_cast<House*>(bot->getHouse());
+    const int enemyTeam=allyHouse->teamID;
+    allyHouse->teamID=partner->getHouse()->getTeamID();
+    bot->difficulty=QuantBot::Difficulty::Brutal;bot->lastCalculatedSpice=200000;
+    bot->update();
+    require(bot->isAlliedWithHuman() && !bot->isCampaignEnemy(),"Separate ally misclassified as enemy");
+    require(bot->harvesterCountCeiling()==0 && bot->harvesterLimit==15,"Separate ally retained enemy worker cap");
+    require(bot->gameMode==QuantBot::GameMode::Custom,"Separate ally retained campaign rebuild logic");
+    allyHouse->teamID=enemyTeam;bot->gameMode=QuantBot::GameMode::Campaign;
+    bot->update();require(bot->harvesterCountCeiling()==7 && bot->harvesterLimit==7,"Opponent lost seven-worker cap");
     for(auto* enemy:enemies) {
         enemy->difficulty=QuantBot::Difficulty::Easy;enemy->campaignWave={};
         enemy->campaignWave.initialized=true;enemy->attackTimer=INT32_MAX;
@@ -41,11 +86,12 @@ void runCampaignPacingProbe(Game& game) {
             }
     savedUnits=unitList;unitList.clear();for(auto* unit:army)unitList.push_back(unit);
     try {
-    bot->militaryValueLimit=9200;bot->attackTimer=0;
+    bot->militaryValueLimit=4800;bot->attackTimer=0;
     game.techLevel=4;bot->campaignWave.opening=game.getGameCycleCount()+100;
     bot->attack(2400);require(bot->campaignWave.members.empty(),"Small-wave readiness bypassed opening grace");
     game.gameCycleCount+=100;
     bot->attack(2399);require(bot->campaignWave.members.empty(),"Easy launched without its defensive reserve");
+    bot->attackTimer=0; // Readiness retry after its ordinary countdown.
     bot->attack(2400);
     require(bot->campaignWave.members.size()==4,"Eight tanks did not send four while keeping four defenders");
     const auto first=bot->campaignWave.members;bot->attack(2400);
@@ -63,7 +109,7 @@ void runCampaignPacingProbe(Game& game) {
     require(partner->campaignRequiredArmy(8000)==8000,"Live economy lost its normal readiness goal");
     bot->campaignWave={};bot->campaignWave.initialized=true;
     require(!owner->hasRepairYard(),"Fixture must lack a repair yard");
-    bot->attack(2400);
+    bot->attackTimer=0;bot->attack(2400);
     require(!bot->campaignWave.members.empty(),"Late-game survivors did not attack without a repair yard");
     } catch (...) {unitList=savedUnits;throw;}
     unitList=savedUnits;

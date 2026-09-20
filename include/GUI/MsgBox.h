@@ -131,6 +131,7 @@ private:
         \param  Text    Text of this message box
     */
     void init(const std::string& text) {
+        textLabel.setTextFontSize(16);
         setWindowWidget(&vbox);
         vbox.addWidget(VSpacer::create(6));
         vbox.addWidget(&textLabel);
@@ -142,7 +143,7 @@ private:
         vbox2.addWidget(VSpacer::create(4));
         okbutton.setText("OK");
         okbutton.setOnClick(std::bind(&MsgBox::onOK, this));
-        vbox2.addWidget(&okbutton);
+        vbox2.addWidget(&okbutton,32);
         vbox2.addWidget(VSpacer::create(4));
         hbox.addWidget(Spacer::create());
         setText(text);

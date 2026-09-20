@@ -8,10 +8,10 @@ namespace WebRuntime {
 int defaultVideoWidth();
 int defaultVideoHeight();
 void reportMatchStats(const std::string& phase, const std::string& matchID, const std::string& payload);
-void yieldToBrowser();
 void markGameReady();
 void syncPersistentFiles();
 bool copyText(const std::string& text);
+void downloadFile(const std::string& path);
 
 }
 

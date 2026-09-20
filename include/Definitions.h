@@ -71,7 +71,8 @@
 // 9836: Airports persist reinforcement cooldown and partially deployed pairs.
 // 9837: Network campaign/mission game types and shared-house co-op saves.
 // 9838: QuantBot campaign assault membership, opening and recovery timers.
-#define SAVEGAMEVERSION     9838
+// 9839: Preserve scripted campaign attackers separately from automatic waves.
+#define SAVEGAMEVERSION     9839
 
 // v1.0.0–v1.0.7 shipped SAVEGAMEVERSION 9810 with Num_ItemID=48.
 // v1.0.8–v1.0.10 also used 9810 but with Num_ItemID=52 (4 items added

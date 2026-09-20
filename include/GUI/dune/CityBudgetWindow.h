@@ -24,7 +24,6 @@
 #include <GUI/TextButton.h>
 #include <GUI/Label.h>
 #include <GUI/Spacer.h>
-#include <GUI/PictureButton.h>
 
 /// City budget window. Player can adjust the tax rate and police-funding
 /// share, review the resulting forecast, and confirm both changes together.
@@ -54,6 +53,8 @@ private:
     void updateAllocationLabels();
 
     HBox rootHBox;
+    HBox allocationPairHBox, detailsHBox;
+    VBox forecastVBox, statusVBox;
     VBox mainVBox;
     Label titleLabel;
 
@@ -64,33 +65,29 @@ private:
     Label allocationsHeadingLabel;
     HBox taxHBox;
     Label taxLabel;
-    PictureButton taxMinus;
+    TextButton taxMinus;
     Label taxValueLabel;
-    PictureButton taxPlus;
+    TextButton taxPlus;
 
     HBox policeHBox;
     Label policeLabel;
-    PictureButton policeMinus;
+    TextButton policeMinus;
     Label policeValueLabel;
-    PictureButton policePlus;
+    TextButton policePlus;
 
     Label forecastHeadingLabel;
-    HBox forecastPrimaryHBox;
     Label incomeLabel;
     Label policeCostLabel;
     Label policeStationCostLabel;
     Label rocketTurretCostLabel;
     Label gunTurretCostLabel;
     Label roadCostLabel;
-    HBox forecastSecondaryHBox;
     Label netLabel;
     Label perSecondLabel;
 
     Label cityStatusHeadingLabel;
-    HBox populationHBox;
     Label totalPopLabel;
     Label unemploymentLabel;
-    HBox zoningHBox;
     Label resPopLabel;
     Label comPopLabel;
     Label indPopLabel;

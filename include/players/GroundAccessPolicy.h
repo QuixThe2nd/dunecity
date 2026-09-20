@@ -1,6 +1,7 @@
 #ifndef GROUND_ACCESS_POLICY_H
 #define GROUND_ACCESS_POLICY_H
 #include <algorithm>
+#include <cstdint>
 #include <vector>
 
 // Placement only inspects the footprint and its one-tile border. Preserve
@@ -12,6 +13,42 @@ public:
     static bool allows(Rect r, bool needsExit, Passable passable, bool diagonal = false) {
         if (r.w<=0 || r.h<=0) return false;
         const int w=r.w+2,h=r.h+2;
+        if (w*h<=64) {
+            // Ordinary building footprints fit in one word. Flood the same
+            // local graph with shifts instead of allocating and labelling
+            // three grids and growing two queues for every candidate.
+            using Bits=std::uint64_t;
+            Bits open=0,border=0,left=0,right=0;
+            for (int y=0;y<h;++y) for (int x=0;x<w;++x) {
+                const Bits bit=Bits{1}<<(y*w+x);
+                if (x==0) left|=bit;
+                if (x==w-1) right|=bit;
+                if (x==0 || y==0 || x==w-1 || y==h-1) border|=bit;
+                if (passable(r.x+x-1,r.y+y-1)) open|=bit;
+            }
+            const Bits after=open&border;
+            if (needsExit && !after) return false;
+            auto flood=[&](Bits seed,Bits allowed) {
+                Bits component=seed;
+                for (;;) {
+                    const Bits sideways=((component&~left)>>1)|((component&~right)<<1);
+                    Bits neighbours=sideways|(component>>w)|(component<<w);
+                    if (diagonal) neighbours|=(sideways>>w)|(sideways<<w);
+                    const Bits expanded=component|(neighbours&allowed);
+                    if (expanded==component) return component;
+                    component=expanded;
+                }
+            };
+            Bits remaining=open;
+            while (remaining) {
+                const Bits connected=flood(remaining&(~remaining+1),open);
+                remaining&=~connected;
+                const Bits surviving=connected&after;
+                if (surviving && flood(surviving&(~surviving+1),after)!=surviving) return false;
+            }
+            return true;
+        }
+
         std::vector<int> before(w*h,-1),after(w*h,-1);
         int frontage=0;
         for (int y=0;y<h;++y) for (int x=0;x<w;++x) {

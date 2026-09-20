@@ -411,10 +411,14 @@ class ServiceFixture:
         env = dict(os.environ, DUNECITY_P2P_CONFIG=self.config, PHP_CLI_SERVER_WORKERS="4")
         self.server_log = open(os.path.join(self.tmp, "php-server.log"), "w+b")
         self.notification_log = os.path.join(self.tmp, "notifications.jsonl")
+        self.activity_log = os.path.join(self.tmp, "public-activity.jsonl")
         router = os.path.join(self.tmp, "router.php")
         Path(router).write_text("<?php\nfunction dunecityP2PNotifyLobby($kind, $event) {\n"
             "file_put_contents(" + php_literal(self.notification_log) + ", json_encode([$kind,$event]).\"\\n\", FILE_APPEND|LOCK_EX);\n"
             "if (file_exists(" + php_literal(os.path.join(self.tmp, "fail-notifications")) + ")) throw new RuntimeException('fixture');\n"
+            "}\nfunction dunecityP2PRecordPublicActivity($event) {\n"
+            "file_put_contents(" + php_literal(self.activity_log) + ", json_encode($event).\"\\n\", FILE_APPEND|LOCK_EX);\n"
+            "if (file_exists(" + php_literal(os.path.join(self.tmp, "fail-public-activity")) + ")) throw new RuntimeException('fixture');\n"
             "}\nrequire " + php_literal(os.path.join(ROOT, "bin", "router.php")) + ";\n")
         self.proc = subprocess.Popen(
             [PHP_BIN, "-d", "error_log=" + os.path.join(self.tmp, "php-error.log"),
@@ -753,6 +757,16 @@ class AdmissionTests(SignalingTestCase):
         refused = self.join(admission.fields["room"], publicOnly="1")
         self.assertEqual(404, refused.status)
         self.assertEqual("room_not_found", refused.fields["code"])
+
+    def test_version_number_mismatch_is_refused_before_reserving_a_seat(self):
+        admission = self.host(visibility="public", maxPeers=2)
+        for public_only in ("0", "1"):
+            refused = self.join(admission.fields["room"], appVersion="9.9.9", publicOnly=public_only)
+            self.assertEqual(409, refused.status)
+            self.assertEqual("version_mismatch", refused.fields["code"])
+            self.assertIn(APP_VERSION, refused.fields["message"])
+            self.assertIn("9.9.9", refused.fields["message"])
+        self.assertEqual(200, self.join(admission.fields["room"]).status)
 
     def test_content_mismatch_is_refused_at_join(self):
         admission = self.host()

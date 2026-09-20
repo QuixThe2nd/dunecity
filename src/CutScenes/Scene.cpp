@@ -18,6 +18,7 @@
 #include <CutScenes/Scene.h>
 
 #include <globals.h>
+#include <CursorManager.h>
 
 #include <misc/SDL2pp.h>
 
@@ -76,7 +77,7 @@ int Scene::draw()
     }
 
     // 3.: Render everything
-    SDL_RenderPresent(renderer);
+    presentWithCursor();
 
     // 4.: Process Triggers
     while(triggerList.empty() == false) {

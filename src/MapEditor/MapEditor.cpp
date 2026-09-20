@@ -1085,7 +1085,7 @@ void MapEditor::drawScreen() {
     // Cursor
     drawCursor();
 
-    SDL_RenderPresent(renderer);
+    presentWithCursor();
 }
 
 void MapEditor::processInput() {

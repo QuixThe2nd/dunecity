@@ -23,11 +23,6 @@
 
 class CursorManager {
 private:
-    SDL_Cursor* normalCursor;
-    SDL_Cursor* moveCursor;
-    SDL_Cursor* attackCursor;
-    SDL_Cursor* captureCursor;
-    SDL_Cursor* carryallDropCursor;
     bool initialized;
     
 public:
@@ -43,11 +38,15 @@ public:
 
 /** Apply the configured cursor visibility mode immediately. */
 void applyCursorVisibilitySetting();
+void releaseCursorResources();
 
 /**
  * Update automatic cursor visibility from an input event. On Android,
  * physical mouse input shows the cursor while touch input hides it.
  */
 void updateCursorVisibilityForInput(const SDL_Event& event);
+
+/** Present the frame and update the single SDL cursor on desktop and web. */
+void presentWithCursor(int mode = 0, bool contextual = false);
 
 #endif // CURSORMANAGER_H

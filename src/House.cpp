@@ -1,4 +1,5 @@
 #include <dunecity/PowerRules.h>
+#include <dunecity/CityConstants.h>
 #include <players/AIDecisionLog.h>
 /*
  *  This file is part of Dune Legacy.
@@ -244,6 +245,33 @@ void House::save(OutputStream& stream) const {
 
 
 
+
+void House::configureNetworkPlayers(const std::vector<std::pair<std::string, std::string>>& desired) {
+    if(desired.empty() || desired.size()>2 || desired.size()<players.size())
+        THROW(std::runtime_error,"Invalid resumed controller roster.");
+    auto existing=players.begin();
+    for(size_t i=0;i<desired.size();++i) {
+        const auto& [name, type]=desired[i];
+        if(existing==players.end()) {
+            if(type!=HUMANPLAYERCLASS) THROW(std::runtime_error,"Only a human may join a running house.");
+            const auto* factory=PlayerFactory::getByPlayerClass(type);
+            addPlayer(factory->create(this,name));
+            break;
+        }
+        Player* previous=existing->get();
+        if(previous->getPlayerclass()!=type || previous->getPlayername()!=name) {
+            if(dynamic_cast<HumanPlayer*>(previous) || type!=HUMANPLAYERCLASS)
+                THROW(std::runtime_error,"A join request cannot replace an existing human.");
+            auto replacement=PlayerFactory::getByPlayerClass(type)->create(this,name);
+            replacement->playerID=previous->getPlayerID();
+            currentGame->unregisterPlayer(previous);
+            *existing=std::move(replacement);
+            currentGame->registerPlayer(existing->get());
+        }
+        ++existing;
+    }
+    ai=std::none_of(players.begin(),players.end(),[](const auto& p){return dynamic_cast<HumanPlayer*>(p.get())!=nullptr;});
+}
 
 void House::configureCoopPlayers(const std::vector<std::pair<std::string, std::string>>& desired) {
     if(desired.size() != 2 || desired.front().second != HUMANPLAYERCLASS || players.empty()
@@ -499,6 +527,23 @@ void House::incrementUnits(int itemID) {
 
 }
 
+
+int House::getMaxUnits() const {
+    // Derive from the saved controllers; keep the authored cap intact for
+    // Easy/Medium and for houses whose high-difficulty partner is removed.
+    for (const auto& player : getPlayerList())
+        if (const auto* bot = dynamic_cast<const QuantBot*>(player.get()))
+            if (bot->ignoresUnitCountLimit()) return 0;
+    return maxUnits;
+}
+
+int House::getMaxHarvesters() const {
+    // Saved houses may contain the former map-size default. The saved game
+    // options distinguish that default from a limit deliberately selected by
+    // the player. AI economy targets are decisions, not engine restrictions.
+    return currentGame ? std::max(0, currentGame->getGameInitSettings().getGameOptions()
+        .maximumNumberOfHarvestersOverride) : maxHarvesters;
+}
 
 bool House::isUnitLimitReached(int itemID) const {
     if(!isUnit(itemID)) {
@@ -873,6 +918,20 @@ StructureBase* House::placeStructure(Uint32 builderID, int itemID, int xPos, int
         return nullptr;
     }
 
+    // Recheck resource terrain when executing city placement, not only when
+    // previewing or planning it. The site can change before a queued command
+    // arrives. Keep authored scenario placement/load semantics unchanged.
+    if(!byScenario && DuneCity::isCityOnlyStructure(itemID)) {
+        for(int dy = 0; dy < requestedStructureSize.y; ++dy) {
+            for(int dx = 0; dx < requestedStructureSize.x; ++dx) {
+                const auto* tile = currentGameMap->getTile(xPos + dx, yPos + dy);
+                if(tile->isSpice() || tile->isSpiceBloom() || tile->isSpecialBloom()) {
+                    return nullptr;
+                }
+            }
+        }
+    }
+
     BuilderBase* pBuilder = (builderID == NONE_ID) ? nullptr : dynamic_cast<BuilderBase*>(currentGame->getObjectManager().getObject(builderID));
 
     if(currentGame->getGameInitSettings().getGameOptions().onlyOnePalace && pBuilder != nullptr && itemID == Structure_Palace && getNumItems(Structure_Palace) > 0) {
@@ -1061,8 +1120,8 @@ StructureBase* House::placeStructure(Uint32 builderID, int itemID, int xPos, int
             if(pBuilder != nullptr) {
                 pBuilder->unSetWaitingToPlace();
 
-                if(itemID == Structure_Palace) {
-                    // cancel all other palaces
+                if(itemID == Structure_Palace && currentGame->getGameInitSettings().getGameOptions().onlyOnePalace) {
+                    // Enforce the optional one-palace limit across all yards.
                     for(StructureBase* pStructure : structureList) {
                         if(pStructure->getOwner() == this && pStructure->getItemID() == Structure_ConstructionYard) {
                             ConstructionYard* pConstructionYard = static_cast<ConstructionYard*>(pStructure);

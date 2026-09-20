@@ -4,6 +4,13 @@
 #include <Menu/CustomGameMenu.h>
 #include <Menu/CrossplayMenu.h>
 #include <Menu/OptionsMenu.h>
+#include <Menu/AboutMenu.h>
+#include <Menu/HowToPlayMenu.h>
+#include <Menu/ModMenu.h>
+#include <Menu/DisplayMenu.h>
+#include <GUI/dune/GameOptionsWindow.h>
+#include <GUI/MsgBox.h>
+#include <GUI/QstBox.h>
 #include <Menu/PlaySetup.h>
 #include <mod/ModManager.h>
 #include <misc/FileSystem.h>
@@ -13,7 +20,7 @@
 void menuRequire(bool value, const char* message) {
     if(!value) { SDL_Log("MENU_PROBE_FAIL: %s", message); throw std::runtime_error(message); }
 }
-void menuCapture(MenuBase& menu, const std::string& name) {
+void menuCapture(Window& menu, const std::string& name) {
     SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
     SDL_RenderClear(renderer);
     menu.draw();
@@ -35,15 +42,111 @@ int runMenuProbe() {
     ModManager::instance().setActiveMod("vanilla");
     effectiveGameOptions = ModManager::instance().loadEffectiveGameOptions(settings.gameOptions);
     {
+        HouseChoiceMenu menu;
+        menuRequire(HouseChoiceMenu::isPublicGame(),"Campaign should default to public");
+        menu.supportBotDropDown.setSelectedItem(4);
+        menuRequire(HouseChoiceMenu::getSupportBotIndex()==4,"Support setup fixture failed");
+        auto& list=menu.supportBotDropDown.listBox;
+        // A rapid second selection must notify the campaign setup even when
+        // it falls within the list widget's double-click interval.
+        list.scrollbar.setCurrentValue(3);
+        menu.supportBotDropDown.onOpenListBoxButton();
+        menuCapture(menu,"ai-partner-selection");
+        list.lastClickTime=SDL_GetTicks();
+        const int row=8-list.firstVisibleElement;
+        const int rowY=1+row*GUIStyle::getInstance().getListBoxEntryHeight()+2;
+        const int overlayY=rowY+(menu.supportBotDropDown.bListBoxAbove
+            ? -list.getSize().y : menu.supportBotDropDown.getSize().y);
+        menu.supportBotDropDown.handleMouseLeftOverlay(10,overlayY,true);
+        menuRequire(menu.supportBotDropDown.getSelectedEntryIntData()==8,"Full AI selection fixture missed its row");
+        menuRequire(HouseChoiceMenu::getSupportBotIndex()==8,"Full AI selection left campaign launch set to economy-only Support");
+        menuRequire(!menu.supportBotDropDown.bShowListBox,"AI dropdown did not close after selection");
+        for(int option=0;option<10;++option) {
+            menu.supportBotDropDown.setSelectedItem(option);
+            menuRequire(HouseChoiceMenu::getSupportBotIndex()==option,"AI partner choice mapping changed");
+        }
+        menu.supportBotDropDown.setSelectedItem(8);
+        menu.enemyAIDropDown.setSelectedItem(2);
+        menu.startLevelDropDown.setSelectedItem(6);
+        // A stale cached callback result must never override the live widgets
+        // when the player presses Start.
+        HouseChoiceMenu::s_supportBotIndex=4;
+        HouseChoiceMenu::s_enemyAIIndex=0;
+        HouseChoiceMenu::s_startLevel=1;
+        menu.hostCoopButton.handleMouseLeft(10,10,true);
+        menu.hostCoopButton.handleMouseLeft(10,10,false);
+        menuRequire(menu.isQuiting() && HouseChoiceMenu::getSupportBotIndex()==8
+            && HouseChoiceMenu::getEnemyAIIndex()==2 && HouseChoiceMenu::getStartLevel()==7,
+            "Start launched stale AI or mission choices");
+    }
+    {
+        ListBox list;
+        list.addEntry("First");list.addEntry("Second");
+        list.resize(200,100);
+        int selections=0,doubleClicks=0;
+        list.setOnSelectionChange([&](bool){++selections;});
+        list.setOnDoubleClick([&](){++doubleClicks;});
+        list.lastClickTime=SDL_GetTicks();
+        list.handleMouseLeft(10,3,true);
+        menuRequire(selections==1 && doubleClicks==0,"First row click incorrectly counted as a double click");
+        list.lastClickTime=SDL_GetTicks();
+        list.handleMouseLeft(10,GUIStyle::getInstance().getListBoxEntryHeight()+3,true);
+        menuRequire(selections==2 && doubleClicks==0,"Rapid different-row selection triggered double click");
+        list.lastClickTime=SDL_GetTicks();
+        list.handleMouseLeft(10,GUIStyle::getInstance().getListBoxEntryHeight()+3,true);
+        menuRequire(selections==2 && doubleClicks==1,"Same-row double click stopped activating the row");
+    }
+    {
         MainMenu menu;
         menuRequire(menu.campaignButton.isVisible() && menu.customButton.isVisible() && menu.onlineButton.isVisible(), "Home play actions missing");
         menuRequire(!menu.displayButton.isVisible(),"Duplicate Display entry remains");
+        menuRequire(!menu.campaignButton.keyboardFocusVisible,"Home shows unsolicited keyboard focus");
         menuCapture(menu,"home");
+        menu.canContinue=true; menu.refreshContextButtons();
+        menuCapture(menu,"home-continue");
+        menu.canContinue=false; menu.refreshContextButtons();
         SDL_Event tab{}; tab.type=SDL_KEYDOWN; tab.key.keysym.sym=SDLK_TAB;
-        for(auto* expected : {&menu.customButton,&menu.onlineButton,&menu.loadButton,&menu.optionsButton,&menu.modesButton,&menu.quitButton,&menu.campaignButton}) {
+        std::vector<TextButton*> tabOrder{&menu.campaignButton,&menu.customButton,&menu.loadButton,&menu.optionsButton,&menu.modesButton,&menu.quitButton};
+#if defined(DUNECITY_DESKTOP_UPDATER)
+        tabOrder.push_back(&menu.updateButton);
+#endif
+        tabOrder.push_back(&menu.onlineButton);
+        for(auto* expected : tabOrder) {
             menu.handleInput(tab);
             menuRequire(menu.windowWidget.pActiveChildWidget==expected,"Home Tab order reaches a hidden destination or disagrees with screen order");
+            menuRequire(expected->keyboardFocusVisible,"Keyboard navigation lost its visible focus");
         }
+        menuCapture(menu,"home-keyboard");
+        SDL_Event motion{}; motion.type=SDL_MOUSEMOTION; motion.motion.x=2; motion.motion.y=2;
+        menu.handleInput(motion);
+        menuRequire(!menu.campaignButton.keyboardFocusVisible,"Pointer movement left Campaign highlighted");
+        menuRequire(!menu.campaignButton.bHover,"Pointer outside menu left Campaign hovered");
+        menu.campaignButton.handleMouseMovement(5,5,false);
+        menuRequire(menu.campaignButton.bHover,"Campaign no longer responds to hover");
+        menu.campaignButton.handleMouseMovement(-1,-1,false);
+        menuRequire(!menu.campaignButton.bHover,"Campaign hover stuck after pointer left");
+        menuCapture(menu,"home-pointer");
+#if defined(DUNECITY_DESKTOP_UPDATER)
+        auto& updater = DesktopUpdater::instance();
+        updater.state_ = DesktopUpdater::State::Available;
+        updater.manifest_.version = "9.0.0";
+        menu.bFirstLaunchPromptChecked = true;
+        menu.update();
+        menuRequire(menu.updateButton.getText()=="Update available", "Update notice missing");
+        menu.onUpdate();
+        auto* question = dynamic_cast<QstBox*>(menu.pChildWindow);
+        menuRequire(question && menu.updatePromptOpen, "Update confirmation missing");
+        menuCapture(menu,"update-confirmation");
+        question->onButton(QSTBOX_BUTTON2);
+        menu.processChildWindowOpenCloses();
+        menuRequire(!menu.updatePromptOpen && !updater.busy(), "Later started an installation");
+        updater.state_ = DesktopUpdater::State::Installing;
+        auto* active = menu.windowWidget.pActiveChildWidget;
+        menu.handleInput(tab);
+        menuRequire(menu.windowWidget.pActiveChildWidget == active, "Installation allowed game-entry navigation");
+        updater.state_ = DesktopUpdater::State::Current;
+#endif
+
     }
     {
         HouseChoiceMenu menu;
@@ -83,13 +186,33 @@ int runMenuProbe() {
         menuRequire(browser.getSelectedMapPath() == setup.maps[setup.map], "Map browser lost selected map");
         menuRequire(browser.mainVBox.getMinimumSize().x <= browser.mainVBox.getSize().x, "Map browser controls exceed menu width");
         menuRequire(browser.mainVBox.getMinimumSize().y <= browser.mainVBox.getSize().y, "Map browser controls exceed menu height");
+        menuRequire(browser.allowJoinAfterStartCheckbox.isChecked(),"Late join must be enabled by default");
+        menuRequire(browser.allowJoinAfterStartCheckbox.isVisible()==online,"Late join setting is shown for an offline game");
         menuCapture(browser, online ? "map-browser-online" : "map-browser-offline");
+        browser.allowJoinAfterStartCheckbox.setChecked(false);
         browser.onNext();
         menuRequire(browser.retVal == MENU_SETUP_PLAYERS, "Map selection did not proceed to players");
+        menuRequire(!mapSetup.allowJoinAfterStart,"Late join opt-out was lost");
         menuRequire(mapSetup.online == online && mapSetup.map == setup.map, "Map browser changed mode or map");
     }
     const auto map = setup.maps.front();
     GameInitSettings init(getBasename(map,true),readCompleteFile(map),false,setup.rules);
+    {
+        // This shipped map has Player1, Player2, Player3 and Player5. The
+        // fourth visible row still needs a real team before a match starts.
+        const auto sparse = dir + "4P - 128x128 - Ergsun-Odenkirk.ini";
+        auto sparseSetup = setup;
+        sparseSetup.online = true;
+        sparseSetup.sharedHouse = true;
+        sparseSetup.players = ChangeEventList{};
+        GameInitSettings sparseInit(getBasename(sparse,true),readCompleteFile(sparse),true,setup.rules);
+        CustomGamePlayers menu(sparseInit,true,false,&sparseSetup);
+        menuRequire(menu.numHouses == 4,"Sparse four-player map fixture changed");
+        for(int slot=0;slot<menu.numHouses;++slot)
+            menuRequire(menu.houseInfo[slot].teamDropDown.getSelectedEntryIntData()==slot+1,
+                "Sparse PlayerN sections left an unassigned team that becomes 255 in a checkpoint");
+        menuCapture(menu,"custom-sparse-teams");
+    }
     {
         GameInitSettings coop(HOUSE_ATREIDES, setup.rules, 1);
         coop.enableCoop(true, "Keyboard co-op");
@@ -187,49 +310,174 @@ int runMenuProbe() {
         menuCapture(menu,"custom-bonus-colors");
         ModManager::instance().setActiveMod("vanilla");
     }
+    for(const auto& mod : {std::string("vanilla"),std::string("dunecity")}) {
+        menuRequire(ModManager::instance().setActiveMod(mod), "City status fixture unavailable");
+        CustomGamePlayers menu(init,true);
+        menuRequire(menu.mapPropertyCity.getText()==(mod=="dunecity" ? _("On") : _("Off")), "Lobby city status disagrees with mod");
+        menuCapture(menu,"city-status-"+mod);
+    }
+    ModManager::instance().setActiveMod("vanilla");
     setup.players=original;
     {
         CrossplayMenu menu;
-        menu.playerNameTextBox.setText("");
+        const auto settingsName = settings.general.playerName;
+        settings.general.playerName = "";
         menu.onHostCustomGame();
-        menuRequire(menu.hasChildWindow(),"Custom hosting bypasses the entered player name");
+        menuRequire(menu.hasChildWindow(),"Custom hosting bypasses the settings player name");
         menu.closeChildWindow(); menu.processChildWindowOpenCloses();
         menu.onHostCampaignCoop();
-        menuRequire(menu.hasChildWindow(),"Campaign hosting bypasses the entered player name");
+        menuRequire(menu.hasChildWindow(),"Campaign hosting bypasses the settings player name");
         menu.closeChildWindow(); menu.processChildWindowOpenCloses();
-        menu.playerNameTextBox.setText(settings.general.playerName);
+        settings.general.playerName = settingsName;
+        menuRequire(menu.playerNameValue.getText()==settingsName,"Play Online does not display the settings name");
+        menuRequire(CustomPlaySetup().publicGame && menu.visibilityChoice.getSelectedIndex()==1,"New games should default to public");
+        menuRequire(menu.chatHistory.getParent()==&menu.windowWidget && menu.publicGameList.getParent()==&menu.windowWidget,
+            "Chat and game list must share the first screen");
+        menuRequire(menu.chatHistory.getSize().x>=220 && menu.publicGameList.getSize().x>=350,
+            "Side-by-side lobby panes are too narrow");
         menu.stage=CrossplayMenu::Stage::Choosing;
         PublicRelayGame coop, custom;
         coop.mode="coop"; coop.hostName="Campaign host"; coop.roomCode="AAAA-BBBB-CCCC"; coop.players=1; coop.maxPeers=2;
         custom.mode="custom"; custom.hostName="Custom host"; custom.roomCode="DDDD-EEEE-FFFF"; custom.players=2; custom.maxPeers=4;
+        coop.modName="vanilla"; custom.modName="dunecity";
+        coop.mapName="Atreides mission 4"; custom.mapName="Habbanya-Autumn";
+        custom.running=true; custom.allowLateJoin=true; custom.elapsedSeconds=620;
+        menuRequire(menu.modFilter.getSelectedEntryIntData()==-1,"All mods must be the default");
         menu.allPublicGames={coop,custom}; menu.refreshDirectory();
+        menuRequire(menu.publicGames.size()==2,"All mods hides another mod");
+        for(int i=0;i<static_cast<int>(menu.availableMods.size());++i) {
+            if(menu.availableMods[i].name!="dunecity") continue;
+            menu.modFilter.setSelectedItem(i+1); menu.refreshDirectory();
+            menuRequire(menu.publicGames.size()==1 && menu.publicGames[0].modName=="dunecity",
+                "Specific mod filter includes other mods");
+            menuRequire(ModManager::instance().getActiveModName()=="vanilla","Filtering changes active mod");
+        }
+        menu.modFilter.setSelectedItem(0); menu.refreshDirectory();
         menu.modeFilter.setSelectedItem(1); menu.refreshDirectory();
         menuRequire(menu.publicGames.size()==1 && menu.publicGames[0].mode=="coop","Campaign filter includes custom games");
         menu.modeFilter.setSelectedItem(2); menu.refreshDirectory();
         menuRequire(menu.publicGames.size()==1 && menu.publicGames[0].mode=="custom","Custom filter includes campaign games");
         menu.modeFilter.setSelectedItem(0); menu.refreshDirectory();
         menuCapture(menu,"join");
-        menu.showChat=true; menu.layoutControls(); menu.refreshControls();
+        menu.directory.cancel(); menu.directoryPending=false;
+        // Use the installed current mod; these are local, deterministic UI checks.
+        menu.publicGames[1].modName="vanilla";
+        menu.publicGameList.setSelectedItem(1);
+        settings.network.directDevelopmentEndpoint="http://127.0.0.1:1";
+        menu.joinPublicGame();
+        menu.processChildWindowOpenCloses();
+        menuRequire(menu.pChildWindow==nullptr && menu.stage==CrossplayMenu::Stage::Requesting,
+            "Running join should request admission without a mode prompt");
+        menuRequire(menu.joiningRunning && menu.joiningAsSpectator,
+            "Running join must enter as a passive spectator");
+        menu.admission.cancel();
+        menu.stage=CrossplayMenu::Stage::Choosing;
+        settings.network.directDevelopmentEndpoint="";
+
+        menu.joiningRunning=true;
+        menu.onReceiveGameInfo(init,ChangeEventList());
+        menuRequire(!menu.pendingGameInfo,"Original lobby setup hijacks checkpoint admission");
+        menu.joiningRunning=false;
+        menu.onReceiveGameInfo(init,ChangeEventList());
+        menuRequire(menu.pendingGameInfo!=nullptr,"Waiting-game setup no longer opens its lobby");
+        menu.pendingGameInfo.reset();
+
+        for(bool hotJoin : {false,true}) {
+            menu.stage=CrossplayMenu::Stage::Requesting;
+            menu.joiningRunning=hotJoin;
+            menu.admission.status_=RoomAdmissionClient::Status::Failed;
+            menu.admission.response_.errorCode="version_mismatch";
+            menu.admission.errorMessage_="Version mismatch. Host: 1.0.726. Yours: 1.0.727. Both players must use the same game version. Update or switch versions, then try again.";
+            menu.update();
+            menuRequire(menu.hasChildWindow(),"Version mismatch did not open an acknowledged prompt");
+            menuRequire(menu.pChildWindow->getSize().x<=getRendererWidth() && menu.pChildWindow->getSize().y<=getRendererHeight(),
+                "Version prompt exceeds screen bounds");
+            auto* prompt=dynamic_cast<MsgBox*>(menu.pChildWindow);
+            menuRequire(prompt!=nullptr && prompt->getText().find("1.0.726")!=std::string::npos
+                && prompt->getText().find("1.0.727")!=std::string::npos,"Version prompt omits one of the versions");
+            menuRequire(menu.stage==CrossplayMenu::Stage::Choosing && menu.joinTicket.empty(),
+                "Version mismatch left an active join request");
+            menuCapture(menu,hotJoin ? "hot-join-version-mismatch" : "join-version-mismatch");
+            menu.closeChildWindow(); menu.processChildWindowOpenCloses();
+            menu.update();
+            menuRequire(!menu.hasChildWindow(),"Version prompt reopened without another join attempt");
+        }
+        menu.joiningRunning=false;
+        menu.chat.cancel(); menu.chatSession.clear(); menu.chatPending=false;
+        menu.nextChatPoll=0;
+        menu.update();
+        menuRequire(menu.chatAction==AdmissionOperation::ChatEnter,
+            "Chat does not enter automatically from the first screen");
+        menuRequire(!menu.hasChildWindow(),"Automatic chat entry opened a name confirmation");
+        menu.chat.cancel();
+        menu.chatPending=true;
+        menu.chatAction=AdmissionOperation::ChatPoll;
+        menu.chatSession="expired-session";
+        menu.chat.status_=RoomAdmissionClient::Status::Failed;
+        menu.chat.response_.errorCode="session_expired";
+        menu.updateLobbyChat();
+        menuRequire(menu.chatSession.empty() && !menu.chatPending,
+            "Expired chat session was not released");
+        menu.nextChatPoll=0;
+        menu.update();
+        menuRequire(menu.chatAction==AdmissionOperation::ChatEnter,
+            "Expired chat requires manual name confirmation");
+        menu.chat.cancel(); menu.chatPending=true; menu.chatAction=AdmissionOperation::ChatPoll;
+        menu.chat.status_=RoomAdmissionClient::Status::Succeeded;
+        menu.chat.response_=AdmissionResponse(); menu.chat.response_.ok=true;
+        menu.chat.response_.hasPresence=true; menu.chat.response_.onlineCount=2;
+        menu.chat.response_.waitingNames={"Alice","Bob"};
+        menu.updateLobbyChat();
+        menuRequire(menu.waitingLabel.getText()=="Players waiting: 2", "Waiting count not shown");
+        menuRequire(menu.waitingNames.getText()=="Alice, Bob", "Waiting names not shown");
+        menu.chatHistory.setText("Alice: Looking for a campaign partner.\nBob: I can join after this match.");
+        menu.chatLabel.setText("Chatting as " + settingsName);
         menuCapture(menu,"public-chat");
+        menu.chatPending=true; menu.chatAction=AdmissionOperation::ChatPoll;
+        menu.chat.status_=RoomAdmissionClient::Status::Failed;
+        menu.updateLobbyChat();
+        menuRequire(menu.waitingLabel.getText()=="Players waiting"
+            && menu.waitingNames.getText()=="Unable to refresh online players", "Failed poll leaves a stale count");
     }
     {
         GameInitSettings networkInit(getBasename(map,true),readCompleteFile(map),"Prepared custom",false,setup.rules);
         CrossplayMenu menu(networkInit,false,setup.players);
         menuRequire(menu.preparedGame->getFiledata()==init.getFiledata(),"Prepared hosting changed the selected map");
         menuRequire(menu.preparedPlayers.changeEventList.size()==original.changeEventList.size(),"Prepared hosting lost the roster");
-        menuRequire(menu.visibilityChoice.getSelectedIndex()==0,"Private room is not the default");
+        menuRequire(menu.visibilityChoice.getSelectedIndex()==0,"Explicit private room choice was not preserved");
     }
     {
         OptionsMenu menu;
         for(int page=0;page<5;++page) { menu.showPage(page); menuCapture(menu,"settings-"+std::to_string(page)); }
         menuRequire(menu.interfaceSizeDropDownBox.getParent()==&menu.interfaceHBox,"Interface size missing from Settings");
         menuRequire(menu.pages[1].getMinimumSize().y <= menu.pages[1].getSize().y,"Graphics controls overflow");
+        menuRequire(menu.pages[4].getMinimumSize().y <= menu.pages[4].getSize().y,"Advanced controls overflow");
+        menuRequire(menu.diagnosticLogsCheckbox.isChecked()==settings.general.diagnosticLogs,"Diagnostic preference not reflected in Settings");
+        menu.diagnosticLogsCheckbox.setChecked(!settings.general.diagnosticLogs);
+        menu.onChangeOption(true);
+        menuRequire(menu.acceptButton.isEnabled(),"Diagnostic preference change cannot be applied");
+        const bool diagnostics=menu.diagnosticLogsCheckbox.isChecked();
         menu.showPage(2);
         settings.network.metaServer=""; menu.metaServerTextBox.setText("");
         menu.playSFXCheckbox.setChecked(!settings.audio.playSFX);
+        menu.wasdCameraCheckbox.setChecked(true);
+        menu.leftClickOrdersCheckbox.setChecked(true);
+        menu.movementPathsCheckbox.setChecked(false);
         menu.onOptionsOK();
+        menuRequire(settings.general.wasdCamera && settings.general.leftClickOrders && !settings.general.showMovementPaths,"Input options not applied");
+        INIFile savedOptions(getConfigFilepath());
+        menuRequire(settings.general.diagnosticLogs==diagnostics
+            && savedOptions.getBoolValue("General","Diagnostic Logs",!diagnostics)==diagnostics,"Diagnostic preference not applied/persisted");
+        menuRequire(savedOptions.getBoolValue("General","WASD Camera",false)
+            && savedOptions.getBoolValue("General","Left Click Orders",false)
+            && !savedOptions.getBoolValue("General","Movement Paths",true),"Input options not persisted");
         menuRequire(menu.isQuiting(),"Unchanged legacy network field blocked audio apply");
     }
+    { AboutMenu menu;menuCapture(menu,"about"); }
+    { HowToPlayMenu menu;menuCapture(menu,"help"); }
+    { ModMenu menu;menuCapture(menu,"mods"); }
+    { DisplayMenu menu;menuCapture(menu,"display"); }
+    { auto rules=settings.gameOptions;GameOptionsWindow menu(rules);menuCapture(menu,"game-rules"); }
     SDL_Log("MENU_PROBE_PASS: home, campaign retry, mission ranges, custom roster, online transition, settings validation and rendering");
     return MENU_QUIT_DEFAULT;
 }

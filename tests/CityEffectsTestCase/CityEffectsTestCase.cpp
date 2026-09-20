@@ -514,19 +514,65 @@ TEST_CASE("computeDemandValves: empty city produces positive R demand",
     CHECK(vo.resValve >= 0);
 }
 
-TEST_CASE("computeDemandValves: empty C and I demand cannot drain into a bootstrap deadlock",
+TEST_CASE("computeDemandValves: empty industrial demand retains its startup safeguard",
           "[city-effects][valves][regression]") {
     ValveInputs vi;
     vi.taxRate = 7;
 
     for (int tick = 0; tick < 8; ++tick) {
         const auto vo = computeDemandValves(vi);
-        CHECK(vo.comValve >= 0);
         CHECK(vo.indValve >= 0);
         vi.resValve = vo.resValve;
         vi.comValve = vo.comValve;
         vi.indValve = vo.indValve;
     }
+}
+
+TEST_CASE("Commercial demand starts before the first shop opens",
+          "[city-effects][valves][regression]") {
+    ValveInputs in;
+    // An undersized market reduces demand, as in Micropolis; commercial
+    // population need not exist for either negative or positive demand.
+    CHECK(computeDemandValves(in).comValve < 0);
+    // Harkonnen's captured opening had ten industrial residents and no
+    // commercial residents, yet C remained zero on every scan.
+    in.indPop = in.prevIndPop = 10;
+    CHECK(computeDemandValves(in).comValve > 0);
+    in = ValveInputs{};
+    in.resPop = in.prevResPop = 40;
+    const auto first = computeDemandValves(in);
+    REQUIRE(first.comValve > 0);
+    in.comValve = first.comValve;
+    CHECK(computeDemandValves(in).comValve > first.comValve);
+
+    // Current opening: residents plus industrial jobs, no shops yet.
+    in.indPop = in.prevIndPop = 5;
+    in.comValve = 0;
+    CHECK(computeDemandValves(in).comValve > 0);
+
+    // The normal tax penalty still applies to the startup market.
+    in.taxRate = 20;
+    CHECK(computeDemandValves(in).comValve <= 0);
+}
+
+TEST_CASE("Empty commercial population uses the raw Micropolis market projection",
+          "[city-effects][valves][regression]") {
+    ValveInputs in;
+    // Two worker-equivalents / 3.7 market divisor, with default labour 1:
+    // (2 / 3.7 - 1) * 600 truncates to -275 at neutral 7% tax.
+    in.resPop = in.prevResPop = 16;
+    CHECK(computeDemandValves(in).comValve == -275);
+    in.comValve = -275;
+    CHECK(computeDemandValves(in).comValve == -550);
+    in.comValve = -1400;
+    CHECK(computeDemandValves(in).comValve == -kComValveRange);
+
+    // The same raw projection recovers demand as the market grows.
+    in.resPop = in.prevResPop = 40;
+    in.comValve = 0;
+    CHECK(computeDemandValves(in).comValve == 210);
+    in.resPop = in.prevResPop = 80;
+    CHECK(computeDemandValves(in).comValve == 600); // ratio capped at 2
 }
 
 TEST_CASE("computeDemandValves: jobs-only loaded history does not collapse labor demand",
@@ -1420,4 +1466,36 @@ TEST_CASE("Road access cannot move police coverage into another district", "[cit
     map.tiles[5*64+26].value=false;
     const auto disconnected=DuneCity::policeSource(map,24,5,2,2,1000,100,true);
     CHECK(disconnected.x==24); CHECK(disconnected.y==5); CHECK(disconnected.strength==500);
+}
+
+TEST_CASE("Spectator city runtime restores derived state and rejects invalid dimensions or truncation", "[city][spectator]") {
+    CitySimulation source;
+    source.init(23,17); // Include partial 2x2 and 3x3 cache blocks.
+    source.setCityEffectsEnabled(false);
+    source.getHouseStateMut(0).taxBaseEighths=123;
+    source.getHouseStateMut(0).civicDemandBlocked=5;
+    OMemoryStream saved;
+    source.saveObserverRuntime(saved);
+    CitySimulation restored;
+    restored.init(23,17);
+    SECTION("exact runtime survives without a growth or effects pass") {
+        IMemoryStream input(saved.getData(),saved.getDataLength());
+        restored.loadObserverRuntime(input);
+        REQUIRE(input.getRemainingLength()==0);
+        REQUIRE_FALSE(restored.areCityEffectsEnabled());
+        REQUIRE(restored.getHouseState(0).taxBaseEighths==123);
+        REQUIRE(restored.getHouseState(0).civicDemandBlocked==5);
+        OMemoryStream again;
+        restored.saveObserverRuntime(again);
+        REQUIRE(std::string(saved.getData(),saved.getDataLength())==std::string(again.getData(),again.getDataLength()));
+    }
+    SECTION("a different map cannot consume the cache payload") {
+        restored.init(24,17);
+        IMemoryStream input(saved.getData(),saved.getDataLength());
+        REQUIRE_THROWS(restored.loadObserverRuntime(input));
+    }
+    SECTION("a truncated layer cannot become a complete checkpoint") {
+        IMemoryStream input(saved.getData(),saved.getDataLength()-1);
+        REQUIRE_THROWS(restored.loadObserverRuntime(input));
+    }
 }

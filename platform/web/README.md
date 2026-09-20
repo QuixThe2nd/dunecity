@@ -20,7 +20,7 @@ streams and the WebRTC transport include its headers, so both native and
 browser builds need it:
 
 ```bash
-cd platform/web && npm install
+npm ci --prefix platform/web
 ```
 
 ## Reproducible build
@@ -86,15 +86,15 @@ verbatim copy of the pinned package's own build output: `npm install` in
 `platform/web` runs the package's `prepare` script, which builds
 `node_modules/p2pkit/dist/p2pkit.iife.js` itself; the package version is
 pinned to an exact commit in `platform/web/package.json`
-(`github:QuixThe2nd/p2pkit#<exact-commit>`; bumping the pin is a deliberate
+(`git+https://github.com/QuixThe2nd/p2pkit.git#<exact-commit>`; bumping the pin is a deliberate
 upgrade). `tools/web/build-emscripten.sh` prepends the bundle to `dunecity.js`
-so the runtime resolves it without a separate script tag; because the bundle
-is committed, no npm/network access is needed at wasm build time.
+so the runtime resolves it without a separate script tag; the installed SDK headers and glue are also required at wasm build time.
+After dependencies are installed, a build can run without network access.
 
 After bumping the p2pkit pin, regenerate and re-commit the bundle:
 
 ```bash
-cd platform/web && npm install
+npm ci --prefix platform/web
 node tools/web/build-p2pkit-iife.mjs     # or: cd platform/web && npm run build:iife
 ```
 
@@ -123,3 +123,45 @@ HTTP implementation, which already separates Emscripten from native libcurl.
 The build foundation does not change gameplay routing: the WebRTC handshake
 runs through the pinned p2pkit npm dependency while game packets stay on native binary
 data channels.
+
+## Matchmaking service (required for Find Match)
+
+This is a separate WebSocket service from the PHP direct-play room directory.
+Building or merging the game does not deploy it. Deploy the
+[`bootstrapping-server`](https://github.com/QuixThe2nd/p2pkit/tree/257f3c8eb0c0cf373298225e54c8d09d2f896a42/bootstrapping-server)
+from the same immutable revision as `package.json`. Install its dependencies
+and run `node server.js`; it listens on `127.0.0.1:8788` by default.
+For local testing, `node platform/web/test/fixtures/bootstrapping-server.js`
+runs an exact copy of that entry point using the installed `ws` dependency.
+
+In production, terminate TLS at the web proxy and forward WebSocket upgrades
+to that loopback service. Preserve the external Host and Origin headers: the
+server accepts same-host browser origins (and localhost for development).
+The default SDK endpoint is `wss://<page host>` (or `ws://` on HTTP pages).
+To use a dedicated proxy path, load this configuration before `dunecity.js`:
+
+```js
+window.DUNECITY_WEBRTC_CONFIG = {
+  signaling: 'wss://your-game.example/matchmaking',
+  iceServers: [{ urls: 'stun:your-stun.example:3478' }]
+};
+```
+
+The service pairs the next two finders globally via `find`, `cancel`, and `sig`
+frames. Run one shared process for this queue; it has no authentication or
+persistence, and its configured queue cap defaults to 200. Restarting it loses
+waiting/pairing state. It sees both peers' SDP and ICE candidates and must be
+trusted: this flow does not pin peer fingerprints through the direct-room
+admission protocol, so a malicious signaling service can substitute peers.
+
+Without `iceServers`, the SDK contacts Google and Twilio STUN servers. An empty
+array uses only host candidates. There is no default TURN relay, so some NAT
+pairs cannot connect; operators may explicitly supply their own ICE configuration.
+This matchmaking configuration does not change the room flow's STUN-only policy.
+
+The fixture records its source revision and SHA-256 in a test. Verify upstream
+bytes with `node tools/web/sync-matchmaking-fixture.mjs --check`; after a pin
+upgrade, run it without `--check`, review the diff, and update the recorded hash.
+
+Browser peer lifetime regressions run under wasm32 AddressSanitizer with
+`tests/wasm/run-webrtc-peer-lifecycle.sh` after sourcing the pinned emsdk.

@@ -25,6 +25,7 @@
 #include <CursorManager.h>
 
 #include <globals.h>
+#include <CursorManager.h>
 #include <sand.h>
 
 CutScene::CutScene()
@@ -37,7 +38,7 @@ CutScene::~CutScene()
     // Fixes some flickering
     SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
     SDL_RenderClear(renderer);
-    SDL_RenderPresent(renderer);
+    presentWithCursor();
 }
 
 void CutScene::run()
@@ -66,7 +67,7 @@ void CutScene::run()
                         // Fixes some flickering
                         SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
                         SDL_RenderClear(renderer);
-                        SDL_RenderPresent(renderer);
+                        presentWithCursor();
                         quiting = true;
                     }
                 }

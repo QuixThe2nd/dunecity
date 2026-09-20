@@ -26,6 +26,7 @@
 #include <Command.h>
 #include <players/Player.h>
 #include <Game.h>
+#include <Network/NetworkManager.h>
 
 #include <ObjectBase.h>
 #include <GUI/ObjectInterfaces/ObjectInterface.h>
@@ -72,22 +73,20 @@ GameInterface::GameInterface() : Window(0,0,0,0) {
     windowWidget.addWidget(&sideBar, dest);
 
     // add buttons
-    windowWidget.addWidget(&topBarHBox,Point(5,5),
-                            Point(getRendererWidth() - sideBar.getSize().x, topBar.getSize().y - 10));
+    windowWidget.addWidget(&topBarHBox,Point(5,2),
+                            Point(getRendererWidth() - sideBar.getSize().x, topBar.getSize().y - 4));
 
     topBarHBox.addWidget(&newsticker, 3.0);
 
     topBarHBox.addWidget(Spacer::create());
 
-    optionsButton.setTextures(  pGFXManager->getUIGraphic(UI_Options, interfaceHouse),
-                                pGFXManager->getUIGraphic(UI_Options_Pressed, interfaceHouse));
+    optionsButton.setText(_("Options"));
     optionsButton.setOnClick(std::bind(&Game::onOptions, currentGame));
     topBarHBox.addWidget(&optionsButton);
 
     topBarHBox.addWidget(Spacer::create());
 
-    mentatButton.setTextures(   pGFXManager->getUIGraphic(UI_Mentat, interfaceHouse),
-                                pGFXManager->getUIGraphic(UI_Mentat_Pressed, interfaceHouse));
+    mentatButton.setText(_("Mentat"));
     mentatButton.setOnClick(std::bind(&Game::onMentat, currentGame));
     topBarHBox.addWidget(&mentatButton);
 
@@ -137,6 +136,16 @@ GameInterface::GameInterface() : Window(0,0,0,0) {
     dune2rZoomButton.setVisible(showViewControls);
     dune2rVisualButton.setVisible(showViewControls);
 
+    // A persistent map-screen notice, clear of the population and view controls.
+    joinRequestButton.setText("Request waiting approval");
+    joinRequestButton.setTooltipText("Waiting for the host. Click for request options.");
+    joinRequestButton.setTextColor(COLOR_RGB(255,255,255));
+    joinRequestButton.setOnClick(std::bind(&Game::onJoinRequests, currentGame));
+    joinRequestButton.setVisible(false);
+    windowWidget.addWidget(&joinRequestButton,
+        Point(std::max(8, viewControlsRight - 400), viewControlsY + viewButtonHeight + 12),
+        Point(400, 36));
+
     // add radar
     const Point radarOrigin(getRendererWidth() - sideBar.getSize().x + SIDEBAR_COLUMN_WIDTH, 0);
     const Point radarSize = radarView.getMinimumSize();
@@ -183,6 +192,14 @@ GameInterface::GameInterface() : Window(0,0,0,0) {
         Point(getRendererWidth() - sideBar.getSize().x + 24, autoRepairY),
         Point(ornithopterButtonWidth, 36));
 
+    movementPathsButton.setText(_("Movement paths"));
+    movementPathsButton.setTooltipText(_("Show or hide movement paths for selected units"));
+    movementPathsButton.setToggleButton(true);
+    movementPathsButton.setOnClick([]() { currentGame->toggleMovementPaths(); });
+    windowWidget.addWidget(&movementPathsButton,
+        Point(getRendererWidth()-sideBar.getSize().x+24,autoRepairY+40),
+        Point(ornithopterButtonWidth,36));
+
     // Local display controls: no simulation command or save-state change needed.
     auto addOverlayButton = [&](TextButton& button, const char* label,
                                 const char* tooltip, DuneCity::CityOverlayMode mode, int y) {
@@ -200,26 +217,13 @@ GameInterface::GameInterface() : Window(0,0,0,0) {
     };
     addOverlayButton(landValueOverlayButton, "Land Value",
         "Show land value: green is high, red is low. Click again to hide (Shift+5; Shift+1 off).",
-        DuneCity::CityOverlayMode::LandValue, autoRepairY + 40);
+        DuneCity::CityOverlayMode::LandValue, autoRepairY + 80);
     addOverlayButton(crimeOverlayButton, "Crime",
         "Show crime: red is high, green is low. Click again to hide (Shift+6; Shift+1 off).",
-        DuneCity::CityOverlayMode::CrimeRate, autoRepairY + 80);
+        DuneCity::CityOverlayMode::CrimeRate, autoRepairY + 120);
     addOverlayButton(pollutionOverlayButton, "Pollution",
         "Show pollution: green is clean, purple is polluted. Click again to hide (Shift+4; Shift+1 off).",
-        DuneCity::CityOverlayMode::Pollution, autoRepairY + 120);
-
-    // Build lists use the sidebar's full height; keep skip beside it.
-    const int skipWidth = std::max(ornithopterButtonWidth,
-        GUIStyle::getInstance().getMinimumButtonSize(_("Skip mission")).x);
-    skipMissionButton.setText(_("Skip mission"));
-    skipMissionButton.setTooltipText(_("Win this campaign mission and continue to the next level."));
-    skipMissionButton.setOnClick(std::bind(&Game::onSkipMission, currentGame));
-    const bool campaign = isCampaignGameType(currentGame->getGameInitSettings().getGameType());
-    skipMissionButton.setVisible(campaign);
-    skipMissionButton.setEnabled(currentGame->canSkipMission());
-    windowWidget.addWidget(&skipMissionButton,
-        Point(viewControlsRight - skipWidth, getRendererHeight() - 32),
-        Point(skipWidth, 28));
+        DuneCity::CityOverlayMode::Pollution, autoRepairY + 160);
 
     // add chat manager
     windowWidget.addWidget(&chatManager, Point(20, 60), Point(getRendererWidth() - sideBar.getSize().x, 360));
@@ -293,6 +297,7 @@ GameInterface::~GameInterface() {
 }
 
 void GameInterface::draw(Point position) {
+    updateJoinRequestButton();
     const bool dune2rActive = ModManager::instance().isInitialized()
         && ModManager::instance().getActiveModName() == "Dune2R";
     dune2rZoomButton.setVisible(dune2rActive);
@@ -447,14 +452,56 @@ void GameInterface::draw(Point position) {
     }
 }
 
+void GameInterface::updateJoinRequestButton() {
+    std::string text, tooltip;
+    bool pending = false;
+    auto* direct = pNetworkManager ? pNetworkManager->getDirectTransport() : nullptr;
+    if(direct && !pNetworkManager->lateJoinPaused()) {
+        if(pNetworkManager->isServer()) {
+            const auto& requests = direct->joinRequests();
+            const auto count = std::count_if(requests.begin(), requests.end(),
+                [](const auto& request) { return !request.spectator; });
+            if(count) {
+                text = "Join requests (" + std::to_string(count) + "): waiting approval";
+                tooltip = "Click to approve or reject a request to play.";
+                pending = true;
+            }
+        } else if(currentGame->isSpectating()) {
+            const auto& state = direct->playRequestState();
+            if(state == "pending") { text = "Request waiting approval"; pending = true; }
+            else if(state == "approved") text = "Request approved - joining";
+            else if(state == "declined") text = "Request declined - still spectating";
+            else if(state == "error") text = "Request failed - click to try again";
+            tooltip = pending ? "Waiting for the host. Click for request options."
+                              : "Click for request-to-play options.";
+        }
+    }
+    joinRequestButton.setVisible(!text.empty());
+    if(text.empty()) return;
+    if(joinRequestButton.getText() != text) {
+        joinRequestButton.setText(text);
+        joinRequestButton.setTooltipText(tooltip);
+    }
+    // Flash the colour, never the hit target or readable label. Wall time keeps
+    // the notice pulsing even when the simulation is waiting for network data.
+    const bool flash = pending && (SDL_GetTicks() / 750) % 2 == 0;
+    if(flash != joinRequestFlash) {
+        joinRequestFlash = flash;
+        joinRequestButton.setTextColor(flash ? COLOR_RGB(255,210,64) : COLOR_RGB(255,255,255));
+    }
+}
+
 void GameInterface::updateObjectInterface() {
-    skipMissionButton.setEnabled(currentGame->canSkipMission());
     const auto& selection = currentGame->getSelectedList();
 
     const std::string repairText = pLocalHouse && pLocalHouse->isAutoRepairEnabled()
         ? _("Auto repair on") : _("Auto repair off");
     if (autoRepairButton.getText() != repairText) autoRepairButton.setText(repairText);
     autoRepairButton.setVisible(selection.empty() && pLocalHouse && pLocalPlayer);
+    movementPathsButton.setVisible(selection.empty());
+    movementPathsButton.setToggleState(settings.general.showMovementPaths);
+    const std::string pathsText=settings.general.showMovementPaths ? _("Paths on") : _("Paths off");
+    if(movementPathsButton.getText()!=pathsText) movementPathsButton.setText(pathsText);
     const bool showOverlayButtons = selection.empty() && currentGame->isCitySimEnabled();
     landValueOverlayButton.setVisible(showOverlayButtons);
     crimeOverlayButton.setVisible(showOverlayButtons);

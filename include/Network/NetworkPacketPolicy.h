@@ -180,6 +180,11 @@ inline PacketVerdict classifyPacket(const PacketContext& context) {
             if(isHost)       return PacketVerdict::Accept;
             return fromHost ? PacketVerdict::Accept : PacketVerdict::RejectNotHostPeer;
 
+        case NETWORKPACKET_JOIN_ACK:
+            if(!identified) return PacketVerdict::RejectUnidentifiedPeer;
+            if(!established) return PacketVerdict::RejectPreHandshake;
+            return isHost ? PacketVerdict::Accept : PacketVerdict::RejectWrongRole;
+        case NETWORKPACKET_JOIN_SYNC:
         case NETWORKPACKET_COOP_MISSION:
             // Campaign continuation (including the empty settings used to exit) arrives
             // after the previous simulation, while the session is still marked InGame.

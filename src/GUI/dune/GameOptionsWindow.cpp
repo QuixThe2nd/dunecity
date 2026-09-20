@@ -31,7 +31,8 @@ GameOptionsWindow::GameOptionsWindow(SettingsClass::GameOptionsClass& initialGam
 
     captionlabel.setText(_("Game Rules"));
     captionlabel.setAlignment(Alignment_HCenter);
-    vbox.addWidget(&captionlabel);
+    captionlabel.setTextFontSize(22);
+    vbox.addWidget(&captionlabel,32);
     vbox.addWidget(VSpacer::create(3));
     vbox.addWidget(&hbox);
     vbox.addWidget(VSpacer::create(6));
@@ -91,7 +92,7 @@ GameOptionsWindow::GameOptionsWindow(SettingsClass::GameOptionsClass& initialGam
     vboxLeft.addWidget(VSpacer::create(6));
 
     maxHarvestersOverrideCheckbox.setText(_("Override max. number of harvesters"));
-    maxHarvestersOverrideCheckbox.setTooltipText(_("If checked the maximum number of harvesters per house can be overridden; otherwise it is based on map size from ObjectData.ini."));
+    maxHarvestersOverrideCheckbox.setTooltipText(_("Limit harvesters per house. Unchecked or 0 means unlimited; each AI chooses its own economic target."));
     maxHarvestersOverrideCheckbox.setChecked(gameOptions.maximumNumberOfHarvestersOverride >= 0);
     maxHarvestersOverrideCheckbox.setOnClick([this]() { maxHarvestersOverrideTextBox.setVisible(maxHarvestersOverrideCheckbox.isChecked()); });
     maxHarvestersOverrideHBox.addWidget(&maxHarvestersOverrideCheckbox);

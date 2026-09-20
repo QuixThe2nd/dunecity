@@ -124,9 +124,9 @@ private:
     ListBox         gameList;
 
     // bottom row of buttons
-    HBox            buttonHBox;
     TextButton      joinButton;
 #endif
+    HBox            buttonHBox;
     TextButton      backButton;
 };
 

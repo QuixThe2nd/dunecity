@@ -5,6 +5,23 @@
 #include <sstream>
 #include <cstdlib>
 
+TEST_CASE("Disabled diagnostics close structured capture and skip subsequent records", "[ai][telemetry]") {
+    const auto root=std::filesystem::temp_directory_path()/("dunecity-disabled-"+
+        std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+    auto& writer=AITelemetry::log();
+    REQUIRE(writer.start(root.string(),AITelemetry::Record()));
+    const auto file=writer.path();
+    AITelemetry::startGame(AITelemetry::Record(),false);
+    REQUIRE_FALSE(writer.enabled());
+    const auto size=std::filesystem::file_size(file);
+    REQUIRE(writer.write(1,0,0,"decision",AITelemetry::Record())==0);
+    writer.frameStall(1,200000,AITelemetry::Record());
+    writer.performance(1,0,"frame",200000);
+    writer.flushPerformance(1,true);
+    REQUIRE(std::filesystem::file_size(file)==size);
+    std::filesystem::remove_all(root);
+}
+
 TEST_CASE("AI telemetry escapes text and preserves numeric/nested fields", "[ai][telemetry]") {
     const auto row = AITelemetry::Record().set("reason", "a\"b\n\\c\t")
         .set("demand", -300).set("state", AITelemetry::Record().set("credits", 17922)).json();
@@ -75,6 +92,8 @@ TEST_CASE("Telemetry thins repeated growth observations without dropping actual 
     writer.stop();
     std::ifstream input(path); std::stringstream contents; contents<<input.rdbuf();
     REQUIRE(contents.str().find("\"event\":\"game_summary\"")!=std::string::npos);
+    REQUIRE(contents.str().find("\"event\":\"capture_limit\"")!=std::string::npos);
+    REQUIRE(contents.str().find("\"terminal_events_retained\":1")!=std::string::npos);
     REQUIRE(contents.str().find("\"event\":\"session_end\"")!=std::string::npos);
     std::filesystem::remove_all(root);
 }
@@ -116,5 +135,30 @@ TEST_CASE("Performance capture aggregates every sample and flushes partial windo
     REQUIRE(contents.str().find("ai.build")==std::string::npos);
     if(const char* artifact=std::getenv("DUNECITY_PERFORMANCE_TEST_EXPORT"))
         std::filesystem::copy_file(file,artifact,std::filesystem::copy_options::overwrite_existing);
+    std::filesystem::remove_all(root);
+}
+
+TEST_CASE("Every substantial frame stall is timestamped including smaller consecutive stalls", "[ai][telemetry][performance]") {
+    const auto root=std::filesystem::temp_directory_path()/("dunecity-stalls-"+
+        std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+    AITelemetry::DecisionLog writer;
+    REQUIRE(writer.start(root.string(),AITelemetry::Record()));
+    const auto file=writer.path();
+    writer.frameStall(10,99999,AITelemetry::Record().set("kind","game_frame"));
+    writer.frameStall(11,750000,AITelemetry::Record().set("kind","game_frame").set("ai_us",730000));
+    writer.frameStall(12,100000,AITelemetry::Record().set("kind","game_frame"));
+    writer.frameStall(13,1500000,AITelemetry::Record().set("kind","between_frames"));
+    writer.stop();
+    std::ifstream in(file);std::string line,all;int stalls=0;
+    while (std::getline(in,line)) {
+        if (line.find("\"event\":\"frame_stall\"")==std::string::npos) continue;
+        ++stalls;all+=line;
+        REQUIRE(line.find("\"session_wall_us\":")!=std::string::npos);
+    }
+    REQUIRE(stalls==3);
+    REQUIRE(all.find("\"duration_us\":100000")!=std::string::npos);
+    REQUIRE(all.find("\"duration_us\":1500000")!=std::string::npos);
+    REQUIRE(all.find("\"ai_us\":730000")!=std::string::npos);
+    REQUIRE(all.find("\"kind\":\"between_frames\"")!=std::string::npos);
     std::filesystem::remove_all(root);
 }

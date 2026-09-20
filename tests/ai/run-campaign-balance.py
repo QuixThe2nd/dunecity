@@ -4,11 +4,12 @@
 Uses the existing macOS Ninja build. Access-control relaxation is restricted to
 this diagnostic executable; no test hooks are compiled into the shipped game.
 --attack-percent sets the legacy Easy fraction (zero disables dispatch); campaign
-Easy/Medium use the half-army policy plus alliance caps. Results
+Easy/Medium use the half-army policy plus per-house wave caps. Results
 and structured AI decision logs remain in --output-dir. This is a simulation
 comparison, not a substitute for the browser playtest or human playtesting.
 """
 import argparse
+import configparser
 import json
 import os
 from pathlib import Path
@@ -16,18 +17,38 @@ import shlex
 import subprocess
 
 root = Path(__file__).resolve().parents[2]
+house_names = ('harkonnen','atreides','ordos','fremen','sardaukar','mercenary','neutral','rebels','custom','wildspade','kleshmersh','tharpique')
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('--build-dir', type=Path, default=root / 'build')
 parser.add_argument('--output-dir', type=Path, required=True)
+parser.add_argument('--custom-map', type=Path, help='Run all occupied slots of a custom map instead of the campaign')
+parser.add_argument('--free-for-all', action='store_true', help='Give each custom-map house its own team')
+parser.add_argument('--capture-mib', type=int, default=1024, help='Diagnostic capture allowance; shipped default is unchanged')
+parser.add_argument('--wall-timeout', type=int, default=1800, help='Maximum wall seconds for the simulation')
 parser.add_argument('--level', type=int, choices=range(1,10), default=4)
-parser.add_argument('--house', choices=('harkonnen','atreides','ordos'), default='harkonnen')
+parser.add_argument('--mod', choices=('vanilla','dunecity'), default='vanilla')
+parser.add_argument('--house', choices=tuple(h for h in house_names if h!='neutral'), default='harkonnen')
+parser.add_argument('--roster', help='Explicit custom-map house:team slots in lobby order, comma-separated')
 parser.add_argument('--harvester-limit', type=int, choices=range(-1,101), default=-1)
+parser.add_argument('--structures-degrade-on-concrete', action=argparse.BooleanOptionalAction, default=None)
 parser.add_argument('--partner-difficulty', choices=('easy','medium','hard','brutal'), default='easy')
+parser.add_argument('--enemy-ai', choices=('quantbot','ai-player'), default='quantbot', help='Enemy controller family; AI Player has Easy/Medium/Hard')
 parser.add_argument('--enemy-difficulty', choices=('easy','medium','hard','brutal'), default='easy')
+parser.add_argument('--shared-spending-probe', action='store_true')
+parser.add_argument('--controls-probe', action='store_true')
+parser.add_argument('--sourceforge-probe', action='store_true')
+parser.add_argument('--harvester-safety-probe', action='store_true')
+parser.add_argument('--city-placement-probe', action='store_true')
+parser.add_argument('--opening-economy-probe', action='store_true')
 parser.add_argument('--starport-probe', action='store_true', help='Exercise reserved cash with above-normal Starport prices')
 parser.add_argument('--helper-economy-probe', action='store_true', help='Verify advanced campaign helper worker investment and paid imports')
 parser.add_argument('--stats-probe', action='store_true', help='Verify campaign results with a shared human/AI house')
-parser.add_argument('--pressure-probe', action='store_true', help='Verify campaign assault slots, recovery and save state')
+parser.add_argument('--nuclear-probe', action='store_true')
+parser.add_argument('--reactor-safety-probe', action='store_true')
+parser.add_argument('--radar-probe', action='store_true')
+parser.add_argument('--army-probe', action='store_true')
+parser.add_argument('--factory-recovery-probe', action='store_true')
+parser.add_argument('--pressure-probe', action='store_true', help='Verify campaign wave readiness, survivor independence and save state')
 parser.add_argument('--defence-probe', action='store_true', help='Verify retaliation and base/harvester reinforcements')
 parser.add_argument('--repair-probe', action='store_true', help='Verify experienced campaign bots replace missing repair yards')
 parser.add_argument('--pacing-probe', action='store_true', help='Verify enemy worker caps and small-wave readiness')
@@ -37,7 +58,60 @@ parser.add_argument('--attack-percent', type=int, choices=range(101), default=25
 args = parser.parse_args()
 if not 1 <= args.minutes <= 60 or not 0 <= args.seed <= 0xffffffff:
     parser.error('Use 1–60 minutes and a 32-bit unsigned seed.')
+if not 256 <= args.capture_mib <= 4096 or args.wall_timeout < 1:
+    parser.error('Use 256–4096 MiB of capture space and a positive wall timeout.')
+if args.free_for_all and not args.custom_map:
+    parser.error('--free-for-all requires --custom-map.')
+if args.enemy_ai == 'ai-player' and args.enemy_difficulty == 'brutal':
+    parser.error('AI Player has no Brutal controller.')
+if not args.custom_map and (args.roster or args.house not in house_names[:3]):
+    parser.error('Explicit rosters and additional houses require --custom-map.')
+roster = []
+if args.custom_map:
+    scenario = configparser.ConfigParser(strict=False, interpolation=None)
+    with args.custom_map.open() as source_file:
+        scenario.read_file(source_file)
+    sections = {s.lower(): s for s in scenario.sections()}
+    names = house_names
+    assigned = set()
+    for name in names:
+        if name in sections:
+            brain = scenario[sections[name]].get('brain', 'Team2').lower()
+            team = int(brain[4:]) if brain.startswith('team') else (1 if name == args.house else 2)
+            roster.append((names.index(name), team))
+            assigned.add(name)
+    # Generic slots use the chosen player house first, then distinct opponents.
+    # The engine still chooses their spawn slots using the supplied match seed.
+    candidates = [args.house] + [n for n in ('harkonnen', 'atreides', 'ordos', 'sardaukar', 'fremen', 'mercenary') if n != args.house]
+    for slot in range(1, 7):
+        section = sections.get(f'player{slot}')
+        if not section:
+            continue
+        name = next((n for n in candidates if n not in assigned), None)
+        if name is None:
+            parser.error('Map has more occupied slots than supported houses.')
+        brain = scenario[section].get('brain', f'Team{slot}').lower()
+        team = int(brain[4:]) if brain.startswith('team') else slot
+        roster.append((names.index(name), team))
+        assigned.add(name)
+    if args.house not in assigned:
+        parser.error('Chosen player house has no slot on this map.')
+    if args.roster:
+        try:
+            requested = [(names.index(name), int(team)) for name,team in
+                         (slot.split(':') for slot in args.roster.lower().split(','))]
+        except ValueError:
+            parser.error('Roster must contain known house:team entries.')
+        if (len(requested)!=len(roster) or len({h for h,_ in requested})!=len(requested)
+                or any(t<1 for h,t in requested)
+                or names.index(args.house) not in {h for h,_ in requested}):
+            parser.error('Roster must match map slot count, use distinct playable houses and include --house.')
+        roster=requested
+    if args.free_for_all:
+        roster = [(house, i + 1) for i, (house, _) in enumerate(roster)]
 build, out = args.build_dir.resolve(), args.output_dir.resolve()
+source_commit = subprocess.check_output(['git','rev-parse','HEAD'],cwd=root,text=True).strip()
+source_modified = bool(subprocess.check_output(['git','status','--porcelain'],cwd=root,text=True).strip())
 out.mkdir(parents=True, exist_ok=False)
 subprocess.run(['python3',str(root/'scripts/check-build-deps.py'),str(build)],check=True,cwd=root)
 target = 'bin/dunecity.app/Contents/MacOS/dunecity'
@@ -75,9 +149,31 @@ with (out/'build.log').open('w') as log:
     subprocess.run(compile_command,cwd=build,stdout=log,stderr=subprocess.STDOUT,check=True)
     subprocess.run(link,cwd=build,stdout=log,stderr=subprocess.STDOUT,check=True)
 env = dict(os.environ,DUNECITY_USERDIR=str(out/'profile'),SDL_VIDEODRIVER='dummy',SDL_AUDIODRIVER='dummy',
-           BALANCE_LEVEL=str(args.level),BALANCE_PARTNER=args.partner_difficulty,BALANCE_SEED=str(args.seed),BALANCE_MINUTES=str(args.minutes),
-           BALANCE_ATTACK_PERCENT=str(args.attack_percent),BALANCE_ENEMY=args.enemy_difficulty,
-           BALANCE_HOUSE=str(('harkonnen','atreides','ordos').index(args.house)),BALANCE_HARVESTER_LIMIT=str(args.harvester_limit))
+           BALANCE_MOD=args.mod,BALANCE_LEVEL=str(args.level),BALANCE_PARTNER=args.partner_difficulty,BALANCE_SEED=str(args.seed),BALANCE_MINUTES=str(args.minutes),
+           BALANCE_ATTACK_PERCENT=str(args.attack_percent),BALANCE_ENEMY=args.enemy_difficulty,BALANCE_ENEMY_AI=args.enemy_ai,
+           BALANCE_HOUSE=str(house_names.index(args.house)),BALANCE_HARVESTER_LIMIT=str(args.harvester_limit))
+env['BALANCE_CAPTURE_MIB'] = str(args.capture_mib)
+if args.structures_degrade_on_concrete is not None:
+    env['BALANCE_DEGRADE_ON_CONCRETE'] = str(int(args.structures_degrade_on_concrete))
+if args.custom_map:
+    env['BALANCE_CUSTOM_MAP'] = str(args.custom_map.resolve())
+    env['BALANCE_ROSTER'] = ','.join(f'{house}:{team}' for house, team in roster)
+(out/'setup.json').write_text(json.dumps({**vars(args), 'resolved_roster': roster}, default=str, indent=2)+'\n')
+if args.shared_spending_probe: env['BALANCE_SHARED_SPENDING_PROBE'] = '1'
+if args.harvester_safety_probe: env['BALANCE_HARVESTER_SAFETY_PROBE'] = '1'
+if args.sourceforge_probe: env['BALANCE_SOURCEFORGE_PROBE'] = '1'
+if args.controls_probe or args.sourceforge_probe:
+    if args.controls_probe: env['BALANCE_CONTROLS_PROBE'] = '1'
+    profile = out/'profile'
+    profile.mkdir(exist_ok=True)
+    (profile/'Dune City.ini').write_text('[Video]\nPhysical Width = 640\nPhysical Height = 480\nWidth = 640\nHeight = 480\nInterface Height = 480\nFullscreen = false\n[General]\nPlay Intro = false\n')
+if args.city_placement_probe: env['BALANCE_CITY_PLACEMENT_PROBE'] = '1'
+if args.opening_economy_probe: env['BALANCE_OPENING_ECONOMY_PROBE'] = '1'
+if args.nuclear_probe or args.reactor_safety_probe: env['BALANCE_NUCLEAR_PROBE'] = '1'
+if args.reactor_safety_probe: env['BALANCE_REACTOR_SAFETY_PROBE'] = '1'
+if args.radar_probe: env['BALANCE_RADAR_PROBE'] = '1'
+if args.army_probe: env['BALANCE_ARMY_PROBE'] = '1'
+if args.factory_recovery_probe: env['BALANCE_FACTORY_RECOVERY_PROBE'] = '1'
 if args.starport_probe: env['BALANCE_STARPORT_PROBE'] = '1'
 if args.helper_economy_probe: env['BALANCE_HELPER_ECONOMY_PROBE'] = '1'
 if args.stats_probe: env['BALANCE_STATS_PROBE'] = '1'
@@ -87,15 +183,31 @@ if args.pacing_probe: env['BALANCE_PACING_PROBE'] = '1'
 if args.repair_probe: env['BALANCE_REPAIR_PROBE'] = '1'
 with (out/'run.log').open('w') as log:
     subprocess.run([str(binary),'--window','--showlog'],cwd=out,env=env,
-                   stdout=log,stderr=subprocess.STDOUT,check=True,timeout=600)
+                   stdout=log,stderr=subprocess.STDOUT,check=True,timeout=args.wall_timeout)
 results = [line for line in (out/'run.log').read_text().splitlines() if 'CAMPAIGN_BALANCE_RESULT:' in line]
 if len(results) != 1: raise RuntimeError('Missing campaign result.')
 events = next((out/'profile').rglob('events.jsonl'))
-rows = [json.loads(line) for line in events.read_text().splitlines()]
-summary = {'result':results[0],'sourceCommit':subprocess.check_output(['git','rev-parse','HEAD'],cwd=root,text=True).strip(),
-           'workingTreeModified':bool(subprocess.check_output(['git','status','--porcelain'],cwd=root,text=True).strip()),
-           'metadata':rows[0]['data'],'attacks':[r for r in rows if r['event']=='ground_hunt'],
-           'final':[r for r in rows if r['event']=='game_summary']}
+metadata, attacks, final = None, [], []
+for line in events.open():
+    row = json.loads(line)
+    if row['event'] == 'session_start': metadata = row['data']
+    if row['event'] == 'ground_hunt': attacks.append(row)
+    if row['event'] == 'game_summary': final.append(row)
+    # The pressure fixture switches difficulty in-engine and checks each tier
+    # itself; its Hard/Brutal waves must not inherit the CLI's default Easy cap.
+    if not args.pressure_probe and row['event']=='ground_hunt' and row['data'].get('campaign_limited') and args.enemy_difficulty in ('easy','medium','hard'):
+        d=row['data']
+        # Caps apply to this dispatch. Surviving units from older waves are
+        # deliberately allowed alongside it after the repeat timer expires.
+        if (d['members']>d['alliance_unit_cap']
+                or d['value']>d['alliance_value_cap']
+                or d['alliance_units']>d['alliance_unit_cap']
+                or d['alliance_value']>d['alliance_value_cap']
+                or d['alliance_value']>d['attack_budget']):
+            raise RuntimeError('Automatic campaign force exceeded its wave budget')
+summary = {'result':results[0],'sourceCommit':source_commit,
+           'workingTreeModified':source_modified,
+           'metadata':metadata,'attacks':attacks,'final':final,'resolved_roster':roster,'enemy_controller':args.enemy_ai,'harvester_limit':args.harvester_limit}
 (out/'summary.json').write_text(json.dumps(summary,indent=2)+'\n')
 print(results[0])
 print('Telemetry:',events)

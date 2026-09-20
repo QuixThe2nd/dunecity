@@ -126,6 +126,23 @@ void ZoneStructure::blitToScreen() {
         skinDensity_, skinValueTier_, GFXManager::DuneCityZoneActivity::Idle, 0, anchorX, anchorY);
 }
 
+void ZoneStructure::drawPreview(const SDL_Rect& bounds) const {
+    if(!owner || numImagesX <= 0 || numImagesY <= 0 || bounds.w <= 0 || bounds.h <= 0) return;
+    auto* texture = pGFXManager->getObjPic(graphicID, owner->getHouseID())[1];
+    if(!texture) return;
+    const int frame = fogged ? lastVisibleFrame : curAnimFrame;
+    const auto source = calcSpriteSourceRect(texture, frame % numImagesX, numImagesX,
+                                             frame / numImagesX, numImagesY);
+    const double scale = std::min(double(bounds.w) / source.w, double(bounds.h) / source.h);
+    SDL_Rect destination{0,0,int(source.w*scale),int(source.h*scale)};
+    destination.x = bounds.x + (bounds.w-destination.w)/2;
+    destination.y = bounds.y + (bounds.h-destination.h)/2;
+    SDL_RenderCopy(renderer, texture, &source, &destination);
+    if(!fogged && civicOverlay_ == CivicOverlay::None)
+        pGFXManager->drawDuneCityZone(itemID, owner->getHouseID(), 1, skinDensity_, skinValueTier_,
+            GFXManager::DuneCityZoneActivity::Idle, 0, 0, 0, &bounds);
+}
+
 void ZoneStructure::refreshZonePowerDraw() {
     int density = 0;
     if (currentGameMap && getLocation().isValid()) {

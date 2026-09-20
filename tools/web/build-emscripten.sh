@@ -137,8 +137,7 @@ if [[ ! -s "${P2PKIT_IIFE}" ]]; then
     fi
 fi
 echo "==> prepending p2pkit IIFE to ${JS}"
-cat "${P2PKIT_IIFE}" "${JS}" > "${JS}.tmp"
-mv "${JS}.tmp" "${JS}"
+node "${ROOT}/tools/web/prepend-p2pkit.mjs" "${P2PKIT_IIFE}" "${JS}"
 
 node "${ROOT}/tools/web/verify-dunecity-js.mjs" --built "${JS}"
 python3 "${ROOT}/scripts/check-web-mods.py" --build-root "${BUILD_DIR}"

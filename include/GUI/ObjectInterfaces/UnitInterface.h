@@ -27,6 +27,8 @@
 
 #include <GUI/TextButton.h>
 #include <GUI/SymbolButton.h>
+#include <misc/CursorAppearance.h>
+#include <GUI/ObjectInterfaces/UnitActionBar.h>
 #include <GUI/HBox.h>
 #include <GUI/VBox.h>
 
@@ -47,87 +49,73 @@ public:
 
 protected:
     explicit UnitInterface(int objectID) : DefaultObjectInterface(objectID) {
+        const int buttonGap = getRendererHeight() < 540 ? 2 : 6;
         Uint32 color = getHouseColorRGB(getHouseVisualHouse(pLocalHouse->getHouseID()), 3);
 
         mainHBox.addWidget(HSpacer::create(4));
 
-        buttonVBox.addWidget(VSpacer::create(6));
+        buttonVBox.addWidget(VSpacer::create(buttonGap));
 
-        moveButton.setSymbol(pGFXManager->getUIGraphicSurface(UI_CursorMove_Zoomlevel0));
+        moveButton.setSymbol(sdl2::surface_ptr{CursorAppearance::createIcon(CursorAppearance::Action::Move)});
         moveButton.setTooltipText(_("Move to a position (Hotkey: M)"));
         moveButton.setToggleButton(true);
         moveButton.setOnClick(std::bind(&UnitInterface::onMove, this));
-        actionHBox.addWidget(&moveButton);
 
-        actionHBox.addWidget(HSpacer::create(2));
-
-        attackButton.setSymbol(pGFXManager->getUIGraphicSurface(UI_CursorAttack_Zoomlevel0));
-        attackButton.setTooltipText(_("Attack a unit, structure or position (Hotkey: A)"));
+        attackButton.setSymbol(sdl2::surface_ptr{CursorAppearance::createIcon(CursorAppearance::Action::Attack)});
+        attackButton.setTooltipText(settings.general.wasdCamera ? _("Attack (Shift+A)") : _("Attack a unit, structure or position (Hotkey: A)"));
         attackButton.setToggleButton(true);
         attackButton.setOnClick(std::bind(&UnitInterface::onAttack, this));
-        actionHBox.addWidget(&attackButton);
 
-        actionHBox.addWidget(HSpacer::create(2));
-
-        carryallDropButton.setSymbol(pGFXManager->getUIGraphicSurface(UI_CursorCarryallDrop_Zoomlevel0));
-        carryallDropButton.setTooltipText(_("Request Carryall drop to a position (Hotkey: D)"));
+        carryallDropButton.setSymbol(sdl2::surface_ptr{CursorAppearance::createIcon(CursorAppearance::Action::Drop)});
+        carryallDropButton.setTooltipText(settings.general.wasdCamera ? _("Request Carryall drop (Shift+D)") : _("Request Carryall drop to a position (Hotkey: D)"));
         carryallDropButton.setToggleButton(true);
         carryallDropButton.setOnClick(std::bind(&UnitInterface::onCarryallDrop, this));
-        actionHBox.addWidget(&carryallDropButton);
 
-        actionHBox.addWidget(HSpacer::create(2));
-
-        captureButton.setSymbol(pGFXManager->getUIGraphicSurface(UI_CursorCapture_Zoomlevel0));
+        captureButton.setSymbol(sdl2::surface_ptr{CursorAppearance::createIcon(CursorAppearance::Action::Capture)});
         captureButton.setTooltipText(_("Capture a building (Hotkey: C)"));
         captureButton.setVisible((itemID == Unit_Soldier) || (itemID == Unit_Trooper));
         captureButton.setToggleButton(true);
         captureButton.setOnClick(std::bind(&UnitInterface::onCapture, this));
-        actionHBox.addWidget(&captureButton);
 
-        buttonVBox.addWidget(&actionHBox, 26);
-
-        buttonVBox.addWidget(VSpacer::create(2));
-
-        returnButton.setSymbol(pGFXManager->getUIGraphicSurface(UI_ReturnIcon));
+        returnButton.setSymbol(sdl2::surface_ptr{CursorAppearance::createIcon(CursorAppearance::Action::Return)});
         returnButton.setTooltipText(_("Return harvester to refinery (Hotkey: H)"));
         returnButton.setVisible(isHarvesterLikeUnit(itemID));
         returnButton.setOnClick(std::bind(&UnitInterface::onReturn, this));
-        commandHBox.addWidget(&returnButton);
 
-        commandHBox.addWidget(HSpacer::create(2));
-
-        deployButton.setSymbol(pGFXManager->getUIGraphicSurface(UI_DeployIcon));
+        deployButton.setSymbol(sdl2::surface_ptr{CursorAppearance::createIcon(CursorAppearance::Action::Deploy)});
         deployButton.setTooltipText(_("Build a new construction yard"));
         deployButton.setVisible( (itemID == Unit_MCV) );
         deployButton.setOnClick(std::bind(&UnitInterface::onDeploy, this));
-        commandHBox.addWidget(&deployButton);
 
-        commandHBox.addWidget(HSpacer::create(2));
-
-        destructButton.setSymbol(pGFXManager->getUIGraphicSurface(UI_DestructIcon));
+        destructButton.setSymbol(sdl2::surface_ptr{CursorAppearance::createIcon(CursorAppearance::Action::Destruct)});
         destructButton.setTooltipText(_("Self-destruct this unit"));
         destructButton.setVisible( (itemID == Unit_Devastator) );
         destructButton.setOnClick(std::bind(&UnitInterface::onDestruct, this));
-        commandHBox.addWidget(&destructButton);
+
+        healButton.setVisible(false);
         if(ModManager::instance().isTornieContentActive()) {
-            commandHBox.addWidget(HSpacer::create(2));
-            healButton.setSymbol(pGFXManager->getUIGraphicSurface(UI_CursorHeal_Zoomlevel0));
+
+            healButton.setSymbol(sdl2::surface_ptr{CursorAppearance::createIcon(CursorAppearance::Action::Heal)});
             healButton.setTooltipText(_("Heal an allied unit"));
             healButton.setToggleButton(true);
             healButton.setOnClick(std::bind(&UnitInterface::onHeal, this));
-            commandHBox.addWidget(&healButton);
+
         }
 
-        commandHBox.addWidget(HSpacer::create(2));
-
-        sendToRepairButton.setSymbol(pGFXManager->getUIGraphicSurface(UI_SendToRepairIcon));
+        sendToRepairButton.setSymbol(sdl2::surface_ptr{CursorAppearance::createIcon(CursorAppearance::Action::Repair)});
         sendToRepairButton.setTooltipText(_("Repair this unit (Hotkey: R)"));
         sendToRepairButton.setOnClick(std::bind(&UnitInterface::OnSendToRepair, this));
-        commandHBox.addWidget(&sendToRepairButton);
 
-        buttonVBox.addWidget(&commandHBox, 26);
+        movementPathsButton.setSymbol(sdl2::surface_ptr{CursorAppearance::createIcon(CursorAppearance::Action::Paths)});
+        movementPathsButton.setToggleButton(true);
+        movementPathsButton.setTooltipText(_("Show or hide movement paths for selected units"));
+        movementPathsButton.setOnClick([]() { currentGame->toggleMovementPaths(); });
+        actionBar.setButtons({&moveButton, &attackButton, &movementPathsButton,
+            &carryallDropButton, &captureButton, &returnButton, &deployButton,
+            &destructButton, &healButton, &sendToRepairButton});
+        buttonVBox.addWidget(&actionBar);
 
-        buttonVBox.addWidget(VSpacer::create(6));
+        buttonVBox.addWidget(VSpacer::create(buttonGap));
 
         guardButton.setText(_("Guard"));
         guardButton.setTextColor(color);
@@ -136,7 +124,7 @@ protected:
         guardButton.setOnClick(std::bind(&UnitInterface::onGuard, this));
         buttonVBox.addWidget(&guardButton, 26);
 
-        buttonVBox.addWidget(VSpacer::create(6));
+        buttonVBox.addWidget(VSpacer::create(buttonGap));
 
         areaGuardButton.setText(_("Area Guard"));
         areaGuardButton.setTextColor(color);
@@ -145,16 +133,16 @@ protected:
         areaGuardButton.setOnClick(std::bind(&UnitInterface::onAreaGuard, this));
         buttonVBox.addWidget(&areaGuardButton, 26);
 
-        buttonVBox.addWidget(VSpacer::create(6));
+        buttonVBox.addWidget(VSpacer::create(buttonGap));
 
         stopButton.setText(_("Stop"));
         stopButton.setTextColor(color);
-        stopButton.setTooltipText(_("Unit will not move, nor attack"));
+        stopButton.setTooltipText(settings.general.wasdCamera ? _("Stop (Shift+S): unit will not move or attack") : _("Stop (S): unit will not move or attack"));
         stopButton.setToggleButton(true);
         stopButton.setOnClick(std::bind(&UnitInterface::onStop, this));
         buttonVBox.addWidget(&stopButton, 26);
 
-        buttonVBox.addWidget(VSpacer::create(6));
+        buttonVBox.addWidget(VSpacer::create(buttonGap));
 
         ambushButton.setText(_("Ambush"));
         ambushButton.setTextColor(color);
@@ -163,7 +151,7 @@ protected:
         ambushButton.setOnClick(std::bind(&UnitInterface::onAmbush, this));
         buttonVBox.addWidget(&ambushButton, 26);
 
-        buttonVBox.addWidget(VSpacer::create(6));
+        buttonVBox.addWidget(VSpacer::create(buttonGap));
 
         huntButton.setText(_("Hunt"));
         huntButton.setTextColor(color);
@@ -172,18 +160,18 @@ protected:
         huntButton.setOnClick(std::bind(&UnitInterface::onHunt, this));
         buttonVBox.addWidget(&huntButton, 26);
 
-        buttonVBox.addWidget(VSpacer::create(6));
+        buttonVBox.addWidget(VSpacer::create(buttonGap));
 
         retreatButton.setText(_("Retreat"));
         retreatButton.setTextColor(color);
         retreatButton.setTooltipText(_("Unit will retreat back to base"));
         retreatButton.setToggleButton(true);
         retreatButton.setOnClick(std::bind(&UnitInterface::onRetreat, this));
-        buttonVBox.addWidget(&retreatButton, 26);
+        buttonVBox.addWidget(&retreatButton,26);
 
-        buttonVBox.addWidget(VSpacer::create(6));
+        buttonVBox.addWidget(VSpacer::create(buttonGap));
         buttonVBox.addWidget(Spacer::create());
-        buttonVBox.addWidget(VSpacer::create(6));
+        buttonVBox.addWidget(VSpacer::create(buttonGap));
 
         mainHBox.addWidget(&buttonVBox);
         mainHBox.addWidget(HSpacer::create(5));
@@ -289,7 +277,7 @@ protected:
             return false;
         }
 
-
+        movementPathsButton.setToggleState(settings.general.showMovementPaths);
         moveButton.setToggleState(currentGame->currentCursorMode == Game::CursorMode_Move);
         attackButton.setToggleState(currentGame->currentCursorMode == Game::CursorMode_Attack);
         healButton.setToggleState(currentGame->currentCursorMode == Game::CursorMode_Heal);
@@ -299,6 +287,7 @@ protected:
         carryallDropButton.setToggleState(currentGame->currentCursorMode == Game::CursorMode_CarryallDrop);
         carryallDropButton.setVisible(currentGame->getGameInitSettings().getGameOptions().manualCarryallDrops && pObject->getOwner()->hasCarryalls());
         sendToRepairButton.setVisible(pObject->getHealth() < pObject->getMaxHealth());
+        actionBar.refresh();
 
         UnitBase* pUnit = dynamic_cast<UnitBase*>(pObject);
         if(pUnit != nullptr) {
@@ -317,9 +306,9 @@ protected:
 
     HBox            buttonHBox;
     VBox            buttonVBox;
-    HBox            actionHBox;
-    HBox            commandHBox;
+    UnitActionBar   actionBar;
 
+    SymbolButton    movementPathsButton;
     SymbolButton    moveButton;
     SymbolButton    attackButton;
     SymbolButton    captureButton;

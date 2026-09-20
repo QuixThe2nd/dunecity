@@ -1261,12 +1261,19 @@
         };
       }
     };
+    let peerConnection;
     try {
+      class GamePeerConnection extends globalThis.RTCPeerConnection {
+        constructor(config) {
+          super(config);
+          peerConnection = this;
+        }
+      }
       connection.transport = new RTCTransport({
         self: "local",
         remote: "remote",
         signalling,
-        backend: { RTCPeerConnection: globalThis.RTCPeerConnection },
+        backend: { RTCPeerConnection: GamePeerConnection },
         // Exactly the servers the signaling service named, and no others. An empty list means host
         // candidates only, which is the right answer on a LAN; falling back to P2PKit's public STUN
         // defaults would contact a third party this game never told the player about. Direct mode
@@ -1279,6 +1286,16 @@
     } catch {
       return 0;
     }
+    const pc = peerConnection;
+    const stateChanged = pc.onconnectionstatechange;
+    pc.onconnectionstatechange = (event) => {
+      if (["failed", "closed", "disconnected"].includes(pc.connectionState)) {
+        const ice = ["new", "checking", "connected", "completed", "disconnected", "failed", "closed"].includes(pc.iceConnectionState) ? pc.iceConnectionState : "unknown";
+        fail(connection, `WebRTC ${pc.connectionState}; ICE ${ice}`);
+      } else {
+        stateChanged?.call(pc, event);
+      }
+    };
     connection.transport.on("connect", () => {
       if (connection.state !== State.Failed && connection.state !== State.Closed) {
         connection.state = State.Connected;

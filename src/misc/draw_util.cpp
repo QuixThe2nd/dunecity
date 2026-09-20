@@ -17,6 +17,10 @@
 
 #include <misc/draw_util.h>
 #include <misc/exceptions.h>
+#include <misc/FileSystem.h>
+#include <misc/fnkdat.h>
+#include <misc/WebRuntime.h>
+#include <FileClasses/LoadSavePNG.h>
 
 #include <globals.h>
 
@@ -178,7 +182,13 @@ void drawRect(SDL_Surface *surface, int x1, int y1, int x2, int y2, Uint32 color
 
 sdl2::surface_ptr renderReadSurface(SDL_Renderer* renderer) {
     assert(renderer == ::renderer);
-    const SDL_Rect rendererSize = getRendererSize();
+    // ReadPixels uses physical target dimensions, not SDL's logical UI size.
+    SDL_Rect rendererSize{0,0,0,0};
+    SDL_Texture* target = SDL_GetRenderTarget(renderer);
+    const int result = target
+        ? SDL_QueryTexture(target,nullptr,nullptr,&rendererSize.w,&rendererSize.h)
+        : SDL_GetRendererOutputSize(renderer,&rendererSize.w,&rendererSize.h);
+    if(result != 0 || rendererSize.w <= 0 || rendererSize.h <= 0) return nullptr;
     sdl2::surface_ptr pScreen{ SDL_CreateRGBSurface(0, rendererSize.w, rendererSize.h, SCREEN_BPP, RMASK, GMASK, BMASK, AMASK) };
     if((pScreen == nullptr) || (SDL_RenderReadPixels(renderer, nullptr, SCREEN_FORMAT, pScreen->pixels, pScreen->pitch) != 0)) {
         SDL_Log("Warning: renderReadSurface() failed: %s", SDL_GetError());
@@ -200,6 +210,27 @@ sdl2::surface_ptr renderReadSurface(SDL_Renderer* renderer) {
     }
 
     return pScreen;
+}
+
+bool saveScreenshot(SDL_Renderer* renderer, std::string& filename) {
+    filename.clear();
+    auto surface = renderReadSurface(renderer);
+    if(!surface) return false;
+    char path[FILENAME_MAX];
+    for(unsigned number=1; number<1000000; ++number) {
+        const std::string name="screenshots/Screenshot"+std::to_string(number)+".png";
+        if(fnkdat(name.c_str(),path,sizeof(path),FNKDAT_USER|FNKDAT_CREAT)!=0) return false;
+        if(existsFile(path)) continue;
+        sdl2::RWops_ptr output{SDL_RWFromFile(path,"wb")};
+        if(!output || SavePNG_RW(surface.get(),output.get())!=0) return false;
+        // Close/flush before browser sync or download reads the file.
+        output.reset();
+        filename=path;
+        WebRuntime::syncPersistentFiles();
+        WebRuntime::downloadFile(filename);
+        return true;
+    }
+    return false;
 }
 
 void replaceColor(SDL_Surface *surface, Uint32 oldColor, Uint32 newColor) {

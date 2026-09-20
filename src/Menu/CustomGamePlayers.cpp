@@ -306,6 +306,7 @@ CustomGamePlayers::CustomGamePlayers(const GameInitSettings& newGameInitSettings
     mapPropertyNamesVBox.addWidget(Label::create(_("Mod") + ":"));
     ModInfo activeModInfo = ModManager::instance().getModInfo(ModManager::instance().getActiveModName());
     mapPropertyMod.setText(activeModInfo.displayName);
+    mapPropertyCity.setText(activeModInfo.enablesCityMode ? _("On") : _("Off"));
     mapPropertyValuesVBox.addWidget(&mapPropertyMod);
 #ifdef __EMSCRIPTEN__
     // Browser: the matchmaking lobby already paired us; show how the matched
@@ -313,6 +314,8 @@ CustomGamePlayers::CustomGamePlayers(const GameInitSettings& newGameInitSettings
     mapPropertyNamesVBox.addWidget(Label::create(_("Opponent") + ":"));
     mapPropertyValuesVBox.addWidget(&opponentLabel);
 #endif
+    mapPropertyNamesVBox.addWidget(Label::create(_("City sim") + ":"));
+    mapPropertyValuesVBox.addWidget(&mapPropertyCity);
     rightVBox.addWidget(Spacer::create());
 
     mainVBox.addWidget(Spacer::create(), 0.04);
@@ -1188,6 +1191,7 @@ void CustomGamePlayers::onReceiveModInfo(const std::string& modName, const std::
             // Update the mod label on screen
             ModInfo activeModInfo = ModManager::instance().getModInfo(modName);
             mapPropertyMod.setText(activeModInfo.displayName);
+            mapPropertyCity.setText(activeModInfo.enablesCityMode ? _("On") : _("Off"));
             
             // Reload effective game options for the new mod
             effectiveGameOptions = ModManager::instance().loadEffectiveGameOptions(settings.gameOptions);
@@ -1298,6 +1302,7 @@ void CustomGamePlayers::onModDownloadComplete(bool success, const std::string& d
             // Update the mod label on screen to show the new mod
             ModInfo activeModInfo = ModManager::instance().getModInfo(hostModName);
             mapPropertyMod.setText(activeModInfo.displayName);
+            mapPropertyCity.setText(activeModInfo.enablesCityMode ? _("On") : _("Off"));
             
             SDL_Log("CLIENT: Switched to mod '%s', new checksum: %s", hostModName.c_str(), newChecksum.c_str());
 
@@ -1931,7 +1936,9 @@ void CustomGamePlayers::extractMapInfo(INIFile* pMap)
         currentIndex++;
     }
 
-    for(int p = 0; (p < numHouses) && (currentIndex < numHouses); p++) {
+    // PlayerN sections may have gaps (Ergsun-Odenkirk uses 1, 2, 3, 5).
+    // Scan the same capacity used to count them, not just the visible row count.
+    for(int p = 0; (p < getCustomGameHouseCount()) && (currentIndex < numHouses); p++) {
         if(pMap->hasSection("Player" + std::to_string(p+1))) {
             std::string teamName = strToUpper(pMap->getStringValue("Player" + std::to_string(p+1),"Brain","Team " + std::to_string(currentIndex+p+1)));
             teamNames.push_back(teamName);

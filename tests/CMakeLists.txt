@@ -16,6 +16,7 @@ target_sources(dunelegacy_tests
         CityTrafficPolicyTestCase.cpp
         CitySpritePolicyTestCase.cpp
         RendererSizeTestCase.cpp
+        CursorAppearanceTestCase.cpp
         QuantBotBuildPolicyTestCase.cpp
         AIDecisionLogTestCase.cpp
         CityPlacementPolicyTestCase.cpp
@@ -384,4 +385,8 @@ if(APPLE AND CMAKE_GENERATOR STREQUAL "Ninja")
             --build-dir ${CMAKE_BINARY_DIR} --output-dir ${CMAKE_BINARY_DIR}/menu-probe)
         set_tests_properties(menu_navigation_probe PROPERTIES TIMEOUT 300 RUN_SERIAL TRUE)
     endif()
+endif()
+
+if(NOT EMSCRIPTEN AND NOT ANDROID)
+    add_subdirectory(desktop-updater)
 endif()

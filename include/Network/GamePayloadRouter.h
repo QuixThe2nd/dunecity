@@ -59,6 +59,7 @@ struct NetworkSessionCallbacks {
     const std::function<void (size_t, Uint32)>*                                   onReceiveSetPathBudget = nullptr;
     /// Campaign continuation chosen by the host; empty settings mean "leave the campaign".
     const std::function<void (const GameInitSettings&)>*                          onReceiveCoopMission = nullptr;
+    const std::function<void (Uint32, Uint32, Uint32, Uint32, const std::string&)>* onJoinSync = nullptr;
     /**
         A peer's game content does not match ours and this transport cannot fix that.
 
@@ -182,6 +183,8 @@ inline bool handles(Uint32 packetType) {
         case NETWORKPACKET_CHATMESSAGE:
         case NETWORKPACKET_CHANGEEVENTLIST:
         case NETWORKPACKET_CONFIG_HASH:
+        case NETWORKPACKET_JOIN_SYNC:
+        case NETWORKPACKET_JOIN_ACK:
         case NETWORKPACKET_COOP_MISSION:
         case NETWORKPACKET_STARTGAME:
         case NETWORKPACKET_COMMANDLIST:

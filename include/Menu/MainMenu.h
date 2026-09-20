@@ -25,9 +25,7 @@
 #include <GUI/Spacer.h>
 #include <GUI/PictureLabel.h>
 #include <GUI/Label.h>
-#ifndef __EMSCRIPTEN__
-#include <Network/VersionChecker.h>
-#endif
+#include <misc/DesktopUpdater.h>
 
 #include <memory>
 
@@ -43,6 +41,7 @@ public:
 
     virtual int showMenu() override;
     virtual void update() override;
+    void handleInput(SDL_Event& event) override;
     virtual void onChildWindowClose(Window* pChildWindow) override;
 
 private:
@@ -87,14 +86,11 @@ private:
     Label           modVersionLabel; ///< Version footer.
     std::string     lastShownModName; ///< Tracks last mod name written to modVersionLabel; avoids redundant setText.
 
-    // Version checking
-#ifndef __EMSCRIPTEN__
-    std::unique_ptr<VersionChecker> pVersionChecker;
-#endif
-    bool bVersionCheckStarted = false;
-    bool bUpdateDialogShown = false;
-    std::string latestVersion;
-    std::string downloadURL;
+    TextButton updateButton;
+    bool updatePromptOpen = false;
+    bool manualUpdateCheck = false;
+    bool installationRequested = false;
+    void onUpdate();
 
     // First-launch "Enable city-sim mod?" prompt state.
     bool bFirstLaunchPromptChecked = false; ///< Have we evaluated whether to show the prompt this session?

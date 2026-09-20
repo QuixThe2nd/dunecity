@@ -163,6 +163,7 @@ private:
 #ifdef __EMSCRIPTEN__
     Label           opponentLabel;   ///< Browser: the matched opponent's connection state.
 #endif
+    Label           mapPropertyCity;
 
     // bottom row of buttons
     HBox            buttonHBox;

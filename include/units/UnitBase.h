@@ -48,6 +48,8 @@ public:
     UnitBase& operator=(UnitBase &&) = delete;
 
     void save(OutputStream& stream) const override;
+    void saveObserverRuntime(OutputStream& stream) const;
+    void loadObserverRuntime(InputStream& stream);
 
     void blitToScreen() override;
 
@@ -69,6 +71,8 @@ public:
         \param  yPos    the y position on the map
     */
     void handleActionClick(int xPos, int yPos) override;
+    // Shared by contextual cursor/feedback and the actual right-click command.
+    ObjectBase* getActionClickTarget(int xPos, int yPos) const;
 
     /**
         This method is called when an unit is ordered to attack
@@ -178,6 +182,7 @@ public:
     bool isInWeaponRange(const ObjectBase* object) const;
 
     void setAngle(int newAngle);
+    const std::list<Coord>& getPlannedPath() const { return pathList; }
 
     void setTarget(const ObjectBase* newTarget) override;
 

@@ -6,6 +6,11 @@ test-driver
 autom4te.cache
 bin/
 build/
+/build
+/build.bad/
+/build2/
+/build_phase4/
+/buildtests/
 .emsdk/
 build_ci_test/
 compile
