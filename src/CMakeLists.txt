@@ -664,7 +664,6 @@ elseif(NOT EMSCRIPTEN)
         )
     endif()
     endif() # NOT EMSCRIPTEN
-endif()
 
 # Install data directory
 # For macOS bundles, data files are already inside the .app via POST_BUILD commands
