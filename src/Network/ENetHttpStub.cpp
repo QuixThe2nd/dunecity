@@ -2,7 +2,7 @@
  *  Browser stub for the curl-backed ENetHttp.cpp, which cannot build under
  *  Emscripten (libcurl has no port). Provides exactly the ENetHttp symbols
  *  referenced by MetaServerClient/VersionChecker (loadFromHttp) and
- *  Dune2RAssetManager (downloadHttpFile).
+ *  Dune2RAssetManager (downloadHttpFile, loadFromHttp).
  */
 
 #include <Network/ENetHttp.h>
@@ -17,9 +17,11 @@ namespace {
 
 } // namespace
 
-std::string loadFromHttp(const std::string& url, const std::map<std::string, std::string>& parameters) {
+std::string loadFromHttp(const std::string& url, const std::map<std::string, std::string>& parameters,
+                         long timeoutSeconds) {
     (void) url;
     (void) parameters;
+    (void) timeoutSeconds;
     throwWebHttpUnsupported();
 }
 

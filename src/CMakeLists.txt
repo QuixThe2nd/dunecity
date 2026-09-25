@@ -363,6 +363,7 @@ target_sources(dunecity
         misc/FileSystem.cpp
         misc/fnkdat.cpp
         misc/format.cpp
+        misc/FrameYield.cpp
         misc/IFileStream.cpp
         misc/md5.cpp
         misc/OFileStream.cpp
@@ -409,6 +410,9 @@ if(EMSCRIPTEN)
     # shared list above.
     set_source_files_properties(Network/ENetHttp.cpp PROPERTIES HEADER_FILE_ONLY TRUE)
     target_sources(dunecity PRIVATE Network/ENetHttpStub.cpp)
+    # WebRTC multiplayer transport (browser only): bridges NetworkManager to
+    # the JS glue in platform/web/webrtc_glue.js.
+    target_sources(dunecity PRIVATE Network/WebRtcTransport.cpp)
 endif()
 
 # Platform-specific source files
@@ -494,6 +498,7 @@ if(EMSCRIPTEN)
         "SHELL:--preload-file ${CMAKE_SOURCE_DIR}/data@/"
         "SHELL:--preload-file ${CMAKE_SOURCE_DIR}/config@/config"
         "SHELL:--preload-file ${CMAKE_SOURCE_DIR}/imported_sprites@/imported_sprites"
+        "SHELL:--js-library ${CMAKE_SOURCE_DIR}/platform/web/webrtc_glue.js"
     )
 else()
     # vcpkg provides modern CMake targets for SDL2.
@@ -659,7 +664,6 @@ elseif(NOT EMSCRIPTEN)
         )
     endif()
     endif() # NOT EMSCRIPTEN
-endif()
 
 # Install data directory
 # For macOS bundles, data files are already inside the .app via POST_BUILD commands
