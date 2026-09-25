@@ -22,6 +22,6 @@ this one raw.githubusercontent.com download.
 Pin: to move to the latest upstream build, replace the SHA on the line below
 with the current master SHA of QuixThe2nd/p2pkit.
 
-upstream: 1cde1f9947984b18bd242eac1548a79c8d61dbcd
+upstream: 10d70550ceec8e94b19636cf820ae4bbf6c450af
 upstream repo: https://github.com/QuixThe2nd/p2pkit
 fetched file: dist/p2pkit.iife.js (gitignored, fetched by the script)
